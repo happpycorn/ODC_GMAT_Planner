@@ -1,0 +1,11 @@
+[project]
+name = "odc-program"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "astropy>=5.3.4",
+    "optuna>=4.9.0",
+    "poliastro>=0.17.0",
+]
