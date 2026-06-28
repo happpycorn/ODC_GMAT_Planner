@@ -33,7 +33,7 @@ BeginMissionSequence;
 """
     for i in range(len(burns)):
         mission_sequence += f"""
-Propagate DefaultProp(Ship1, Ship2) {{Ship1.ElapsedSecs = {times[i]:.2f}}};
+Propagate DefaultProp(Ship1, Ship2) {{Ship1.ElapsedSecs = {times[i+1]:.2f}}};
 Maneuver ImpulsiveBurn{i}(Ship2);
 """
     mission_sequence += f"Propagate DefaultProp(Ship1, Ship2) {{Ship1.ElapsedSecs = {times[-1]:.2f}}};"

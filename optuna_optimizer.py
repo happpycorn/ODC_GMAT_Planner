@@ -201,7 +201,7 @@ class MissionOptimizer:
         total_dv = 0.0
 
         burns = []
-        times = [best_params["t_wait"]]
+        times = [0]
         
         num_burns = int(best_params["num_burns"])
         current_time = best_params["t_wait"]
@@ -217,7 +217,7 @@ class MissionOptimizer:
             print(f"  [點火 {i}] 時間: {current_time:.1f}s | 推力向量: {np.round(dv_vnb, 3)} km/s | 大小: {dv_mag*1000:.1f} m/s")
 
             burns.append(dv_vnb)
-            times.append(current_time)
+            times.append(current_time-times[-1])
             
             total_dv += dv_mag
             if dv_mag > PhysicsEngine.MAX_DV: penalty_count += 1
@@ -240,7 +240,7 @@ class MissionOptimizer:
         print(f"  預計攔截時間: {intercept_time:.1f}s")
 
         burns.append(dv_final_vnb)
-        times.append(intercept_time)
+        times.append(intercept_time-times[-1])
         
         total_dv += dv_final_mag
         print(f"--- 總消耗 Delta-V: {total_dv*1000:.1f} m/s | 違規次數: {penalty_count} ---")
