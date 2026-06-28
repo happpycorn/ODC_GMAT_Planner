@@ -33,10 +33,10 @@ BeginMissionSequence;
 """
     for i in range(len(burns)):
         mission_sequence += f"""
-Propagate DefaultProp(Ship1, Ship2) {{Ship1.ElapsedSecs = {times[i+1]:.2f}}};
+Propagate DefaultProp(Ship1, Ship2) {{Ship1.ElapsedSecs = {times[i]:.5f}}};
 Maneuver ImpulsiveBurn{i}(Ship2);
 """
-    mission_sequence += f"Propagate DefaultProp(Ship1, Ship2) {{Ship1.ElapsedSecs = {times[-1]:.2f}}};"
+    mission_sequence += f"Propagate DefaultProp(Ship1, Ship2) {{Ship1.ElapsedSecs = {times[-1]:.5f}}};"
 
     with open("output.txt", "w", encoding="utf-8") as f:
         f.write(f"""

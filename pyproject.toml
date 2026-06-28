@@ -8,4 +8,6 @@ dependencies = [
     "astropy>=5.3.4",
     "optuna>=4.9.0",
     "poliastro>=0.17.0",
+    "pymoo>=0.6.2",
+    "torch>=2.12.1",
 ]
