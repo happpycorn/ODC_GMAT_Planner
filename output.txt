@@ -12,11 +12,11 @@ Ship1.DateFormat = TAIModJulian;
 Ship1.Epoch = '21545';
 Ship1.CoordinateSystem = EarthMJ2000Eq;
 Ship1.DisplayStateType = Keplerian;
-Ship1.SMA = 9000.0;
-Ship1.ECC = 0.0;
-Ship1.INC = 40.0;
-Ship1.RAAN = 45.0;
-Ship1.AOP = 0.0;
+Ship1.SMA = 35000.0;
+Ship1.ECC = 0.7;
+Ship1.INC = 65.0;
+Ship1.RAAN = 90.0;
+Ship1.AOP = 270.0;
 Ship1.TA = 0.0;
 Ship1.DryMass = 850;
 Ship1.Cd = 2.2;
@@ -59,12 +59,12 @@ Ship2.DateFormat = TAIModJulian;
 Ship2.Epoch = '21545';
 Ship2.CoordinateSystem = EarthMJ2000Eq;
 Ship2.DisplayStateType = Keplerian;
-Ship2.SMA = 7500.0;
+Ship2.SMA = 7000.0;
 Ship2.ECC = 0.0;
-Ship2.INC = 30.0;
-Ship2.RAAN = 20.0;
+Ship2.INC = 10.0;
+Ship2.RAAN = 0.0;
 Ship2.AOP = 0.0;
-Ship2.TA = 0.0;
+Ship2.TA = 180.0;
 Ship2.DryMass = 850;
 Ship2.Cd = 2.2;
 Ship2.Cr = 1.8;
@@ -142,12 +142,24 @@ Create ImpulsiveBurn ImpulsiveBurn0;
 ImpulsiveBurn0.CoordinateSystem = Local;
 ImpulsiveBurn0.Origin = Earth;
 ImpulsiveBurn0.Axes = VNB;
-ImpulsiveBurn0.Element1 = 0.35671187905952206;
-ImpulsiveBurn0.Element2 = -0.34402418446079186;
-ImpulsiveBurn0.Element3 = -0.1573319187596717;
+ImpulsiveBurn0.Element1 = 1.2666823861901213;
+ImpulsiveBurn0.Element2 = 0.23257440716868602;
+ImpulsiveBurn0.Element3 = 0.07728387721700326;
 ImpulsiveBurn0.DecrementMass = false;
 ImpulsiveBurn0.Isp = 300;
 ImpulsiveBurn0.GravitationalAccel = 9.81;
+
+
+Create ImpulsiveBurn ImpulsiveBurn1;
+ImpulsiveBurn1.CoordinateSystem = Local;
+ImpulsiveBurn1.Origin = Earth;
+ImpulsiveBurn1.Axes = VNB;
+ImpulsiveBurn1.Element1 = 0.20863421607570576;
+ImpulsiveBurn1.Element2 = -0.25755549098214003;
+ImpulsiveBurn1.Element3 = -0.032815222378817864;
+ImpulsiveBurn1.DecrementMass = false;
+ImpulsiveBurn1.Isp = 300;
+ImpulsiveBurn1.GravitationalAccel = 9.81;
 
 
 %----------------------------------------
@@ -236,9 +248,12 @@ DefaultOrbitView_View.FOVy = 45;
 %---------- Mission Sequence
 %----------------------------------------
 
-
 BeginMissionSequence;
-Propagate DefaultProp(Ship1, Ship2) {Ship1.ElapsedSecs = 138.24};
+
+Propagate DefaultProp(Ship1, Ship2) {Ship1.ElapsedSecs = 22206.04};
 Maneuver ImpulsiveBurn0(Ship2);
-Propagate DefaultProp(Ship1, Ship2) {Ship1.ElapsedSecs = 5017.47};
+
+Propagate DefaultProp(Ship1, Ship2) {Ship1.ElapsedSecs = 0.00};
+Maneuver ImpulsiveBurn1(Ship2);
+Propagate DefaultProp(Ship1, Ship2) {Ship1.ElapsedSecs = 62564.88};
 
