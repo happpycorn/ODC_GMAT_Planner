@@ -7,18 +7,24 @@ def script_generator(
 %----------------------------------------
 %---------- Burns
 %----------------------------------------
+
+Create DifferentialCorrector DC1;
+
+Create Variable diffX diffY diffZ;
+GMAT diffX = 0;
+GMAT diffY = 0;
+GMAT diffZ = 0;
 """
 
     for i in range(len(burns)):
         burns_content += f"""
-
 Create ImpulsiveBurn ImpulsiveBurn{i};
 ImpulsiveBurn{i}.CoordinateSystem = Local;
 ImpulsiveBurn{i}.Origin = Earth;
 ImpulsiveBurn{i}.Axes = VNB;
-ImpulsiveBurn{i}.Element1 = {burns[i][0]};
-ImpulsiveBurn{i}.Element2 = {burns[i][1]};
-ImpulsiveBurn{i}.Element3 = {burns[i][2]};
+ImpulsiveBurn{i}.Element1 = {burns[i][0]:.7f};
+ImpulsiveBurn{i}.Element2 = {burns[i][1]:.7f};
+ImpulsiveBurn{i}.Element3 = {burns[i][2]:.7f};
 ImpulsiveBurn{i}.DecrementMass = false;
 ImpulsiveBurn{i}.Isp = 300;
 ImpulsiveBurn{i}.GravitationalAccel = 9.81;
@@ -29,20 +35,57 @@ ImpulsiveBurn{i}.GravitationalAccel = 9.81;
 %---------- Mission Sequence
 %----------------------------------------
 
+Create Variable MissDistance;
+GMAT MissDistance = 0;
+
 BeginMissionSequence;
 """
-    for i in range(len(burns)):
+    
+    # 執行所有「非最後一次」的推進
+    for i in range(len(burns) - 1):
         mission_sequence += f"""
 Propagate DefaultProp(Ship1, Ship2) {{Ship1.ElapsedSecs = {times[i]:.5f}}};
 Maneuver ImpulsiveBurn{i}(Ship2);
 """
-    mission_sequence += f"Propagate DefaultProp(Ship1, Ship2) {{Ship1.ElapsedSecs = {times[-1]:.5f}}};"
+
+    # 最後一次點火前的等待/海岸飛行
+    final_burn_idx = len(burns) - 1
+    mission_sequence += f"""
+Propagate DefaultProp(Ship1, Ship2) {{Ship1.ElapsedSecs = {times[final_burn_idx]:.5f}}};
+"""
+
+    # 抓取最後一次的推力與時間，填入 Target 區塊
+    v, n, b = burns[final_burn_idx]
+    t_final_leg = times[-1]
+
+    mission_sequence += f"""
+Target DC1;
+    
+    Vary DC1(ImpulsiveBurn{final_burn_idx}.Element1 = {v:.7f}, {{Perturbation = 0.0001, Lower = -3, Upper = 3, MaxStep = 0.05}});
+    Vary DC1(ImpulsiveBurn{final_burn_idx}.Element2 = {n:.7f}, {{Perturbation = 0.0001, Lower = -3, Upper = 3, MaxStep = 0.05}});
+    Vary DC1(ImpulsiveBurn{final_burn_idx}.Element3 = {b:.7f}, {{Perturbation = 0.0001, Lower = -3, Upper = 3, MaxStep = 0.05}});
+
+    Maneuver ImpulsiveBurn{final_burn_idx}(Ship2);
+
+    Propagate Synchronized DefaultProp(Ship1, Ship2) {{Ship1.ElapsedSecs = {t_final_leg:.5f}}};
+
+    GMAT diffX = Ship1.EarthMJ2000Eq.X - Ship2.EarthMJ2000Eq.X;
+    GMAT diffY = Ship1.EarthMJ2000Eq.Y - Ship2.EarthMJ2000Eq.Y;
+    GMAT diffZ = Ship1.EarthMJ2000Eq.Z - Ship2.EarthMJ2000Eq.Z;
+
+    Achieve DC1(diffX = 0.0, {{Tolerance = 0.1}});
+    Achieve DC1(diffY = 0.0, {{Tolerance = 0.1}});
+    Achieve DC1(diffZ = 0.0, {{Tolerance = 0.1}});
+    
+EndTarget;
+
+GMAT MissDistance = sqrt((Ship1.EarthMJ2000Eq.X - Ship2.EarthMJ2000Eq.X)^2 + (Ship1.EarthMJ2000Eq.Y - Ship2.EarthMJ2000Eq.Y)^2 + (Ship1.EarthMJ2000Eq.Z - Ship2.EarthMJ2000Eq.Z)^2);
+"""
 
     with open("output.txt", "w", encoding="utf-8") as f:
         f.write(f"""
 %General Mission Analysis Tool(GMAT) Script
 %Created: 2026-06-27 00:00:00
-
 
 %----------------------------------------
 %---------- Spacecraft
@@ -64,36 +107,6 @@ Ship1.Cd = 2.2;
 Ship1.Cr = 1.8;
 Ship1.DragArea = 15;
 Ship1.SRPArea = 1;
-Ship1.SPADDragScaleFactor = 1;
-Ship1.SPADSRPScaleFactor = 1;
-Ship1.AtmosDensityScaleFactor = 1;
-Ship1.ExtendedMassPropertiesModel = 'None';
-Ship1.NAIFId = -10000001;
-Ship1.NAIFIdReferenceFrame = -9000001;
-Ship1.OrbitColor = Red;
-Ship1.TargetColor = Teal;
-Ship1.OrbitErrorCovariance = [ 1e+70 0 0 0 0 0 ; 0 1e+70 0 0 0 0 ; 0 0 1e+70 0 0 0 ; 0 0 0 1e+70 0 0 ; 0 0 0 0 1e+70 0 ; 0 0 0 0 0 1e+70 ];
-Ship1.CdSigma = 1e+70;
-Ship1.CrSigma = 1e+70;
-Ship1.Id = 'SatId';
-Ship1.Attitude = CoordinateSystemFixed;
-Ship1.SPADSRPInterpolationMethod = Bilinear;
-Ship1.SPADSRPScaleFactorSigma = 1e+70;
-Ship1.SPADDragInterpolationMethod = Bilinear;
-Ship1.SPADDragScaleFactorSigma = 1e+70;
-Ship1.AtmosDensityScaleFactorSigma = 1e+70;
-Ship1.ModelFile = 'aura.3ds';
-Ship1.ModelOffsetX = 0;
-Ship1.ModelOffsetY = 0;
-Ship1.ModelOffsetZ = 0;
-Ship1.ModelRotationX = 0;
-Ship1.ModelRotationY = 0;
-Ship1.ModelRotationZ = 0;
-Ship1.ModelScale = 1;
-Ship1.AttitudeDisplayStateType = 'Quaternion';
-Ship1.AttitudeRateDisplayStateType = 'AngularVelocity';
-Ship1.AttitudeCoordinateSystem = EarthMJ2000Eq;
-Ship1.EulerAngleSequence = '321';
 
 Create Spacecraft Ship2;
 Ship2.DateFormat = TAIModJulian;
@@ -111,36 +124,6 @@ Ship2.Cd = 2.2;
 Ship2.Cr = 1.8;
 Ship2.DragArea = 15;
 Ship2.SRPArea = 1;
-Ship2.SPADDragScaleFactor = 1;
-Ship2.SPADSRPScaleFactor = 1;
-Ship2.AtmosDensityScaleFactor = 1;
-Ship2.ExtendedMassPropertiesModel = 'None';
-Ship2.NAIFId = -10000001;
-Ship2.NAIFIdReferenceFrame = -9000001;
-Ship2.OrbitColor = Blue;
-Ship2.TargetColor = Teal;
-Ship2.OrbitErrorCovariance = [ 1e+70 0 0 0 0 0 ; 0 1e+70 0 0 0 0 ; 0 0 1e+70 0 0 0 ; 0 0 0 1e+70 0 0 ; 0 0 0 0 1e+70 0 ; 0 0 0 0 0 1e+70 ];
-Ship2.CdSigma = 1e+70;
-Ship2.CrSigma = 1e+70;
-Ship2.Id = 'SatId';
-Ship2.Attitude = CoordinateSystemFixed;
-Ship2.SPADSRPInterpolationMethod = Bilinear;
-Ship2.SPADSRPScaleFactorSigma = 1e+70;
-Ship2.SPADDragInterpolationMethod = Bilinear;
-Ship2.SPADDragScaleFactorSigma = 1e+70;
-Ship2.AtmosDensityScaleFactorSigma = 1e+70;
-Ship2.ModelFile = 'aura.3ds';
-Ship2.ModelOffsetX = 0;
-Ship2.ModelOffsetY = 0;
-Ship2.ModelOffsetZ = 0;
-Ship2.ModelRotationX = 0;
-Ship2.ModelRotationY = 0;
-Ship2.ModelRotationZ = 0;
-Ship2.ModelScale = 1;
-Ship2.AttitudeDisplayStateType = 'Quaternion';
-Ship2.AttitudeRateDisplayStateType = 'AngularVelocity';
-Ship2.AttitudeCoordinateSystem = EarthMJ2000Eq;
-Ship2.EulerAngleSequence = '321';
 
 %----------------------------------------
 %---------- ForceModels
@@ -181,83 +164,14 @@ DefaultProp.StopIfAccuracyIsViolated = true;
 
 Create OpenFramesInterface DefaultOrbitView;
 DefaultOrbitView.SolverIterations = Current;
-DefaultOrbitView.UpperLeft = [ 0.1925170068027211 0.1924686192468619 ];
-DefaultOrbitView.Size = [ 0.3693877551020408 0.3096234309623431 ];
-DefaultOrbitView.RelativeZOrder = 92;
-DefaultOrbitView.Maximized = false;
 DefaultOrbitView.Add = {{Ship1, Ship2, Earth}};
-DefaultOrbitView.View = {{DefaultOrbitView_View}};
 DefaultOrbitView.CoordinateSystem = EarthMJ2000Eq;
 DefaultOrbitView.DrawObject = [ true true true ];
 DefaultOrbitView.DrawTrajectory = [ true true true ];
-DefaultOrbitView.DrawAxes = [ false false false ];
-DefaultOrbitView.DrawXYPlane = [ false false false ];
-DefaultOrbitView.DrawLabel = [ true true true ];
-DefaultOrbitView.DrawUsePropLabel = [ false false false ];
-DefaultOrbitView.DrawCenterPoint = [ true true true ];
-DefaultOrbitView.DrawEndPoints = [ true true true ];
-DefaultOrbitView.DrawVelocity = [ false false false ];
-DefaultOrbitView.DrawGrid = [ false false false ];
-DefaultOrbitView.DrawLineWidth = [ 2 2 2 ];
-DefaultOrbitView.DrawMarkerSize = [ 10 10 10 ];
-DefaultOrbitView.DrawFontSize = [ 20 20 20 ];
 DefaultOrbitView.Axes = On;
-DefaultOrbitView.AxesLength = 12756.2726;
-DefaultOrbitView.AxesLabels = On;
-DefaultOrbitView.FrameLabel = Off;
 DefaultOrbitView.XYPlane = On;
-DefaultOrbitView.EclipticPlane = Off;
-DefaultOrbitView.EnableStars = On;
-DefaultOrbitView.StarCatalog = 'inp_StarsHYGv3.txt';
-DefaultOrbitView.StarCount = 40000;
-DefaultOrbitView.MinStarMag = -2;
-DefaultOrbitView.MaxStarMag = 6;
-DefaultOrbitView.MinStarPixels = 1;
-DefaultOrbitView.MaxStarPixels = 10;
-DefaultOrbitView.MinStarDimRatio = 0.5;
-DefaultOrbitView.ShowPlot = true;
-DefaultOrbitView.ShowToolbar = true;
-DefaultOrbitView.SolverIterLastN = 1;
-DefaultOrbitView.ShowVR = false;
-DefaultOrbitView.PlaybackTimeScale = 3600;
-DefaultOrbitView.MultisampleAntiAliasing = On;
-DefaultOrbitView.MSAASamples = 2;
-DefaultOrbitView.DrawFontPosition = {{'Top-Right', 'Top-Right', 'Top-Right'}};
-
-Create GroundTrack DefaultGroundTrackPlot;
-DefaultGroundTrackPlot.SolverIterations = Current;
-DefaultGroundTrackPlot.UpperLeft = [ 0.4047619047619048 0.4675732217573222 ];
-DefaultGroundTrackPlot.Size = [ 0.4163265306122449 0.3629707112970711 ];
-DefaultGroundTrackPlot.RelativeZOrder = 90;
-DefaultGroundTrackPlot.Maximized = false;
-DefaultGroundTrackPlot.CentralBody = Earth;
-DefaultGroundTrackPlot.Add = {{Ship1, Ship2}};
-DefaultGroundTrackPlot.DataCollectFrequency = 1;
-DefaultGroundTrackPlot.UpdatePlotFrequency = 50;
-DefaultGroundTrackPlot.NumPointsToRedraw = 0;
-DefaultGroundTrackPlot.MaxPlotPoints = 20000;
-DefaultGroundTrackPlot.ShowPlot = true;
-
-%----------------------------------------
-%---------- User Objects
-%----------------------------------------
-
-Create OpenFramesView DefaultOrbitView_View;
-DefaultOrbitView_View.ViewFrame = CoordinateSystem;
-DefaultOrbitView_View.ViewTrajectory = Off;
-DefaultOrbitView_View.InertialFrame = Off;
-DefaultOrbitView_View.SetDefaultLocation = On;
-DefaultOrbitView_View.DefaultEye = [ 30000 0 0 ];
-DefaultOrbitView_View.DefaultCenter = [ 0 0 0 ];
-DefaultOrbitView_View.DefaultUp = [ 0 0 1 ];
-DefaultOrbitView_View.SetCurrentLocation = On;
-DefaultOrbitView_View.CurrentEye = [ 9965.899370474219 -7960.359075847184 27153.51787745298 ];
-DefaultOrbitView_View.CurrentCenter = [ -3.637978807091713e-12 0 -3.637978807091713e-12 ];
-DefaultOrbitView_View.CurrentUp = [ -0.8272102470879261 0.3790966391791704 0.4147396114139451 ];
-DefaultOrbitView_View.FOVy = 45;
 
 {mission_sequence}
-
 """)
 
     print("檔案已成功建立！")

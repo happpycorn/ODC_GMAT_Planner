@@ -1,70 +1,90 @@
 import numpy as np
-from astropy import units as u
-from poliastro.iod import izzo
-from poliastro.bodies import Earth
-from poliastro.twobody import Orbit
+from poliastro.core.iod import izzo
 
-class PhysicsEngine:
-    """模組二：負責求解蘭伯特問題與物理防呆檢查"""
-    
-    EARTH_RADIUS = Earth.R.to_value(u.km)
-    SAFE_ALTITUDE = 100.0
-    MIN_PERIAPSIS = EARTH_RADIUS + SAFE_ALTITUDE
-    MAX_DV = 1.5
-
+class PhysicsEngine:    
     @staticmethod
-    def solve_lambert(r1: np.ndarray, v1: np.ndarray, r2: np.ndarray, tof_sec: float):
-        r1_u = u.Quantity(r1, u.km)
-        r2_u = u.Quantity(r2, u.km)
-        tof_u = u.Quantity(float(tof_sec), u.s)
-        
-        v1_req_u, v2_req_u = izzo.lambert(Earth.k, r1_u, r2_u, tof_u)
-        
-        v1_req = v1_req_u.to_value(u.km / u.s)
-        v2_req = v2_req_u.to_value(u.km / u.s)
-        
-        delta_v1 = v1_req - v1
-        dv1_mag = float(np.linalg.norm(delta_v1))
-        
-        return v1_req, v2_req, delta_v1, dv1_mag
-
-    @staticmethod
-    def check_constraints(r1: np.ndarray, v1_req: np.ndarray, dv1_mag: float) -> tuple[bool, str]:
-        if dv1_mag > PhysicsEngine.MAX_DV:
-            return False, f"違規：Delta V ({dv1_mag*1000:.1f} m/s) 超出 1500 m/s 上限！"
-
-        transfer_orbit = Orbit.from_vectors(
-            Earth, 
-            u.Quantity(r1, u.km),
-            u.Quantity(v1_req, u.km / u.s),
+    def solve_lambert(mu, r1, v1, r2, tof):
+        v1_req, v2_req = izzo(
+            mu, r1, r2, tof,
+            M=0, prograde=True, lowpath=True, numiter=35, rtol=1e-8
         )
-        rp = transfer_orbit.r_p.to_value(u.km)
         
-        if rp < PhysicsEngine.MIN_PERIAPSIS:
-            return False, f"危險：轉移軌道近地點 ({rp:.1f} km) 穿透地表，發生墜毀！"
+        dv1 = v1_req - v1
+        dv1_mag = np.linalg.norm(dv1)
+        
+        return v1_req, v2_req, dv1, dv1_mag
 
-        return True, "安全：這是一條完美合法的高速公路"
+    @staticmethod
+    def check_constraints(r: np.ndarray, v: np.ndarray, mu: float, min_rp: float) -> bool:
+        h_vec = np.cross(r, v)
+        h2 = np.sum(h_vec**2)
+        
+        r_mag = np.linalg.norm(r)
+        v2 = np.sum(v**2)
+        epsilon = (v2 / 2.0) - (mu / r_mag)
+        
+        e = np.sqrt(1.0 + (2.0 * epsilon * h2) / (mu**2))
+
+        rp = h2 / (mu * (1.0 + e))
+
+        return rp >= min_rp
 
 # ==========================================
 # 測試區塊 (結合模組一的資料)
 # ==========================================
 if __name__ == "__main__":
+    from astropy import units as u
+    from poliastro.bodies import Earth
     from propagator import OrbitPropagator
+    from poliastro.core.propagation import farnocchia
+    from poliastro.twobody import Orbit
     
-    orbit_A = OrbitPropagator.create_orbit(7000.0, 0.0, 30.0, 45.0, 0.0, 120.0)
-    orbit_B = OrbitPropagator.create_orbit(6800.0, 0.0, 30.0, 45.0, 0.0, 0.0)
-    
-    r_B0, v_B0 = OrbitPropagator.get_future_state(orbit_B, 0)
+    mu = Earth.k.to_value((u.km ** 3) / (u.s ** 2)) # type: ignore
+    A_r0, A_v0 = OrbitPropagator.get_r0_v0(9000.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    B_r0, B_v0 = OrbitPropagator.get_r0_v0(7500.0, 0.0, 0.0, 0.0, 0.0, 0.0)
     
     tof_test = 3600.0
-    r_A_future, _ = OrbitPropagator.get_future_state(orbit_A, tof_test)
+    r_A_future, _ = farnocchia(mu, A_r0, A_v0, tof_test)
     
     print(f"=== 測試飛行時間: {tof_test} 秒 ===")
 
-    v1_req, v2_req, dv1_vec, dv1_mag = PhysicsEngine.solve_lambert(r_B0, v_B0, r_A_future, tof_test)
+    v1_req, v2_req, dv1_vec, dv1_mag = PhysicsEngine.solve_lambert(mu, B_r0, B_v0, r_A_future, tof_test)
     
     print(f"所需 Delta-V 向量 (km/s): {np.round(dv1_vec, 3)}")
     print(f"所需 Delta-V 大小 (m/s): {dv1_mag * 1000:.1f}")
+
+    EARTH_RADIUS = Earth.R.to_value(u.km)
+    SAFE_ALTITUDE = 100.0
+    MIN_PERIAPSIS = EARTH_RADIUS + SAFE_ALTITUDE
     
-    is_safe, msg = PhysicsEngine.check_constraints(r_B0, v1_req, dv1_mag)
-    print(f"安檢結果: {msg}")
+    is_safe = PhysicsEngine.check_constraints(B_r0, B_v0+dv1_vec, mu, MIN_PERIAPSIS)
+    print(f"安檢結果: {is_safe}")
+
+    v1_req, v2_req, _, _ = PhysicsEngine.solve_lambert(mu, B_r0, B_v0, r_A_future, tof_test)
+    
+    # 2. 計算 Lambert 軌道的比能 (Specific Orbital Energy)
+    # 能量公式: epsilon = v^2 / 2 - mu / r
+    r_mag = np.linalg.norm(B_r0)
+    v1_req_mag = np.linalg.norm(v1_req)
+    eps_lambert = (v1_req_mag**2 / 2.0) - (mu / r_mag)
+    
+    # 3. 使用 poliastro 建立同一個軌道進行比對
+    # 這樣可以直接利用 poliastro 內建的方法算能量
+    orbit_lambert = Orbit.from_vectors(Earth, B_r0 * u.km, v1_req * u.km / u.s)
+    
+    print(f"\n--- 能量一致性檢查 ---")
+    print(f"Lambert 算出的比能: {eps_lambert:.4f} km^2/s^2")
+    print(f"Poliastro 軌道比能: {orbit_lambert.energy.to_value(u.km**2 / u.s**2):.4f} km^2/s^2") # type: ignore
+    
+    # 4. 關鍵驗證：檢查軌道是否在 tof 後確實抵達 r2 (r_A_future)
+    # 傳播 Lambert 軌道到 tof 時間點
+    orbit_after_tof = orbit_lambert.propagate(tof_test * u.s)
+    r_final = orbit_after_tof.r.to_value(u.km)
+    
+    error = np.linalg.norm(r_final - r_A_future)
+    print(f"攔截位置誤差 (km): {error:.6f}")
+    
+    if error < 1e-3:
+        print("✅ 驗證成功：Lambert 求解器產出的軌道符合物理定律且精確抵達目標。")
+    else:
+        print("❌ 驗證失敗：軌道傳播誤差過大，請檢查 mu 值或單位。")
