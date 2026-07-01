@@ -47,7 +47,7 @@ class PhysicsEngine:
 if __name__ == "__main__":
     from astropy import units as u
     from poliastro.bodies import Earth
-    from propagator import OrbitPropagator
+    from src.propagator import OrbitPropagator
     from poliastro.core.propagation import farnocchia
     from poliastro.twobody import Orbit
     

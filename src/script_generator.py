@@ -1,3 +1,5 @@
+import os
+
 def script_generator(
     a_sma, a_ecc, a_inc, a_raan, a_aop, a_ta,
     b_sma, b_ecc, b_inc, b_raan, b_aop, b_ta,
@@ -82,7 +84,7 @@ EndTarget;
 GMAT MissDistance = sqrt((Ship1.EarthMJ2000Eq.X - Ship2.EarthMJ2000Eq.X)^2 + (Ship1.EarthMJ2000Eq.Y - Ship2.EarthMJ2000Eq.Y)^2 + (Ship1.EarthMJ2000Eq.Z - Ship2.EarthMJ2000Eq.Z)^2);
 """
 
-    with open("output.txt", "w", encoding="utf-8") as f:
+    with open(os.path.join("outputs", "output.txt"), "w", encoding="utf-8") as f:
         f.write(f"""
 %General Mission Analysis Tool(GMAT) Script
 %Created: 2026-06-27 00:00:00

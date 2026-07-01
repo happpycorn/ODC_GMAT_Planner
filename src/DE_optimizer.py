@@ -4,9 +4,9 @@ from astropy import units as u
 from poliastro.bodies import Earth
 from scipy.optimize import differential_evolution
 
-from propagator import OrbitPropagator
-from physics_engine import PhysicsEngine as PE
-from scorer import CompetitionScorer
+from src.propagator import OrbitPropagator
+from src.physics_engine import PhysicsEngine as PE
+from src.scorer import CompetitionScorer
 from poliastro.core.propagation import farnocchia
 from typing import Callable, Tuple
 

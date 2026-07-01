@@ -4,8 +4,8 @@ import json
 import warnings
 import multiprocessing
 
-from DE_optimizer import MissionOptimizer
-from script_generator import script_generator
+from src.DE_optimizer import MissionOptimizer
+from src.script_generator import script_generator
 
 DEFAULT_CONFIG = {
     "orbit_A": {
@@ -25,7 +25,7 @@ DEFAULT_CONFIG = {
     }
 }
 
-def load_or_create_config(filename="config.json"):
+def load_or_create_config(filename=os.path.join("configs", "config.json")):
     """讀取設定檔；如果不存在，則建立一個預設的設定檔"""
     if not os.path.exists(filename):
         print(f"⚠️ 找不到 {filename}，正在自動生成預設設定檔...")
