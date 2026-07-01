@@ -28,6 +28,18 @@ class PhysicsEngine:
         rp = h2 / (mu * (1.0 + e))
 
         return rp >= min_rp
+    
+    @staticmethod
+    def to_vnb_frame(r_vec, v_vec, dv_inertial):
+        v_hat = v_vec / np.linalg.norm(v_vec)
+        h_vec = np.cross(r_vec, v_vec)
+        n_hat = h_vec / np.linalg.norm(h_vec)
+        b_hat = np.cross(v_hat, n_hat)
+        
+        T_mat = np.array([v_hat, n_hat, b_hat])
+        
+        dv_vnb = T_mat @ dv_inertial
+        return dv_vnb
 
 # ==========================================
 # 測試區塊 (結合模組一的資料)

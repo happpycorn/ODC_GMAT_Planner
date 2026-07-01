@@ -153,25 +153,6 @@ class MissionOptimizer:
         burns, times = self.replay_mission(best_params)
 
         return burns, times
-    
-    def fine_tune_final_burn(self, r_current, v_current, r_target, t_final_leg, dv_lambert_guess):
-        """
-        微分校正 (Differential Correction)：
-        微調 Lambert 算出的 Delta-V 向量，消除 BVP 與 IVP 演算法之間的分歧誤差。
-        """
-        def objective_dv(dv_adjust):
-            r_final, _ = farnocchia(self.MU, r_current, v_current + dv_adjust, t_final_leg)
-            return np.linalg.norm(r_final - r_target)
-        
-        # 針對三維度向量進行微調
-        res = minimize(
-            objective_dv,
-            x0=dv_lambert_guess,    # 把 Lambert 的結果當作起點
-            method='Nelder-Mead',   # 使用無梯度最佳化
-            options={'xatol': 1e-9, 'fatol': 1e-9, 'maxiter': 500}
-        )
-        
-        return res.x
 
     def replay_mission(self, best_params):
         print("\n📝 --- 任務執行清單 (Mission Plan) ---")
@@ -190,7 +171,7 @@ class MissionOptimizer:
         for i in range(1, num_burns):
             dv_vec = np.array([best_params[f"b{i}_dv_x"], best_params[f"b{i}_dv_y"], best_params[f"b{i}_dv_z"]])
             dv_mag = np.linalg.norm(dv_vec)
-            dv_vnb = self.to_vnb_frame(r_current, v_current, dv_vec)
+            dv_vnb = PE.to_vnb_frame(r_current, v_current, dv_vec)
             
             print(f"  [點火 {i}] 時間: {current_time:.1f}s | 推力向量: {np.round(dv_vnb, 3)} km/s | 大小: {dv_mag*1000:.1f} m/s")
 
@@ -209,33 +190,18 @@ class MissionOptimizer:
         intercept_time = current_time + t_final_leg
         r_a_target, _ = farnocchia(self.MU, self.A_r0, self.A_v0, intercept_time)
         
-        _, _, dv_final_vec_guess, _ = PE.solve_lambert(self.MU, r_current, v_current, r_a_target, t_final_leg)
+        _, _, dv_final_vec, dv_final_mag = PE.solve_lambert(self.MU, r_current, v_current, r_a_target, t_final_leg)
+        dv_final_vnb = PE.to_vnb_frame(r_current, v_current, dv_final_vec)
 
-        dv_final_vec_perfect = self.fine_tune_final_burn(r_current, v_current, r_a_target, t_final_leg, dv_final_vec_guess)
-
-        dv_final_mag_perfect = np.linalg.norm(dv_final_vec_perfect)
-        dv_final_vnb = self.to_vnb_frame(r_current, v_current, dv_final_vec_perfect)
-
-        print(f"  [最後點火] 時間: {current_time:.1f}s | 鎖定推力向量: {np.round(dv_final_vnb, 3)} km/s | 大小: {dv_final_mag_perfect*1000:.1f} m/s")
+        print(f"  [最後點火] 時間: {current_time:.1f}s | 鎖定推力向量: {np.round(dv_final_vnb, 3)} km/s | 大小: {dv_final_mag*1000:.1f} m/s")
 
         burns.append(dv_final_vnb)
         times.append(current_time)
         times.append(intercept_time)
         
-        r_final, _ = farnocchia(self.MU, r_current, v_current + dv_final_vec_perfect, t_final_leg)
+        r_final, _ = farnocchia(self.MU, r_current, v_current + dv_final_vec, t_final_leg)
         print(f"最終攔截誤差 (km): {np.linalg.norm(r_final - r_a_target)}")
 
         times = np.diff(times).tolist()
 
         return burns, times
-    
-    def to_vnb_frame(self, r_vec, v_vec, dv_inertial):
-        v_hat = v_vec / np.linalg.norm(v_vec)
-        h_vec = np.cross(r_vec, v_vec)
-        n_hat = h_vec / np.linalg.norm(h_vec)
-        b_hat = np.cross(v_hat, n_hat)
-        
-        T_mat = np.array([v_hat, n_hat, b_hat])
-        
-        dv_vnb = T_mat @ dv_inertial
-        return dv_vnb

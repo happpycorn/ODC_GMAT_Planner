@@ -1,0 +1,25 @@
+{
+    "orbit_A": {
+        "SMA": 35000.0,
+        "ECC": 0.8,
+        "INC": 98.2,
+        "RAAN": 45.0,
+        "AOP": 270.0,
+        "TA": 0.0
+    },
+    "orbit_B": {
+        "SMA": 6800.0,
+        "ECC": 0.001,
+        "INC": 5.0,
+        "RAAN": 225.0,
+        "AOP": 0.0,
+        "TA": 180.0
+    },
+    "optimization": {
+        "MAX_BURNS": 2,
+        "MAXITER": 20000,
+        "POPSIZE": 500,
+        "NUM_THREADS": -1,
+        "TOL": 0.1
+    }
+}
