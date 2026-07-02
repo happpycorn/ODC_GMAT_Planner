@@ -44,10 +44,8 @@ def main():
     start_time = time.perf_counter() 
 
     optimizer = MissionOptimizer(config)
-    result = optimizer.run_study()
-    if result is None: return
-
-    burns, times = result
+    burns, times, _ = optimizer.run_study()
+    if burns is None or times is None: return
 
     script_generator(
         config["orbit_A"]["SMA"], config["orbit_A"]["ECC"], config["orbit_A"]["INC"],

@@ -5,7 +5,7 @@ from poliastro.bodies import Earth
 from scipy.optimize import differential_evolution
 
 from src.propagator import OrbitPropagator
-from src.physics_engine import PhysicsEngine as PE
+import src.physics_engine as PE
 from src.scorer import CompetitionScorer
 from poliastro.core.propagation import farnocchia
 from typing import Callable, Tuple
@@ -32,7 +32,7 @@ class MissionOptimizer:
             config["orbit_B"]["RAAN"], config["orbit_B"]["AOP"], config["orbit_B"]["TA"],
         )
         
-        self.max_burns = config["optimization"]["MAX_BURNS"]
+        self.burns = config["optimization"]["MAX_BURNS"]
         self.maxiter = config["optimization"]["MAXITER"]
         self.popsize = config["optimization"]["POPSIZE"]
         self.num_threads = config["optimization"]["NUM_THREADS"]
@@ -79,30 +79,43 @@ class MissionOptimizer:
     
     def run_study(self):
         print(f"🚀 啟動 Differential Evolution 軌道最佳化...")
-        print(f"最大推進次數: {self.max_burns} | 最大迭代次數: {self.maxiter} | 族群大小: {self.popsize}")
+        print(f"測試推進項目: {self.burns} | 最大迭代次數: {self.maxiter} | 族群大小: {self.popsize}")
 
         best_overall_score = float('inf')  # 記錄全局最低分 (最優解)
         best_overall_params = None
         best_burns_count = 1
 
         # 迴圈測試不同的推進次數
-        for current_burns in range(1, self.max_burns + 1):
+        for current_burns in self.burns:
             print(f"\n--- 開始最佳化: 推進次數 {current_burns} ---")
 
             bounds = self._generate_bounds(current_burns)
 
+            # 自訂 Callback 函數來追蹤收斂度
+            def progress_callback(xk, convergence):
+                # convergence 是一個介於 0 到 1 的浮點數
+                # 代表當前族群的收斂程度，1.0 代表完全達到你的 tol 標準
+                print(f"\r⏳ 當前最佳化收斂度: {convergence * 100:.2f}% (目標: 100%)", end="")
+                
+                # 如果你想提早終止，可以在特定條件下 return True
+                return False
+
             result = differential_evolution(
                 self.objective, 
                 bounds, 
-                args=(current_burns,),  # 重要：這裡的 tuple 會傳入 objective(x, current_burns)
+                args=(current_burns,),  
                 maxiter=self.maxiter, 
-                popsize=self.popsize, 
+                popsize=(10+4*current_burns)*self.popsize, 
                 workers=self.num_threads, 
-                disp=True, 
+                disp=False,             # 💡 建議將原本的 disp=True 關閉，避免畫面輸出打架
                 updating='deferred',
                 polish=True,
                 tol=self.tol,
+                callback=progress_callback  # 💡 傳入剛剛定義的 callback
             )
+            
+            # 換行，避免覆蓋到前面的 \r 進度條
+            print() 
 
             if result.fun < best_overall_score:
                 best_overall_score = result.fun
@@ -112,17 +125,18 @@ class MissionOptimizer:
 
         if best_overall_score >= 0.0 or best_overall_params is None:
             print("\n❌ 最佳化失敗：所有的嘗試都撞毀或超時了，沒有有效的軌道可以回放。")
-            return None, None
+            return None, None, None
 
         print(f"\n✅ 最佳化完成！採用最優推進次數: {best_burns_count}")
         
         best_params_dict = self.decode_params(best_overall_params, best_burns_count)
         burns, times = self.replay_mission(best_params_dict, best_burns_count)
 
-        return burns, times
+        return burns, times, (best_overall_params, best_burns_count)
 
     def replay_mission(self, best_params, num_burns):
         print("\n📝 --- 任務執行清單 (Mission Plan) ---")
+        print(best_params)
         
         sim_result = self.evaluate_mission_path(best_params, num_burns)
         

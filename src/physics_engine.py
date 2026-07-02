@@ -1,45 +1,66 @@
 import numpy as np
 from poliastro.core.iod import izzo
+from numba import njit
+import math
 
-class PhysicsEngine:    
-    @staticmethod
-    def solve_lambert(mu, r1, v1, r2, tof):
-        v1_req, v2_req = izzo(
-            mu, r1, r2, tof,
-            M=0, prograde=True, lowpath=True, numiter=35, rtol=1e-8
-        )
-        
-        dv1 = v1_req - v1
-        dv1_mag = np.linalg.norm(dv1)
-        
-        return v1_req, v2_req, dv1, dv1_mag
+@njit(fastmath=True)
+def fast_cross(a, b):
+    return np.array([
+        a[1]*b[2] - a[2]*b[1],
+        a[2]*b[0] - a[0]*b[2],
+        a[0]*b[1] - a[1]*b[0]
+    ], dtype=np.float64)
 
-    @staticmethod
-    def check_constraints(r: np.ndarray, v: np.ndarray, mu: float, min_rp: float) -> bool:
-        h_vec = np.cross(r, v)
-        h2 = np.sum(h_vec**2)
-        
-        r_mag = np.linalg.norm(r)
-        v2 = np.sum(v**2)
-        epsilon = (v2 / 2.0) - (mu / r_mag)
-        
-        e = np.sqrt(1.0 + (2.0 * epsilon * h2) / (mu**2))
+@njit(fastmath=True)
+def fast_norm(v):
+    return math.sqrt(v[0]**2 + v[1]**2 + v[2]**2)
 
-        rp = h2 / (mu * (1.0 + e))
+@njit(fastmath=True)
+def to_vnb_frame(r_vec, v_vec, dv_inertial):
+    v_norm = fast_norm(v_vec)
+    v_hat = v_vec / v_norm
 
-        return rp >= min_rp
+    h = fast_cross(r_vec, v_vec)
+    h_norm = fast_norm(h)
+    n_hat = h / h_norm
+
+    b_hat = fast_cross(v_hat, n_hat)
+
+    dv_v = dv_inertial[0]*v_hat[0] + dv_inertial[1]*v_hat[1] + dv_inertial[2]*v_hat[2]
+    dv_n = dv_inertial[0]*n_hat[0] + dv_inertial[1]*n_hat[1] + dv_inertial[2]*n_hat[2]
+    dv_b = dv_inertial[0]*b_hat[0] + dv_inertial[1]*b_hat[1] + dv_inertial[2]*b_hat[2]
     
-    @staticmethod
-    def to_vnb_frame(r_vec, v_vec, dv_inertial):
-        v_hat = v_vec / np.linalg.norm(v_vec)
-        h_vec = np.cross(r_vec, v_vec)
-        n_hat = h_vec / np.linalg.norm(h_vec)
-        b_hat = np.cross(v_hat, n_hat)
-        
-        T_mat = np.array([v_hat, n_hat, b_hat])
-        
-        dv_vnb = T_mat @ dv_inertial
-        return dv_vnb
+    return np.array([dv_v, dv_n, dv_b], dtype=np.float64)
+
+@njit(fastmath=True)
+def compute_dv_mag(v1_req, v1):
+    """將 Delta-V 計算隔離在 Numba 中"""
+    dv = v1_req - v1
+    return dv, fast_norm(dv)
+
+def solve_lambert(mu, r1, v1, r2, tof):
+    v1_req, v2_req = izzo(
+        mu, r1, r2, tof,
+        M=0, prograde=True, lowpath=True, numiter=35, rtol=1e-8
+    )
+    
+    dv1, dv1_mag = compute_dv_mag(v1_req, v1)
+    return v1_req, v2_req, dv1, dv1_mag
+
+@njit(fastmath=True)
+def check_constraints(r: np.ndarray, v: np.ndarray, mu: float, min_rp: float) -> bool:
+    r2 = r[0]**2 + r[1]**2 + r[2]**2
+    v2 = v[0]**2 + v[1]**2 + v[2]**2
+    r_mag = math.sqrt(r2)
+    
+    h = fast_cross(r, v)
+    h2 = h[0]**2 + h[1]**2 + h[2]**2
+    
+    epsilon = (v2 / 2.0) - (mu / r_mag)
+    e = math.sqrt(max(0.0, 1.0 + (2.0 * epsilon * h2) / (mu**2)))
+    rp = h2 / (mu * (1.0 + e))
+    
+    return rp >= min_rp    
 
 # ==========================================
 # 測試區塊 (結合模組一的資料)
@@ -47,7 +68,7 @@ class PhysicsEngine:
 if __name__ == "__main__":
     from astropy import units as u
     from poliastro.bodies import Earth
-    from src.propagator import OrbitPropagator
+    from propagator import OrbitPropagator
     from poliastro.core.propagation import farnocchia
     from poliastro.twobody import Orbit
     
@@ -60,7 +81,7 @@ if __name__ == "__main__":
     
     print(f"=== 測試飛行時間: {tof_test} 秒 ===")
 
-    v1_req, v2_req, dv1_vec, dv1_mag = PhysicsEngine.solve_lambert(mu, B_r0, B_v0, r_A_future, tof_test)
+    v1_req, v2_req, dv1_vec, dv1_mag = solve_lambert(mu, B_r0, B_v0, r_A_future, tof_test)
     
     print(f"所需 Delta-V 向量 (km/s): {np.round(dv1_vec, 3)}")
     print(f"所需 Delta-V 大小 (m/s): {dv1_mag * 1000:.1f}")
@@ -69,10 +90,10 @@ if __name__ == "__main__":
     SAFE_ALTITUDE = 100.0
     MIN_PERIAPSIS = EARTH_RADIUS + SAFE_ALTITUDE
     
-    is_safe = PhysicsEngine.check_constraints(B_r0, B_v0+dv1_vec, mu, MIN_PERIAPSIS)
+    is_safe = check_constraints(B_r0, B_v0+dv1_vec, mu, MIN_PERIAPSIS)
     print(f"安檢結果: {is_safe}")
 
-    v1_req, v2_req, _, _ = PhysicsEngine.solve_lambert(mu, B_r0, B_v0, r_A_future, tof_test)
+    v1_req, v2_req, _, _ = solve_lambert(mu, B_r0, B_v0, r_A_future, tof_test)
     
     # 2. 計算 Lambert 軌道的比能 (Specific Orbital Energy)
     # 能量公式: epsilon = v^2 / 2 - mu / r

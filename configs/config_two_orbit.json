@@ -18,8 +18,8 @@
     "optimization": {
         "MAX_BURNS": 2,
         "MAXITER": 20000,
-        "POPSIZE": 500,
-        "NUM_THREADS": -1,
+        "POPSIZE": 20,
+        "NUM_THREADS": 1,
         "TOL": 0.1
     }
 }
