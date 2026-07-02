@@ -4,7 +4,7 @@ import json
 import warnings
 import multiprocessing
 
-from src.DE_optimizer import MissionOptimizer
+from src.DE_Mealpy import MissionOptimizer
 from src.script_generator import script_generator
 
 DEFAULT_CONFIG = {

@@ -5,7 +5,7 @@ import warnings
 import multiprocessing
 from scipy.optimize import minimize
 
-from src.DE_optimizer import MissionOptimizer
+from src.DE_Mealpy import MissionOptimizer
 from src.script_generator import script_generator
 from src.propagator import OrbitPropagator
 
@@ -43,13 +43,32 @@ def load_or_create_config(filename=os.path.join("configs", "config.json")):
 def refine_trajectory(initial_guess_x, num_burns, bounds, accurate_optimizer):
     print("\n🔬 啟動高精度 NLP 微調 (含 J2 攝動)...")
     
+    narrow_bounds = []
+    for i, (lb, ub) in enumerate(bounds):
+        x_val = initial_guess_x[i]
+        span = ub - lb
+        
+        # 💡 動態緊箍咒：利用下界是否小於 0，來區分推力與時間參數
+        # 在你的設定中，只有推力參數 (dv) 的下界是 -MAX_DV (-1.5)
+        # 時間或比例參數的下界都是 0.0
+        if lb < 0:
+            # 這是推力向量！給予 15% 的寬容度，讓它有足夠的燃料去對抗 J2
+            tolerance = span * 0.15 
+        else:
+            # 這是時間或比例！給予 2% 的嚴格限制，防止它亂縮短時間
+            tolerance = span * 0.02 
+            
+        new_lb = max(lb, x_val - tolerance)
+        new_ub = min(ub, x_val + tolerance)
+        narrow_bounds.append((new_lb, new_ub))
+
     nlp_result = minimize(
         fun=accurate_optimizer.objective, 
-        x0=initial_guess_x,                     # 帶入 DE 算出來的最佳解！
+        x0=initial_guess_x,                     
         args=(num_burns,), 
-        method='L-BFGS-B',                      # 支援邊界約束的梯度下降法
-        bounds=bounds,
-        options={'disp': True, 'maxiter': 100}  # 局部微調不需要太多次迭代
+        method='L-BFGS-B',                      
+        bounds=narrow_bounds,                   
+        options={'disp': True, 'maxiter': 50} 
     )
     
     if nlp_result.success:
@@ -75,8 +94,9 @@ def main():
     if burns is None or times is None or res is None: return
 
     acc_opt = MissionOptimizer(config, propagator=OrbitPropagator.propagate)
+    acc_opt.MIN_PERIAPSIS -= 50
 
-    res_x = refine_trajectory(res[0], res[1], acc_opt._generate_bounds(res[1]), acc_opt)
+    res_x = refine_trajectory(res[0], res[1], zip(*acc_opt._generate_bounds(res[1])), acc_opt)
     params = acc_opt.decode_params(res_x, res[1])
 
     burns, times = acc_opt.replay_mission(params, res[1])

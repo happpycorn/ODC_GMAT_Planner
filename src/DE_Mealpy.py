@@ -1,15 +1,17 @@
-import numpy as np
 import math
-
+import numpy as np
+from tqdm import tqdm
 from astropy import units as u
 from poliastro.bodies import Earth
-from scipy.optimize import differential_evolution
-
 from src.propagator import OrbitPropagator
 import src.physics_engine as PE
 from src.scorer import CompetitionScorer
 from poliastro.core.propagation import farnocchia
 from typing import Callable, Tuple
+
+# 💡 引入 Mealpy 套件
+from mealpy import FloatVar
+from mealpy.evolutionary_based.SHADE import L_SHADE
 
 PropagatorFunc = Callable[[float, np.ndarray, np.ndarray, float], Tuple[np.ndarray, np.ndarray]]
 
@@ -37,23 +39,18 @@ class MissionOptimizer:
         self.maxiter = config["optimization"]["MAXITER"]
         self.popsize = config["optimization"]["POPSIZE"]
         self.num_threads = config["optimization"]["NUM_THREADS"]
-        self.tol = config["optimization"]["TOL"]
-
+        
         self.Ta_sec = 2.0 * np.pi * np.sqrt(config["orbit_A"]["SMA"]**3 / self.MU)
         self.T_max = 4.0 * self.Ta_sec
-
         self.propagator = propagator
 
     def objective(self, x, num_burns) -> float:
         params = self.decode_params(x, num_burns)
-        
-        # 呼叫核心物理引擎
         sim_result = self.evaluate_mission_path(params, num_burns)
         
         if not sim_result["is_valid"]:
-            return 0.0 # 或者回傳一個極小的負數來保留梯度
+            return 0.0 
 
-        # 這裡單純負責計分
         score = CompetitionScorer.calculate_score(
             min_distance_km=0.0, 
             total_time_sec=sim_result["intercept_time"], 
@@ -62,66 +59,70 @@ class MissionOptimizer:
         )
         return -score
     
-    def _generate_bounds(self, num_burns: int) -> list:
-        """根據固定的推進次數，動態產生 DE 需要的搜尋空間邊界"""
-        bounds = [(0.0, self.Ta_sec * 0.5)]
+    def _generate_bounds(self, num_burns: int) -> Tuple[list, list]:
+        """💡 轉為 Mealpy 需要的 lb (下界) 與 ub (上界) 陣列"""
+        lb = [0.0]
+        ub = [self.Ta_sec * 0.5]
 
         for _ in range(1, num_burns):
-            bounds.extend([
-                (-self.MAX_DV, self.MAX_DV), 
-                (-self.MAX_DV, self.MAX_DV), 
-                (-self.MAX_DV, self.MAX_DV),
-                (0.0, 1.0)  # t_coast 的比例
-            ])
+            lb.extend([-self.MAX_DV, -self.MAX_DV, -self.MAX_DV, 0.0])
+            ub.extend([self.MAX_DV, self.MAX_DV, self.MAX_DV, 1.0])
             
-        bounds.append((0.0, 1.0))
+        lb.append(0.0)
+        ub.append(1.0)
         
-        return bounds
+        return lb, ub
     
     def run_study(self):
-        print(f"🚀 啟動 Differential Evolution 軌道最佳化...")
-        print(f"測試推進項目: {self.burns} | 最大迭代次數: {self.maxiter} | 族群大小: {self.popsize}")
+        print(f"🚀 啟動 Mealpy Differential Evolution (L-SHADE) 軌道最佳化...")
+        print(f"測試推進項目: {self.burns} | 最大迭代次數: {self.maxiter} | 基礎族群大小: {self.popsize}")
 
-        best_overall_score = float('inf')  # 記錄全局最低分 (最優解)
+        best_overall_score = float('inf')  
         best_overall_params = None
         best_burns_count = 1
 
-        # 迴圈測試不同的推進次數
         for current_burns in self.burns:
             print(f"\n--- 開始最佳化: 推進次數 {current_burns} ---")
 
-            bounds = self._generate_bounds(current_burns)
+            # 1. 取得上下界與初始族群大小
+            lb, ub = self._generate_bounds(current_burns)
+            pop_size = (15 + 3 * current_burns) * self.popsize
 
-            def progress_callback(xk, convergence):
-                k = 99 
-                
-                safe_convergence = max(0.0, convergence)
-                smoothed_progress = math.log10(1 + k * safe_convergence) / math.log10(1 + k)
-                
-                print(f"\r⏳ 演算法推進度: {smoothed_progress * 100:.2f}% (原始收斂度: {safe_convergence * 100:.2f}%)", end="")
-                
-                return False
-
-            result = differential_evolution(
-                self.objective, 
-                bounds, 
-                args=(current_burns,),  
-                maxiter=self.maxiter, 
-                popsize=(15+3*current_burns)*self.popsize, 
-                workers=self.num_threads, 
-                disp=False,             # 💡 建議將原本的 disp=True 關閉，避免畫面輸出打架
-                updating='deferred',
-                polish=True,
-                tol=self.tol,
-                callback=progress_callback  # 💡 傳入剛剛定義的 callback
-            )
+            # 💡 2. 針對 L-SHADE 計算預估的總評估次數 (梯形面積公式)
+            # L-SHADE 預設在最後一代的族群會縮減至 4
+            estimated_total_evals = int(self.maxiter * (pop_size + 4) / 2)
             
-            # 換行，避免覆蓋到前面的 \r 進度條
-            print() 
+            # 💡 3. 初始化進度條
+            pbar = tqdm(total=estimated_total_evals, desc="⏳ L-SHADE 演算中", unit="軌道", position=0, leave=True)
 
-            if result.fun < best_overall_score:
-                best_overall_score = result.fun
-                best_overall_params = result.x
+            # 💡 4. 在目標函式中觸發進度條更新
+            def fitness_wrapper(solution):
+                res = self.objective(solution, current_burns)
+                pbar.update(1)  # 每次多執行緒算完一組軌道，進度就 +1
+                return res
+
+            problem = {
+                "obj_func": fitness_wrapper,
+                "bounds": [FloatVar(lb=l, ub=u) for l, u in zip(lb, ub)],
+                "minmax": "min",    
+                "log_to": None      
+            }
+
+            model = L_SHADE(epoch=self.maxiter, pop_size=pop_size)
+
+            # 5. 執行求解
+            g_best = model.solve(problem, n_workers=self.num_threads)
+            
+            # 💡 6. 演算完成，安全關閉進度條
+            pbar.close()
+            
+            current_best_x = g_best.solution
+            raw_fitness = g_best.target.fitness 
+            current_best_score = float(raw_fitness) if raw_fitness is not None else float('inf')
+
+            if current_best_score < best_overall_score:
+                best_overall_score = current_best_score
+                best_overall_params = current_best_x
                 best_burns_count = current_burns
                 print(f"⭐ 發現新最佳解！推進次數: {best_burns_count}, 當前最佳目標值: {best_overall_score:.4f}")
 
@@ -149,7 +150,7 @@ class MissionOptimizer:
         burns = [log["dv_vnb"] for log in sim_result["burn_logs"]]
         return burns, sim_result["times_diff"]
     
-    def decode_params(self, x: list, num_burns: int) -> dict:
+    def decode_params(self, x: list | np.ndarray, num_burns: int) -> dict:
         """把 DE 給出的純數字陣列，轉換成具名參數字典"""
         params = {}
         params["num_burns"] = num_burns
