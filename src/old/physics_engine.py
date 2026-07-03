@@ -38,6 +38,7 @@ def compute_dv_mag(v1_req, v1):
     dv = v1_req - v1
     return dv, fast_norm(dv)
 
+@njit(fastmath=True)
 def solve_lambert(mu, r1, v1, r2, tof):
     v1_req, v2_req = izzo(
         mu, r1, r2, tof,
@@ -68,7 +69,7 @@ def check_constraints(r: np.ndarray, v: np.ndarray, mu: float, min_rp: float) ->
 if __name__ == "__main__":
     from astropy import units as u
     from poliastro.bodies import Earth
-    from propagator import OrbitPropagator
+    from old.propagator import OrbitPropagator
     from poliastro.core.propagation import farnocchia
     from poliastro.twobody import Orbit
     
