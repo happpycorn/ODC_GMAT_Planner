@@ -226,13 +226,13 @@ class MissionOptimizer:
         best_burns_count = 1
 
         # 開啟多行程池，最大核心數設定為你要測試的推進情境總數 (例如 burns = [1, 2, 3] 就是開 3 個)
-        num_cases = self.num_threads
+        num_cases = len(self.burns)
         
         with concurrent.futures.ProcessPoolExecutor(max_workers=num_cases) as executor:
             # 1. 提交所有任務：把不同的 current_burns 丟給不同的核心
             futures = [
                 executor.submit(self._optimize_burn_case, b, scalar_params, vector_params)
-                for b in self.burns
+                for b in sorted(self.burns, reverse=True)
             ]
 
             # 2. 監聽完成狀態：哪個核心先算完 4000 代，就先驗收誰的結果
