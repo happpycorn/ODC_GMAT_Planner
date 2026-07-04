@@ -26,7 +26,7 @@ DEFAULT_CONFIG = {
         "MAX_BURNS": [1, 2, 3], # 範例：讓它依序嘗試不同的推進次數
         "MAXITER": 200,
         "POPSIZE": 10,
-        "NUM_THREADS": -1, # 如果用 Numba，可以考慮設為 1 (單執行緒可能就極快)
+        "NUM_THREADS": 1, # 如果用 Numba，可以考慮設為 1 (單執行緒可能就極快)
         "MAX_EARLY_STOP": 30,
         "TOL": 10e-4,
     },

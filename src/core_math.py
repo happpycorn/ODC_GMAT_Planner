@@ -3,7 +3,7 @@ import math
 import numpy as np
 from numba import njit
 
-@njit(fastmath=True)
+@njit(fastmath=True, inline='always')
 def fast_cross(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return np.array([
         a[1]*b[2] - a[2]*b[1],
@@ -11,11 +11,11 @@ def fast_cross(a: np.ndarray, b: np.ndarray) -> np.ndarray:
         a[0]*b[1] - a[1]*b[0]
     ], dtype=np.float64)
 
-@njit(fastmath=True)
+@njit(fastmath=True, inline='always')
 def fast_norm(v: np.ndarray) -> float:
     return math.sqrt(v[0]**2 + v[1]**2 + v[2]**2)
 
-@njit(fastmath=True)
+@njit(fastmath=True, inline='always')
 def to_vnb_frame(r_vec: np.ndarray, v_vec: np.ndarray, dv_inertial: np.ndarray) -> np.ndarray:
     v_norm = fast_norm(v_vec)
     v_hat = v_vec / v_norm
@@ -32,7 +32,7 @@ def to_vnb_frame(r_vec: np.ndarray, v_vec: np.ndarray, dv_inertial: np.ndarray) 
     
     return np.array([dv_v, dv_n, dv_b], dtype=np.float64)
 
-@njit(fastmath=True)
+@njit(fastmath=True, inline='always')
 def check_constraints(r: np.ndarray, v: np.ndarray, mu: float, min_rp: float) -> bool:
     r2 = r[0]**2 + r[1]**2 + r[2]**2
     v2 = v[0]**2 + v[1]**2 + v[2]**2
@@ -47,12 +47,12 @@ def check_constraints(r: np.ndarray, v: np.ndarray, mu: float, min_rp: float) ->
     
     return rp >= min_rp  
 
-@njit(fastmath=True)
+@njit(fastmath=True, inline='always')
 def compute_dv_mag(v1_req: np.ndarray, v1: np.ndarray):
     dv = v1_req - v1
     return dv, fast_norm(dv)
 
-@njit(fastmath=True)
+@njit(fastmath=True, inline='always')
 def fast_dynamics(t: float, state: np.ndarray, mu: float, j2: float, re: float) -> np.ndarray:
     """從原本 propagator.py 搬過來的底層動力學計算"""
     x, y, z = state[0], state[1], state[2]
@@ -79,7 +79,7 @@ def fast_dynamics(t: float, state: np.ndarray, mu: float, j2: float, re: float) 
     
     return out
 
-@njit(fastmath=True)
+@njit(fastmath=True, inline='always')
 def rk4_step(t: float, state: np.ndarray, dt: float, mu: float, j2: float, re: float) -> np.ndarray:
     """
     執行單步的 RK4 積分。
@@ -104,7 +104,7 @@ def rk4_step(t: float, state: np.ndarray, dt: float, mu: float, j2: float, re: f
     next_state = state + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
     return next_state
 
-@njit(fastmath=True)
+@njit(fastmath=True, inline='always')
 def propagate_rk4(
     r0: np.ndarray, v0: np.ndarray, tof: float, dt: float, 
     mu: float, j2: float, re: float

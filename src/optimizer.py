@@ -1,6 +1,7 @@
 import numpy as np
 from numba import njit
 from poliastro.core.iod import izzo
+import concurrent.futures
 
 from typing import Tuple
 from scipy.optimize import minimize
@@ -10,21 +11,35 @@ from mealpy.evolutionary_based.SHADE import L_SHADE
 from src.propagator import get_r0_v0
 from src.scorer import calculate_score
 from src.core_math import propagate_rk4, check_constraints, fast_norm, to_vnb_frame
+import numba as nb
 
 # 這裡把所有不變的環境常數傳進來，避免 Numba 抓取外部全域變數
-@njit(fastmath=True)
+@njit(nb.float64(nb.float64[:], nb.int64, nb.float64[:], nb.float64[:, :]), fastmath=True, cache=True)
 def fast_fitness_evaluator(
     x: np.ndarray, num_burns: int, 
-    min_coast_time: float, T_max: float,
-    A_r0: np.ndarray, A_v0: np.ndarray, 
-    B_r0: np.ndarray, B_v0: np.ndarray,
-    mu: float, j2_val: float, re_val: float,
-    min_periapsis: float, max_dv: float,
-    k_t: float, C_t: float, k_v: float, C_v: float
+    scalars: np.ndarray, vectors: np.ndarray
 ) -> float:
     """
     100% 純 JIT 的適應度函數。沒有任何 Python 物件，直接吃 Mealpy 的一維陣列。
     """
+
+    min_coast_time = scalars[0]
+    T_max = scalars[1]
+    mu = scalars[2]
+    j2_val = scalars[3]
+    re_val = scalars[4]
+    min_periapsis = scalars[5]
+    max_dv = scalars[6]
+    k_t = scalars[7]
+    C_t = scalars[8]
+    k_v = scalars[9]
+    C_v = scalars[10]
+
+    A_r0 = vectors[0]
+    A_v0 = vectors[1]
+    B_r0 = vectors[2]
+    B_v0 = vectors[3]
+
     total_dv = 0.0
     penalty_count = 0
     dt = 60.0 # RK4 步長
@@ -126,8 +141,14 @@ class MissionOptimizer:
         self.MIN_COAST_TIME = 100.0
 
         # 初始化軌道
-        self.A_r0, self.A_v0 = get_r0_v0(**config["orbit_A"])
-        self.B_r0, self.B_v0 = get_r0_v0(**config["orbit_B"])
+        self.A_r0, self.A_v0 = get_r0_v0(
+            config["orbit_A"]["SMA"], config["orbit_A"]["ECC"], config["orbit_A"]["INC"],
+            config["orbit_A"]["RAAN"], config["orbit_A"]["AOP"], config["orbit_A"]["TA"]
+        )
+        self.B_r0, self.B_v0 = get_r0_v0(
+            config["orbit_B"]["SMA"], config["orbit_B"]["ECC"], config["orbit_B"]["INC"],
+            config["orbit_B"]["RAAN"], config["orbit_B"]["AOP"], config["orbit_B"]["TA"]
+        )
         
         # 演算法設定
         self.burns = config["optimization"]["MAX_BURNS"]
@@ -154,6 +175,15 @@ class MissionOptimizer:
     
     def run_study(self):
         print(f"🚀 啟動 JIT 極速版 L-SHADE 軌道最佳化...")
+
+        scalar_params = np.array([
+            self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.RE_VAL,
+            self.MIN_PERIAPSIS, self.MAX_DV, self.k_t, self.C_t, self.k_v, self.C_v
+        ], dtype=np.float64)
+        
+        vector_params = np.vstack([
+            self.A_r0, self.A_v0, self.B_r0, self.B_v0
+        ])  
         
         best_overall_score = float('inf')  
         best_overall_params = None
@@ -165,14 +195,11 @@ class MissionOptimizer:
             pop_size = (15 + 3 * current_burns) * self.popsize
 
             def fitness_wrapper(solution):
-                # 橋接 Mealpy 與 JIT 引擎 (直接傳遞一維陣列)
                 return fast_fitness_evaluator(
-                    np.array(solution, dtype=np.float64), current_burns, 
-                    self.MIN_COAST_TIME, self.T_max,
-                    self.A_r0, self.A_v0, self.B_r0, self.B_v0,
-                    self.MU, self.J2_VAL, self.RE_VAL,
-                    self.MIN_PERIAPSIS, self.MAX_DV,
-                    self.k_t, self.C_t, self.k_v, self.C_v
+                    np.asarray(solution, dtype=np.float64), 
+                    current_burns, 
+                    scalar_params, 
+                    vector_params
                 )
 
             problem = {
@@ -217,15 +244,21 @@ class MissionOptimizer:
             tolerance = span * 0.15 if lb < 0 else span * 0.02 
             narrow_bounds.append((max(lb, x_val - tolerance), min(ub, x_val + tolerance)))
         
+        scalar_params = np.array([
+            self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.RE_VAL,
+            self.MIN_PERIAPSIS, self.MAX_DV, self.k_t, self.C_t, self.k_v, self.C_v
+        ], dtype=np.float64)
+        
+        vector_params = np.vstack([
+            self.A_r0, self.A_v0, self.B_r0, self.B_v0
+        ]) 
+
         def fitness_wrapper(solution):
-            # NLP 也直接吃 JIT 引擎，速度極快
             return fast_fitness_evaluator(
-                np.array(solution, dtype=np.float64), num_burns, 
-                self.MIN_COAST_TIME, self.T_max,
-                self.A_r0, self.A_v0, self.B_r0, self.B_v0,
-                self.MU, self.J2_VAL, self.RE_VAL,
-                self.MIN_PERIAPSIS, self.MAX_DV,
-                self.k_t, self.C_t, self.k_v, self.C_v
+                np.asarray(solution, dtype=np.float64), 
+                num_burns, 
+                scalar_params, 
+                vector_params
             )
 
         nlp_result = minimize(

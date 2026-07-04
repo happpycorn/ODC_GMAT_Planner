@@ -1,7 +1,7 @@
 import math
 from numba import njit
 
-@njit(fastmath=True)
+@njit(fastmath=True, inline='always')
 def calculate_score(
     min_distance_km: float, 
     total_time_sec: float, 

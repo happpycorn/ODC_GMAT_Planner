@@ -5,6 +5,8 @@ from poliastro.bodies import Earth
 from poliastro.twobody import Orbit
 from src.core_math import propagate_rk4
 
+from numba import njit
+
 J2_VAL = 1.08262668e-3
 RE_VAL = 6378.137
 
@@ -24,6 +26,7 @@ def get_r0_v0(sma: float, ecc: float, inc: float, raan: float, aop: float, ta: f
 
     return r0, v0   
 
+@njit(fastmath=True)
 def propagate(
     k: float, r0: np.ndarray, v0: np.ndarray, tof: float, use_j2: bool = True
 ) -> Tuple[np.ndarray, np.ndarray]:
