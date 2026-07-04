@@ -226,7 +226,7 @@ class MissionOptimizer:
         best_burns_count = 1
 
         # 開啟多行程池，最大核心數設定為你要測試的推進情境總數 (例如 burns = [1, 2, 3] 就是開 3 個)
-        num_cases = len(self.burns)
+        num_cases = self.num_threads
         
         with concurrent.futures.ProcessPoolExecutor(max_workers=num_cases) as executor:
             # 1. 提交所有任務：把不同的 current_burns 丟給不同的核心
