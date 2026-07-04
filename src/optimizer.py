@@ -12,6 +12,7 @@ from src.propagator import get_r0_v0
 from src.scorer import calculate_score
 from src.core_math import propagate_rk4, check_constraints, fast_norm, to_vnb_frame
 import numba as nb
+from tqdm import tqdm
 
 # 這裡把所有不變的環境常數傳進來，避免 Numba 抓取外部全域變數
 @njit(nb.float64(nb.float64[:], nb.int64, nb.float64[:], nb.float64[:, :]), fastmath=True, cache=True)
@@ -173,8 +174,43 @@ class MissionOptimizer:
         ub.append(1.0)
         return lb, ub
     
+    def _optimize_burn_case(self, current_burns, scalar_params, vector_params):
+        """
+        獨立的工作包：負責在單一核心上，執行特定推進次數的 4000 代最佳化。
+        """
+        print(f"⏳ [核心啟動] 開始計算推進次數: {current_burns} ...")
+        lb, ub = self._generate_bounds(current_burns)
+        pop_size = (15 + 3 * current_burns) * self.popsize
+
+        def fitness_wrapper(solution):
+            return fast_fitness_evaluator(
+                np.asarray(solution, dtype=np.float64), 
+                current_burns, 
+                scalar_params, 
+                vector_params
+            )
+
+        problem = {
+            "obj_func": fitness_wrapper,
+            "bounds": [FloatVar(lb=l, ub=u) for l, u in zip(lb, ub)],
+            "minmax": "min",    
+            "log_to": None
+        }
+
+        term_dict = {"max_early_stop": self.mes, "epsilon": self.tol}
+        model = L_SHADE(epoch=self.maxiter, pop_size=pop_size, termination=term_dict)
+        
+        # ⚠️ 效能關鍵：因為外層已經分配核心了，這裡的 Mealpy 必須強制設定為單核 (n_workers=1)！
+        g_best = model.solve(problem, n_workers=1)
+        
+        current_best_x = g_best.solution
+        raw_fitness = g_best.target.fitness 
+        current_best_score = float(raw_fitness) if raw_fitness is not None else float('inf')
+
+        return current_burns, current_best_x, current_best_score
+    
     def run_study(self):
-        print(f"🚀 啟動 JIT 極速版 L-SHADE 軌道最佳化...")
+        print(f"🚀 啟動 JIT 極速版 L-SHADE 軌道最佳化 (多核心巨觀平行化)...")
 
         scalar_params = np.array([
             self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.RE_VAL,
@@ -189,41 +225,32 @@ class MissionOptimizer:
         best_overall_params = None
         best_burns_count = 1
 
-        for current_burns in self.burns:
-            print(f"\n--- 開始最佳化: 推進次數 {current_burns} ---")
-            lb, ub = self._generate_bounds(current_burns)
-            pop_size = (15 + 3 * current_burns) * self.popsize
+        # 開啟多行程池，最大核心數設定為你要測試的推進情境總數 (例如 burns = [1, 2, 3] 就是開 3 個)
+        num_cases = len(self.burns)
+        
+        with concurrent.futures.ProcessPoolExecutor(max_workers=num_cases) as executor:
+            # 1. 提交所有任務：把不同的 current_burns 丟給不同的核心
+            futures = [
+                executor.submit(self._optimize_burn_case, b, scalar_params, vector_params)
+                for b in self.burns
+            ]
 
-            def fitness_wrapper(solution):
-                return fast_fitness_evaluator(
-                    np.asarray(solution, dtype=np.float64), 
-                    current_burns, 
-                    scalar_params, 
-                    vector_params
-                )
+            # 2. 監聽完成狀態：哪個核心先算完 4000 代，就先驗收誰的結果
+            for future in tqdm(concurrent.futures.as_completed(futures), total=num_cases):
+                try:
+                    # 接收 _optimize_burn_case 回傳的三個變數
+                    b_count, best_x, best_score = future.result()
+                    tqdm.write(f"✅ [核心回傳] 推進 {b_count} 次完成！最佳目標值: {best_score:.4f}")
 
-            problem = {
-                "obj_func": fitness_wrapper,
-                "bounds": [FloatVar(lb=l, ub=u) for l, u in zip(lb, ub)],
-                "minmax": "min",    
-                "log_to": "console"      
-            }
+                    # 更新全局最佳解
+                    if best_score < best_overall_score:
+                        best_overall_score = best_score
+                        best_overall_params = best_x
+                        best_burns_count = b_count
+                        tqdm.write(f"⭐ 發現目前全局新最佳解！推進次數: {best_burns_count}")
 
-            term_dict = {"max_early_stop": self.mes, "epsilon": self.tol}
-            model = L_SHADE(epoch=self.maxiter, pop_size=pop_size, termination=term_dict)
-            
-            # 如果你有 Numba 引擎，其實甚至不用多執行緒，單核可能就快到不可思議
-            g_best = model.solve(problem, n_workers=self.num_threads)
-            
-            current_best_x = g_best.solution
-            raw_fitness = g_best.target.fitness 
-            current_best_score = float(raw_fitness) if raw_fitness is not None else float('inf')
-
-            if current_best_score < best_overall_score:
-                best_overall_score = current_best_score
-                best_overall_params = current_best_x
-                best_burns_count = current_burns
-                print(f"⭐ 發現新最佳解！推進次數: {best_burns_count}, 目標值: {best_overall_score:.4f}")
+                except Exception as exc:
+                    tqdm.write(f"❌ [核心錯誤] 崩潰: {exc}")
 
         if best_overall_score >= 0.0 or best_overall_params is None:
             print("\n❌ 最佳化失敗：所有的嘗試都撞毀或違規了。")
