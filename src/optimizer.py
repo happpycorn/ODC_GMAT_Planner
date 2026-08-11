@@ -1,3 +1,5 @@
+import os
+import math
 import numpy as np
 from numba import njit
 from poliastro.core.iod import izzo
@@ -15,7 +17,9 @@ import numba as nb
 from tqdm import tqdm
 
 # 這裡把所有不變的環境常數傳進來，避免 Numba 抓取外部全域變數
-@njit(nb.float64(nb.float64[:], nb.int64, nb.float64[:], nb.float64[:, :]), fastmath=True, cache=True)
+# nogil=True: 純數值運算 (內部呼叫的 propagate_rk4/izzo/calculate_score 也都是 njit)，
+# 沒有碰任何 Python 物件，執行時可以釋放 GIL，讓 mealpy 的 'thread' 平行模式真的吃到多核。
+@njit(nb.float64(nb.float64[:], nb.int64, nb.float64[:], nb.float64[:, :]), fastmath=True, cache=True, nogil=True)
 def fast_fitness_evaluator(
     x: np.ndarray, num_burns: int, 
     scalars: np.ndarray, vectors: np.ndarray
@@ -54,14 +58,24 @@ def fast_fitness_evaluator(
     idx = 1
     # 2. 執行前 N-1 次機動 (如果 num_burns > 1)
     for _ in range(1, num_burns):
-        # 直接從一維陣列抓取推力向量
-        dv_vec = np.array([x[idx], x[idx+1], x[idx+2]], dtype=np.float64)
+        # 球座標參數化 (r, theta, phi)：r 本身就是 Δv 大小，bounds 已經把 r 夾在
+        # [0, MAX_DV_SOFT]，天生保證合規，不會再有「合成起來超標」的無效角落。
+        dv_r = x[idx]
+        dv_theta = x[idx+1]
+        dv_phi = x[idx+2]
         coast_frac = x[idx+3]
         idx += 4
-        
-        dv_mag = fast_norm(dv_vec)
+
+        sin_theta = math.sin(dv_theta)
+        dv_vec = np.array([
+            dv_r * sin_theta * math.cos(dv_phi),
+            dv_r * sin_theta * math.sin(dv_phi),
+            dv_r * math.cos(dv_theta)
+        ], dtype=np.float64)
+
+        dv_mag = dv_r  # 球座標半徑本身就是 Δv 大小，不用再算一次 norm
         total_dv += dv_mag
-        if dv_mag > max_dv: 
+        if dv_mag > max_dv:  # 理論上不會發生了，留著當防呆
             penalty_count += 1
 
         v_curr_new = v_curr + dv_vec
@@ -94,12 +108,21 @@ def fast_fitness_evaluator(
     r_A_target, _ = propagate_rk4(A_r0, A_v0, intercept_time, dt, mu, j2_val, re_val)
 
     # 呼叫 Poliastro 內建的純 Numba Lambert 求解器 (izzo)
-    # izzo 回傳的是 (v1_req, v2_req)
-    v1_req, _ = izzo(
+    # izzo 回傳的是 (v1_req, v2_req)。順向/逆向兩種轉移都算一次，取 Δv 較小的那個 —
+    # A/B 兩軌道傾角差大時，逆向解常常明顯省油，只算順向會漏掉更好的解。
+    v1_req_pro, _ = izzo(
         mu, r_curr, r_A_target, t_final_leg,
         M=0, prograde=True, lowpath=True, numiter=35, rtol=1e-8
     )
-    
+    v1_req_retro, _ = izzo(
+        mu, r_curr, r_A_target, t_final_leg,
+        M=0, prograde=False, lowpath=True, numiter=35, rtol=1e-8
+    )
+    if fast_norm(v1_req_retro - v_curr) < fast_norm(v1_req_pro - v_curr):
+        v1_req = v1_req_retro
+    else:
+        v1_req = v1_req_pro
+
     # 計算需要的最後一次推力
     dv_final_vec = v1_req - v_curr
     dv_final_mag = fast_norm(dv_final_vec)
@@ -139,6 +162,10 @@ class MissionOptimizer:
         self.RE_VAL = 6378.137
         self.MIN_PERIAPSIS = self.RE_VAL + 100.0
         self.MAX_DV = 1.5
+        # 搜尋/微調階段用的「內部目標」比規則的真實上限更嚴一點 (留 10 m/s 安全邊界)，
+        # 避免 NLP 微調的數值梯度在邊界上把解推過真正的 ΔV_lim 那一側才被扣分。
+        # 最終回報/合規判定 (_replay_mission) 仍然用 self.MAX_DV 這個真實規則上限去算。
+        self.MAX_DV_SOFT = self.MAX_DV - 0.01
         self.MIN_COAST_TIME = 100.0
 
         # 初始化軌道
@@ -158,29 +185,42 @@ class MissionOptimizer:
         self.num_threads = config["optimization"]["NUM_THREADS"]
         self.mes = config["optimization"]["MAX_EARLY_STOP"]
         self.tol = config["optimization"]["TOL"]
-        
+        # 固定隨機種子讓同一組設定可以重現一樣的結果，方便比較「改了東西到底有沒有用」。
+        # 不設 (null/None) 就維持每次隨機，想探索不同解可以拿掉這個欄位。
+        self.seed = config["optimization"].get("SEED")
+
+
         # 計算時間上限
         self.Ta_sec = 2.0 * np.pi * np.sqrt(config["orbit_A"]["SMA"]**3 / self.MU)
         self.T_max = 4.0 * self.Ta_sec
     
     def _generate_bounds(self, num_burns: int) -> Tuple[list, list]:
-        """產生純陣列的上下界"""
+        """
+        產生純陣列的上下界。中間燃燒用球座標 (r, theta, phi, coast_frac) 參數化：
+        r (Δv 大小) 直接夾在 [0, MAX_DV_SOFT]，theta/phi 決定方向，天生 100% 落在
+        合規球內，不像舊版的立方體邊界 (xyz 各自 ±MAX_DV) 會留下「合成超標」的無效角落。
+        """
         lb = [0.0]
         ub = [self.T_max]
         for _ in range(1, num_burns):
-            lb.extend([-self.MAX_DV, -self.MAX_DV, -self.MAX_DV, 0.0])
-            ub.extend([self.MAX_DV, self.MAX_DV, self.MAX_DV, 1.0])
+            lb.extend([0.0, 0.0, 0.0, 0.0])
+            ub.extend([self.MAX_DV_SOFT, math.pi, 2.0 * math.pi, 1.0])
         lb.append(0.0)
         ub.append(1.0)
         return lb, ub
-    
+
     def _optimize_burn_case(self, current_burns, scalar_params, vector_params):
         """
-        獨立的工作包：負責在單一核心上，執行特定推進次數的 4000 代最佳化。
+        獨立的工作包：負責在單一核心上，執行特定推進次數的最佳化。
         """
         print(f"⏳ [核心啟動] 開始計算推進次數: {current_burns} ...")
         lb, ub = self._generate_bounds(current_burns)
-        pop_size = (15 + 3 * current_burns) * self.popsize
+        # 族群大小依「真正的決策變數維度」縮放 (n_dims * POPSIZE)，而不是舊版的
+        # (15+3*燃燒次數)*POPSIZE —— 舊公式在低燃燒次數時嚴重超編：1 次燃燒只有 2 維
+        # 決策變數，舊公式卻給 360 個個體 (180倍維度)，遠超過 DE 類演算法常見的
+        # 10~20倍維度經驗值，多的族群規模只是浪費運算時間，不會讓解更好。
+        n_dims = len(lb)
+        pop_size = max(30, n_dims * self.popsize)
 
         def fitness_wrapper(solution):
             return fast_fitness_evaluator(
@@ -199,22 +239,51 @@ class MissionOptimizer:
 
         term_dict = {"max_early_stop": self.mes, "epsilon": self.tol}
         model = L_SHADE(epoch=self.maxiter, pop_size=pop_size, termination=term_dict)
-        
-        # ⚠️ 效能關鍵：因為外層已經分配核心了，這裡的 Mealpy 必須強制設定為單核 (n_workers=1)！
-        g_best = model.solve(problem, n_workers=1)
-        
+
+        # 外層已經用 ProcessPoolExecutor 依燃燒次數分配了核心 (num_cases 個 process)，
+        # 這裡再把剩餘核心切給 mealpy 的 'thread' 模式，讓每一代的族群評估也平行跑。
+        # fast_fitness_evaluator 已標記 nogil=True，thread 真的能吃到多核而不是被 GIL 卡住。
+        # NUM_THREADS 設為正整數可強制指定每個 process 用幾條 thread；<=0 (含預設 -1) 則自動
+        # 用 (可用核心數 / 燃燒次數情境數) 估一個合理值。
+        num_cases = max(1, len(self.burns))
+        if isinstance(self.num_threads, int) and self.num_threads > 0:
+            n_workers = max(2, self.num_threads)
+        else:
+            n_workers = max(2, (os.cpu_count() or 4) // num_cases)
+        # mealpy 的 seed= 只會種到它自己建立的 np.random.default_rng(seed) 那個 generator，
+        # 但 L_SHADE.evolve() 算突變參數 F 用的是 scipy.stats.cauchy.rvs(...)，沒有帶
+        # random_state，實際上是從 numpy 的「全域」隨機狀態拿亂數，完全不受 seed= 控制。
+        # 這裡額外把全域狀態也種一樣的 seed，補上這個 mealpy 本身的漏洞。
+        #
+        # 但這樣還不夠：mode='thread' 時，好幾個執行緒會「同時」向同一個 RNG 要亂數，
+        # numpy 的 Generator 不是 thread-safe 的，誰先誰後純粹看 OS 排程，即使種子固定，
+        # 每次跑到的順序還是會不一樣 —— 這是實測驗證過的 (同 seed 關執行緒完全重現、
+        # 開執行緒就對不上)。所以：有指定 seed 代表你要的是「可重現」，這裡就自動退回
+        # 單執行緒換取重現性；沒設 seed (預設) 就照樣用多執行緒換速度，兩者只能選一個。
+        if self.seed is not None:
+            np.random.seed(self.seed)
+            g_best = model.solve(problem, seed=self.seed)
+        else:
+            g_best = model.solve(problem, mode="thread", n_workers=n_workers, seed=self.seed)
+
         current_best_x = g_best.solution
-        raw_fitness = g_best.target.fitness 
+        raw_fitness = g_best.target.fitness
         current_best_score = float(raw_fitness) if raw_fitness is not None else float('inf')
 
-        return current_burns, current_best_x, current_best_score
+        # 實際跑了幾代 (用來判斷 MAX_EARLY_STOP 有沒有提早介入，MAXITER 設定合不合理)
+        epochs_run = len(model.history.list_epoch_time)
+        early = " (提早停止)" if epochs_run < self.maxiter else ""
+        mode_desc = f"{n_workers} threads/process" if self.seed is None else "單執行緒 (seed 已設定，犧牲速度換可重現性)"
+        tqdm.write(f"   ↳ 推進 {current_burns} 次：實際跑了 {epochs_run}/{self.maxiter} 代，{mode_desc}{early}")
+
+        return current_burns, current_best_x, current_best_score, epochs_run
     
     def run_study(self):
         print(f"🚀 啟動 JIT 極速版 L-SHADE 軌道最佳化 (多核心巨觀平行化)...")
 
         scalar_params = np.array([
             self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.RE_VAL,
-            self.MIN_PERIAPSIS, self.MAX_DV, self.k_t, self.C_t, self.k_v, self.C_v
+            self.MIN_PERIAPSIS, self.MAX_DV_SOFT, self.k_t, self.C_t, self.k_v, self.C_v
         ], dtype=np.float64)
         
         vector_params = np.vstack([
@@ -238,8 +307,8 @@ class MissionOptimizer:
             # 2. 監聽完成狀態：哪個核心先算完 4000 代，就先驗收誰的結果
             for future in tqdm(concurrent.futures.as_completed(futures), total=num_cases):
                 try:
-                    # 接收 _optimize_burn_case 回傳的三個變數
-                    b_count, best_x, best_score = future.result()
+                    # 接收 _optimize_burn_case 回傳的四個變數
+                    b_count, best_x, best_score, epochs_run = future.result()
                     tqdm.write(f"✅ [核心回傳] 推進 {b_count} 次完成！最佳目標值: {best_score:.4f}")
 
                     # 更新全局最佳解
@@ -257,23 +326,29 @@ class MissionOptimizer:
             return None, None, (None, None)
 
         print(f"\n✅ 最佳化完成！")
-        return self.refine_trajectory(best_overall_params, best_burns_count)
+        return self.refine_trajectory(best_overall_params, best_burns_count, best_overall_score)
 
-    def refine_trajectory(self, initial_guess_x, num_burns):
+    def refine_trajectory(self, initial_guess_x, num_burns, initial_fitness=None):
         print("\n🔬 啟動高精度 NLP 微調...")
         bounds = self._generate_bounds(num_burns)
         
         narrow_bounds = []
+        n = len(initial_guess_x)
         for i, (lb, ub) in enumerate(zip(*bounds)):
             x_val = initial_guess_x[i]
             span = ub - lb
-            # 推力給 15% 寬容度，時間給 2% 嚴格限制
-            tolerance = span * 0.15 if lb < 0 else span * 0.02 
+            # 陣列結構: [0]=t_wait，中間每 4 個一組 [r, theta, phi, coast_frac]，
+            # 最後一個 = final_leg_frac。r/theta/phi 決定燃燒的大小與方向給寬容度；
+            # 時間類變數 (t_wait/coast_frac/final_leg_frac) 給嚴格限制，避免微調
+            # 打亂已經算好的攔截時序。(舊版用 lb<0 判斷，球座標化後 lb 全部 >=0，
+            # 這個判斷式已經失效，改用陣列位置判斷。)
+            is_burn_shape_param = (i != 0) and (i != n - 1) and ((i - 1) % 4) < 3
+            tolerance = span * 0.15 if is_burn_shape_param else span * 0.02
             narrow_bounds.append((max(lb, x_val - tolerance), min(ub, x_val + tolerance)))
         
         scalar_params = np.array([
             self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.RE_VAL,
-            self.MIN_PERIAPSIS, self.MAX_DV, self.k_t, self.C_t, self.k_v, self.C_v
+            self.MIN_PERIAPSIS, self.MAX_DV_SOFT, self.k_t, self.C_t, self.k_v, self.C_v
         ], dtype=np.float64)
         
         vector_params = np.vstack([
@@ -288,34 +363,128 @@ class MissionOptimizer:
                 vector_params
             )
 
+        # L-SHADE 給的解本身的 fitness，作為「有沒有真的變好」的基準線。
+        # run_study() 其實已經算過這個值了 (best_overall_score)，這裡直接沿用，
+        # 不用再花一次 (現在因為順逆向各算一次 Lambert，變貴了的) evaluation 重算一遍。
+        if initial_fitness is None:
+            initial_fitness = float(fitness_wrapper(initial_guess_x))
+
         nlp_result = minimize(
-            fun=fitness_wrapper, x0=initial_guess_x,                     
-            method='L-BFGS-B', bounds=narrow_bounds,                   
-            options={'disp': True, 'maxiter': 50} 
+            fun=fitness_wrapper, x0=initial_guess_x,
+            method='L-BFGS-B', bounds=narrow_bounds,
+            options={'disp': True, 'maxiter': 50}
         )
-        
-        res = nlp_result.x if nlp_result.success else initial_guess_x
+
+        # 安全回退：L-BFGS-B 的 success 只代表「收斂了」，不代表「比原本的解更好」。
+        # 目標函式裡有好幾處硬跳躍 (撞地球直接 0 分、超過 Δv 就扣分)，數值梯度在這種
+        # 不連續的地方不可靠，微調完分數反而變差是有可能發生的，所以要實際比一次 fitness，
+        # 沒有變好 (更小，因為 mealpy 是找最小值) 就退回微調前的解。
+        if nlp_result.success and nlp_result.fun <= initial_fitness:
+            res = nlp_result.x
+            print(f"   ↳ NLP 微調有改善: {initial_fitness:.4f} -> {nlp_result.fun:.4f}，採用微調後的解")
+        elif not nlp_result.success:
+            # fun 可能其實有變小一點點，但 scipy 自己都不認為這是收斂的結果 (例如撞到
+            # maxiter 上限)，保守起見不採用，訊息如實反映「未收斂」而不是「沒有改善」。
+            res = initial_guess_x
+            print(f"   ↳ NLP 微調未收斂 (scipy success=False，fitness {initial_fitness:.4f} -> "
+                  f"{nlp_result.fun:.4f})，保守起見保留微調前的解")
+        else:
+            res = initial_guess_x
+            print(f"   ↳ NLP 微調沒有改善 (微調前 {initial_fitness:.4f} / 微調後 {nlp_result.fun:.4f})，"
+                  f"保留微調前的解")
+
         return self._replay_mission(res, num_burns)
 
     def _replay_mission(self, x, num_burns):
-        """純 Python 的日誌重建器，只在最後跑一次以輸出人類可讀的報表"""
+        """純 Python 的日誌重建器，只在最後跑一次，並用含 J2 的高精度模型算出真實成績"""
         print("\n📝 --- 任務執行清單 (Mission Plan) ---")
-        burn_logs, times = reconstruct_mission_logs(
+        burn_logs, times, miss_km, dc_converged = reconstruct_mission_logs(
             x, num_burns, self.MIN_COAST_TIME, self.T_max,
             self.A_r0, self.A_v0, self.B_r0, self.B_v0,
             self.MU, self.J2_VAL, self.RE_VAL
         )
-        
+
         print(f"任務開始後等待: {x[0]:.1f} 秒")
+        total_dv = 0.0
+        penalty_count = 0
         for log in burn_logs:
-            print(f"  [{log['type']}] 時間: {log['time']:.1f}s | 推力: {np.round(log['dv_vnb'], 3)} km/s | 大小: {log['dv_mag']*1000:.1f} m/s")
+            over_limit = log['dv_mag'] > self.MAX_DV
+            total_dv += log['dv_mag']
+            if over_limit:
+                penalty_count += 1
+            flag = "  ⚠️ 超過 1500 m/s 限制！" if over_limit else ""
+            print(f"  [{log['type']}] 時間: {log['time']:.1f}s | 推力: {np.round(log['dv_vnb'], 3)} km/s | 大小: {log['dv_mag']*1000:.1f} m/s{flag}")
+
+        intercept_time = times[-1]
+        final_score = calculate_score(
+            min_distance_km=miss_km,
+            total_time_sec=intercept_time,
+            total_dv_mps=total_dv * 1000.0,
+            penalty_count=penalty_count,
+            k_t=self.k_t, C_t=self.C_t, k_v=self.k_v, C_v=self.C_v
+        )
+
+        print("\n--- ⭐ 高精度 (含 J2) 收斂結果，不需開 GMAT 也能預覽 ---")
+        print(f"  最終燃燒 DC 收斂狀態: {'✅ 已收斂' if dc_converged else '❌ 未收斂 (建議檢查此解或加大 refine_lambert_burn 的 max_iter)'}")
+        print(f"  最小相對距離 Δr_min: {miss_km * 1000:.1f} m  (規則門檻 5000 m)")
+        print(f"  總速度增量 ΔV_team: {total_dv * 1000:.1f} m/s")
+        print(f"  任務完成時間 T_team: {intercept_time:.1f} s")
+        print(f"  違規次數: {penalty_count}")
+        print(f"  預估 Score: {final_score:.2f} / 100")
 
         burns = [log['dv_vnb'] for log in burn_logs]
         times_diff = np.diff(times).tolist()
-        # 回傳給最外層的 script_generator 使用
-        return burns, times_diff, (x, num_burns)
+        # 回傳給最外層的 script_generator 使用，並附上完整的成績資訊供程式化存取
+        mission_info = {
+            "x": x, "num_burns": num_burns,
+            "score": final_score, "miss_km": miss_km,
+            "total_dv_mps": total_dv * 1000.0, "T_team": intercept_time,
+            "penalty_count": penalty_count, "dc_converged": dc_converged,
+        }
+        return burns, times_diff, mission_info
 
 # --- 放在同一個檔案或 mission_evaluator.py 中的輔助函式 ---
+def refine_lambert_burn(
+    r_curr: np.ndarray, v1_guess: np.ndarray, r_target: np.ndarray, t_flight: float,
+    mu: float, j2_val: float, re_val: float,
+    dt: float = 10.0, tol_km: float = 0.05, max_iter: int = 8, fd_eps: float = 1e-4
+):
+    """
+    Lambert (izzo) 給的 v1_guess 是「無擾動二體」下的理論解。
+    這裡用含 J2 的高精度傳播器 (propagate_rk4) 當作真實模型，對 v1_guess 做
+    牛頓法微分修正 (有限差分算 3x3 Jacobian) —— 邏輯上等同 GMAT 的
+    Target/Vary/Achieve (DC1) 在做的事，只是搬進 Python，讓我們不用真的
+    打開 GMAT 也能拿到「加入 J2 後仍收斂」的最終 Δv 與誤差。
+    回傳: (v1_corrected, converged, final_miss_km, iterations)
+    """
+    v1 = v1_guess.copy()
+
+    for it in range(max_iter):
+        r_pred, _ = propagate_rk4(r_curr, v1, t_flight, dt, mu, j2_val, re_val)
+        residual = r_target - r_pred
+        miss = fast_norm(residual)
+        if miss <= tol_km:
+            return v1, True, miss, it
+
+        # 有限差分 Jacobian：d(r_pred)/d(v1)，跟 GMAT Perturbation=0.0001 同量級
+        jac = np.empty((3, 3), dtype=np.float64)
+        for k in range(3):
+            dv = np.zeros(3, dtype=np.float64)
+            dv[k] = fd_eps
+            r_pert, _ = propagate_rk4(r_curr, v1 + dv, t_flight, dt, mu, j2_val, re_val)
+            jac[:, k] = (r_pert - r_pred) / fd_eps
+
+        try:
+            delta_v = np.linalg.solve(jac, residual)
+        except np.linalg.LinAlgError:
+            break
+        v1 = v1 + delta_v
+
+    r_pred, _ = propagate_rk4(r_curr, v1, t_flight, dt, mu, j2_val, re_val)
+    miss = fast_norm(r_target - r_pred)
+    return v1, miss <= tol_km, miss, max_iter
+
+
 def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_r0, B_v0, mu, j2_val, re_val):
     """
     一步一步重播最佳解，並把 VNB 轉換和時間記錄下來。
@@ -331,11 +500,19 @@ def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_
     
     idx = 1
     for i in range(1, num_burns):
-        dv_vec = np.array([x[idx], x[idx+1], x[idx+2]])
+        # 跟 fast_fitness_evaluator 一致的球座標 (r, theta, phi) -> 直角座標轉換
+        dv_r, dv_theta, dv_phi = x[idx], x[idx+1], x[idx+2]
         coast_frac = x[idx+3]
         idx += 4
-        
-        dv_mag = fast_norm(dv_vec)
+
+        sin_theta = math.sin(dv_theta)
+        dv_vec = np.array([
+            dv_r * sin_theta * math.cos(dv_phi),
+            dv_r * sin_theta * math.sin(dv_phi),
+            dv_r * math.cos(dv_theta)
+        ])
+
+        dv_mag = dv_r
         dv_vnb = to_vnb_frame(r_curr, v_curr, dv_vec)
         
         burn_logs.append({"time": current_time, "dv_vec": dv_vec, "dv_vnb": dv_vnb, "dv_mag": dv_mag, "type": f"Burn {i}"})
@@ -354,13 +531,24 @@ def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_
     intercept_time = current_time + t_final_leg
     
     r_A_target, _ = propagate_rk4(A_r0, A_v0, intercept_time, dt, mu, j2_val, re_val)
-    v1_req, _ = izzo(mu, r_curr, r_A_target, t_final_leg, M=0, prograde=True, lowpath=True, numiter=35, rtol=1e-8)
-    
+    # 順向/逆向都算一次，取 Δv 較小的那個當初始猜測 (跟 fast_fitness_evaluator 邏輯一致)
+    v1_guess_pro, _ = izzo(mu, r_curr, r_A_target, t_final_leg, M=0, prograde=True, lowpath=True, numiter=35, rtol=1e-8)
+    v1_guess_retro, _ = izzo(mu, r_curr, r_A_target, t_final_leg, M=0, prograde=False, lowpath=True, numiter=35, rtol=1e-8)
+    if fast_norm(v1_guess_retro - v_curr) < fast_norm(v1_guess_pro - v_curr):
+        v1_guess = v1_guess_retro
+    else:
+        v1_guess = v1_guess_pro
+
+    # 用含 J2 的高精度模型微分修正 Lambert 的理想化猜測值 (等同 GMAT DC1 在做的事)
+    v1_req, dc_converged, miss_km, _dc_iters = refine_lambert_burn(
+        r_curr, v1_guess, r_A_target, t_final_leg, mu, j2_val, re_val
+    )
+
     dv_final_vec = v1_req - v_curr
     dv_final_mag = fast_norm(dv_final_vec)
     dv_final_vnb = to_vnb_frame(r_curr, v_curr, dv_final_vec)
-    
+
     burn_logs.append({"time": current_time, "dv_vec": dv_final_vec, "dv_vnb": dv_final_vnb, "dv_mag": dv_final_mag, "type": "Final Burn"})
     times.append(intercept_time)
-    
-    return burn_logs, times
+
+    return burn_logs, times, miss_km, dc_converged
