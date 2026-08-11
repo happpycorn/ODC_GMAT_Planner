@@ -40,6 +40,11 @@ DEFAULT_CONFIG = {
         "TOL": 0.02,  # Score 是 0~100 分量表，這個值要跟這個量表相稱，太小早停形同虛設
         "SEED": None,  # 設一個整數可以讓同一組設定每次重現一樣的結果，方便比較改動
     },
+    "USE_J2": True,  # 不確定某一輪/場景有沒有 J2 擾動時用這個切換，Python 端跟產生的
+                     # GMAT script 會同步套用，不用改程式碼
+    "MISS_TOLERANCE_KM": 5.0,  # 規則只要求 Δr <= 這個值 (預設對齊規則的 5km)，可以彈性
+                                # 調小 (甚至設 0 退回精準瞄準)，讓最後一棒 Lambert 在
+                                # 容許範圍內找最省油的落點，而不是死盯著 A 的精確位置
     # 新增：主辦方公告的環境計分參數
     "k_t": 0.0001,
     "C_t": 11000.0,
@@ -192,7 +197,8 @@ def main():
         config["orbit_A"]["RAAN"], config["orbit_A"]["AOP"], config["orbit_A"]["TA"],
         config["orbit_B"]["SMA"], config["orbit_B"]["ECC"], config["orbit_B"]["INC"],
         config["orbit_B"]["RAAN"], config["orbit_B"]["AOP"], config["orbit_B"]["TA"],
-        burns, times, max_dv=optimizer.MAX_DV
+        burns, times, aim_point=mission_info["aim_point"],
+        max_dv=optimizer.MAX_DV, use_j2=optimizer.USE_J2
     )
 
     end_time = time.perf_counter()

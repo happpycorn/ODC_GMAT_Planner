@@ -4,21 +4,28 @@ import datetime
 def script_generator(
     a_sma, a_ecc, a_inc, a_raan, a_aop, a_ta,
     b_sma, b_ecc, b_inc, b_raan, b_aop, b_ta,
-    burns, times, max_dv=1.5,
+    burns, times, aim_point, max_dv=1.5, use_j2=True,
 ):
+    """
+    aim_point: (x, y, z) in km, EarthMJ2000Eq — the point the final burn's
+    Target/Achieve block should actually converge onto. This is usually NOT
+    ShipA's exact position: the optimizer is free to aim anywhere within the
+    rule's miss-distance tolerance to save fuel (see MissionOptimizer /
+    MISS_TOLERANCE_KM), so the GMAT-side targeter has to chase the SAME point
+    Python optimized for — targeting ShipA exactly here would silently
+    overwrite that fuel-saving design with GMAT's own (likely different,
+    possibly more expensive) correction.
+    """
+    aim_x, aim_y, aim_z = aim_point
     burns_content = """
 %----------------------------------------
 %---------- Burns
 %----------------------------------------
 
 % DC_Targeter fine-tunes ShipB's final burn direction/magnitude so that
-% ShipB's final position matches ShipA's position (diffX/Y/Z -> 0).
+% ShipB's final position matches the aim point chosen by the optimizer
+% (may be deliberately offset from ShipA within the rule's miss tolerance).
 Create DifferentialCorrector DC_Targeter;
-
-Create Variable diffX diffY diffZ;
-GMAT diffX = 0;
-GMAT diffY = 0;
-GMAT diffZ = 0;
 """
 
     for i in range(len(burns)):
@@ -82,13 +89,19 @@ Target DC_Targeter;
 
     Propagate Synchronized DefaultProp(ShipA, ShipB) {{ShipA.ElapsedSecs = {t_final_leg:.5f}}};
 
-    GMAT diffX = ShipA.EarthMJ2000Eq.X - ShipB.EarthMJ2000Eq.X;
-    GMAT diffY = ShipA.EarthMJ2000Eq.Y - ShipB.EarthMJ2000Eq.Y;
-    GMAT diffZ = ShipA.EarthMJ2000Eq.Z - ShipB.EarthMJ2000Eq.Z;
-
-    Achieve DC_Targeter(diffX = 0.0, {{Tolerance = 0.1}});
-    Achieve DC_Targeter(diffY = 0.0, {{Tolerance = 0.1}});
-    Achieve DC_Targeter(diffZ = 0.0, {{Tolerance = 0.1}});
+    % Target the aim point the optimizer actually chose (EarthMJ2000Eq, km) -
+    % NOT ShipA's exact position. It may be deliberately offset from ShipA by
+    % up to the rule's miss-distance tolerance to save fuel; targeting ShipA
+    % exactly here would silently override that design with a different
+    % (and possibly more expensive) correction.
+    % Tolerance tightened to 0.01 km (10 m) per axis: the aim point can sit as
+    % close as ~50-150 m inside the true 5 km miss-distance limit (see
+    % MissionOptimizer.MISS_TOLERANCE_SOFT), so a loose per-axis tolerance
+    % here could let the worst-case combined 3-axis error (sqrt(3)*tol) push
+    % the actual miss distance over the real rule threshold.
+    Achieve DC_Targeter(ShipB.EarthMJ2000Eq.X = {aim_x:.7f}, {{Tolerance = 0.01}});
+    Achieve DC_Targeter(ShipB.EarthMJ2000Eq.Y = {aim_y:.7f}, {{Tolerance = 0.01}});
+    Achieve DC_Targeter(ShipB.EarthMJ2000Eq.Z = {aim_z:.7f}, {{Tolerance = 0.01}});
 
 EndTarget;
 
@@ -103,6 +116,11 @@ EndIf;
 
 Report Report_Intercept ShipB.ElapsedSecs MissDistance InterceptSuccess;
 """
+
+    # J2 開關：不確定的話用 use_j2 切換，跟 Python 端的 USE_J2 保持同步，不要一邊有
+    # 擾動一邊沒有 —— Degree/Order=4 涵蓋 J2~J4 等項；關掉就退回純點質量 (0/0)。
+    gravity_degree = 4 if use_j2 else 0
+    gravity_order = 4 if use_j2 else 0
 
     script_content = f"""
 %General Mission Analysis Tool(GMAT) Script
@@ -164,8 +182,8 @@ DefaultProp_ForceModel.Drag = None;
 DefaultProp_ForceModel.SRP = Off;
 DefaultProp_ForceModel.RelativisticCorrection = Off;
 DefaultProp_ForceModel.ErrorControl = RSSStep;
-DefaultProp_ForceModel.GravityField.Earth.Degree = 4;
-DefaultProp_ForceModel.GravityField.Earth.Order = 4;
+DefaultProp_ForceModel.GravityField.Earth.Degree = {gravity_degree};
+DefaultProp_ForceModel.GravityField.Earth.Order = {gravity_order};
 DefaultProp_ForceModel.GravityField.Earth.StmLimit = 100;
 DefaultProp_ForceModel.GravityField.Earth.PotentialFile = 'JGM2.cof';
 DefaultProp_ForceModel.GravityField.Earth.TideModel = 'None';

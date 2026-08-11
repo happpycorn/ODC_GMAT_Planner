@@ -96,26 +96,40 @@ def fast_fitness_evaluator(
 
     # 3. 最後一次機動 (Lambert 攔截)
     # 決定最後一段飛行時間
-    final_leg_frac = x[-1]
+    final_leg_frac = x[-4]
     max_final = T_max - current_time
     t_final_leg = min_coast_time
     if max_final > min_coast_time:
         t_final_leg += final_leg_frac * (max_final - min_coast_time)
-        
+
     intercept_time = current_time + t_final_leg
 
     # 傳播太空船 A (目標) 到攔截時間點
     r_A_target, _ = propagate_rk4(A_r0, A_v0, intercept_time, dt, mu, j2_val, re_val)
 
+    # 規則只要求 Δr <= 門檻 (預設 5km)，Δr_min 超過命中點的部分不會多加分，所以不用
+    # 死盯著 A 的精確位置打：球座標 (offset_r, offset_theta, offset_phi) 讓 Lambert
+    # 改瞄準 A 附近容許球內、最省油的一點。offset_r 本身就是最終會落在的實際 Δr。
+    offset_r = x[-3]
+    offset_theta = x[-2]
+    offset_phi = x[-1]
+    sin_ot = math.sin(offset_theta)
+    offset_vec = np.array([
+        offset_r * sin_ot * math.cos(offset_phi),
+        offset_r * sin_ot * math.sin(offset_phi),
+        offset_r * math.cos(offset_theta)
+    ], dtype=np.float64)
+    r_aim = r_A_target + offset_vec
+
     # 呼叫 Poliastro 內建的純 Numba Lambert 求解器 (izzo)
     # izzo 回傳的是 (v1_req, v2_req)。順向/逆向兩種轉移都算一次，取 Δv 較小的那個 —
     # A/B 兩軌道傾角差大時，逆向解常常明顯省油，只算順向會漏掉更好的解。
     v1_req_pro, _ = izzo(
-        mu, r_curr, r_A_target, t_final_leg,
+        mu, r_curr, r_aim, t_final_leg,
         M=0, prograde=True, lowpath=True, numiter=35, rtol=1e-8
     )
     v1_req_retro, _ = izzo(
-        mu, r_curr, r_A_target, t_final_leg,
+        mu, r_curr, r_aim, t_final_leg,
         M=0, prograde=False, lowpath=True, numiter=35, rtol=1e-8
     )
     if fast_norm(v1_req_retro - v_curr) < fast_norm(v1_req_pro - v_curr):
@@ -127,8 +141,8 @@ def fast_fitness_evaluator(
     dv_final_vec = v1_req - v_curr
     dv_final_mag = fast_norm(dv_final_vec)
     total_dv += dv_final_mag
-    
-    if dv_final_mag > max_dv: 
+
+    if dv_final_mag > max_dv:
         penalty_count += 1
 
     # 最終安檢
@@ -136,14 +150,17 @@ def fast_fitness_evaluator(
         return 0.0
 
     # 4. 結算最終分數 (利用我們剛改好的 scorer)
+    # min_distance_km 理論上就是 offset_r：Lambert 打的是瞄準點，瞄準點跟 A 的真實
+    # 位置差 offset_r，只要 offset_r <= miss_tol (由 bounds 保證)，Δr_min 一律地板在
+    # 5 (真正的規則門檻)，不會因為瞄準點刻意偏移而被扣分。
     score = calculate_score(
-        min_distance_km=0.0, # 理論上 Lambert 算出來就是剛好撞上 (距離為 0)
-        total_time_sec=intercept_time, 
-        total_dv_mps=total_dv * 1000.0, 
+        min_distance_km=offset_r,
+        total_time_sec=intercept_time,
+        total_dv_mps=total_dv * 1000.0,
         penalty_count=penalty_count,
         k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v
     )
-    
+
     # Mealpy 預設是找「最小值」，所以我們把分數加負號回傳
     return -score
 
@@ -158,7 +175,11 @@ class MissionOptimizer:
         
         # 物理常數與限制
         self.MU = 398600.4418          # 地球標準重力參數
-        self.J2_VAL = 1.08262668e-3
+        # USE_J2 開關：不確定哪一輪/哪個場景真的有 J2 擾動時，用 config 切換，
+        # 不用改程式碼。關掉時 J2_VAL=0，Python 端傳播跟 GMAT script 的重力場設定
+        # (script_generator 的 use_j2 參數) 會一起同步變成純點質量模型。
+        self.USE_J2 = bool(config.get("USE_J2", True))
+        self.J2_VAL = 1.08262668e-3 if self.USE_J2 else 0.0
         self.RE_VAL = 6378.137
         self.MIN_PERIAPSIS = self.RE_VAL + 100.0
         self.MAX_DV = 1.5
@@ -167,6 +188,20 @@ class MissionOptimizer:
         # 最終回報/合規判定 (_replay_mission) 仍然用 self.MAX_DV 這個真實規則上限去算。
         self.MAX_DV_SOFT = self.MAX_DV - 0.01
         self.MIN_COAST_TIME = 100.0
+
+        # 攔截容許範圍：規則只要求 Δr ≤ 這個值，超出的精準度不會多加分 (Δr_min 會被
+        # 地板夾住)，開放讓最後一棒 Lambert 瞄準這個球內最省油的點，而不是死盯著 A
+        # 的精確位置。設成彈性可調，戰況緊繃時可以縮小 (甚至設 0 退回精準瞄準)。
+        #
+        # 內部再留 1.5km 的安全邊界 (MISS_TOLERANCE_SOFT)。理由：GMAT 打靶的 Achieve
+        # Tolerance 每軸 0.01km，理論最差合起來只有 ~17m，但實測跨多種軌道幾何做壓力
+        # 測試後發現，J2 以外的殘餘模型落差不是穩定的幾十公分等級——SMA 差距懸殊
+        # (例如 LEO 對到接近 GEO 高度) 的情境實測落差衝到 863m。1.5km 比目前觀察到
+        # 的最大落差多留將近一倍緩衝，犧牲一點理論上可榨出的省油空間換安全感。
+        # 這仍然是「目前測過的情境」歸納出來的經驗值，不是嚴謹上界，正式測資公布後
+        # 拿到真實軌道參數，最好針對那組實際場景再測一次確認這個邊界仍然夠用。
+        self.MISS_TOLERANCE_KM = max(0.0, min(5.0, float(config.get("MISS_TOLERANCE_KM", 5.0))))
+        self.MISS_TOLERANCE_SOFT = max(0.0, self.MISS_TOLERANCE_KM - 1.5)
 
         # 初始化軌道
         self.A_r0, self.A_v0 = get_r0_v0(
@@ -199,6 +234,12 @@ class MissionOptimizer:
         產生純陣列的上下界。中間燃燒用球座標 (r, theta, phi, coast_frac) 參數化：
         r (Δv 大小) 直接夾在 [0, MAX_DV_SOFT]，theta/phi 決定方向，天生 100% 落在
         合規球內，不像舊版的立方體邊界 (xyz 各自 ±MAX_DV) 會留下「合成超標」的無效角落。
+
+        陣列結構: [t_wait, (r,theta,phi,coast_frac)*(num_burns-1), final_leg_frac,
+                   offset_r, offset_theta, offset_phi]
+        最後三個 (offset_r/theta/phi) 是最後一棒 Lambert 瞄準點相對 A 真實位置的球座標
+        偏移量，r 夾在 [0, MISS_TOLERANCE_SOFT] —— 天生保證瞄準點落在規則允許的命中
+        容許範圍內，讓優化器自己決定要不要用這個容許範圍去換更省油的轉移。
         """
         lb = [0.0]
         ub = [self.T_max]
@@ -207,6 +248,8 @@ class MissionOptimizer:
             ub.extend([self.MAX_DV_SOFT, math.pi, 2.0 * math.pi, 1.0])
         lb.append(0.0)
         ub.append(1.0)
+        lb.extend([0.0, 0.0, 0.0])
+        ub.extend([self.MISS_TOLERANCE_SOFT, math.pi, 2.0 * math.pi])
         return lb, ub
 
     def _optimize_burn_case(self, current_burns, scalar_params, vector_params):
@@ -338,12 +381,19 @@ class MissionOptimizer:
             x_val = initial_guess_x[i]
             span = ub - lb
             # 陣列結構: [0]=t_wait，中間每 4 個一組 [r, theta, phi, coast_frac]，
-            # 最後一個 = final_leg_frac。r/theta/phi 決定燃燒的大小與方向給寬容度；
-            # 時間類變數 (t_wait/coast_frac/final_leg_frac) 給嚴格限制，避免微調
-            # 打亂已經算好的攔截時序。(舊版用 lb<0 判斷，球座標化後 lb 全部 >=0，
-            # 這個判斷式已經失效，改用陣列位置判斷。)
-            is_burn_shape_param = (i != 0) and (i != n - 1) and ((i - 1) % 4) < 3
-            tolerance = span * 0.15 if is_burn_shape_param else span * 0.02
+            # 接著 [n-4]=final_leg_frac，最後三個 [n-3,n-2,n-1]=瞄準點偏移
+            # (offset_r, offset_theta, offset_phi)。r/theta/phi 類 (燃燒的大小方向、
+            # 瞄準點偏移方向) 給寬容度；時間類變數 (t_wait/coast_frac/final_leg_frac)
+            # 給嚴格限制，避免微調打亂已經算好的攔截時序。
+            is_offset_param = i >= n - 3
+            is_final_leg = (i == n - 4)
+            is_t_wait = (i == 0)
+            if is_offset_param:
+                tolerance = span * 0.15
+            elif is_t_wait or is_final_leg:
+                tolerance = span * 0.02
+            else:
+                tolerance = span * 0.15 if ((i - 1) % 4) < 3 else span * 0.02
             narrow_bounds.append((max(lb, x_val - tolerance), min(ub, x_val + tolerance)))
         
         scalar_params = np.array([
@@ -398,7 +448,7 @@ class MissionOptimizer:
     def _replay_mission(self, x, num_burns):
         """純 Python 的日誌重建器，只在最後跑一次，並用含 J2 的高精度模型算出真實成績"""
         print("\n📝 --- 任務執行清單 (Mission Plan) ---")
-        burn_logs, times, miss_km, dc_converged = reconstruct_mission_logs(
+        burn_logs, times, miss_km, dc_converged, r_aim = reconstruct_mission_logs(
             x, num_burns, self.MIN_COAST_TIME, self.T_max,
             self.A_r0, self.A_v0, self.B_r0, self.B_v0,
             self.MU, self.J2_VAL, self.RE_VAL
@@ -440,6 +490,9 @@ class MissionOptimizer:
             "score": final_score, "miss_km": miss_km,
             "total_dv_mps": total_dv * 1000.0, "T_team": intercept_time,
             "penalty_count": penalty_count, "dc_converged": dc_converged,
+            # GMAT script 的打靶目標要瞄準這個點 (EarthMJ2000Eq, km)，不是 ShipA 的
+            # 真實位置，不然 GMAT 自己的 DC 會把刻意換來的省油設計修正掉。
+            "aim_point": (float(r_aim[0]), float(r_aim[1]), float(r_aim[2])),
         }
         return burns, times_diff, mission_info
 
@@ -525,30 +578,51 @@ def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_
         current_time += t_coast
         times.append(current_time)
         
-    final_leg_frac = x[-1]
+    final_leg_frac = x[-4]
     max_final = T_max - current_time
     t_final_leg = min_coast_time + final_leg_frac * (max_final - min_coast_time) if max_final > min_coast_time else min_coast_time
     intercept_time = current_time + t_final_leg
-    
+
     r_A_target, _ = propagate_rk4(A_r0, A_v0, intercept_time, dt, mu, j2_val, re_val)
+
+    # 跟 fast_fitness_evaluator 一致：Lambert 瞄準的是 A 附近容許球內的偏移點
+    # (offset_r/theta/phi)，不是 A 的精確位置，藉此換取更省油的轉移。
+    offset_r, offset_theta, offset_phi = x[-3], x[-2], x[-1]
+    sin_ot = math.sin(offset_theta)
+    offset_vec = np.array([
+        offset_r * sin_ot * math.cos(offset_phi),
+        offset_r * sin_ot * math.sin(offset_phi),
+        offset_r * math.cos(offset_theta)
+    ])
+    r_aim = r_A_target + offset_vec
+
     # 順向/逆向都算一次，取 Δv 較小的那個當初始猜測 (跟 fast_fitness_evaluator 邏輯一致)
-    v1_guess_pro, _ = izzo(mu, r_curr, r_A_target, t_final_leg, M=0, prograde=True, lowpath=True, numiter=35, rtol=1e-8)
-    v1_guess_retro, _ = izzo(mu, r_curr, r_A_target, t_final_leg, M=0, prograde=False, lowpath=True, numiter=35, rtol=1e-8)
+    v1_guess_pro, _ = izzo(mu, r_curr, r_aim, t_final_leg, M=0, prograde=True, lowpath=True, numiter=35, rtol=1e-8)
+    v1_guess_retro, _ = izzo(mu, r_curr, r_aim, t_final_leg, M=0, prograde=False, lowpath=True, numiter=35, rtol=1e-8)
     if fast_norm(v1_guess_retro - v_curr) < fast_norm(v1_guess_pro - v_curr):
         v1_guess = v1_guess_retro
     else:
         v1_guess = v1_guess_pro
 
-    # 用含 J2 的高精度模型微分修正 Lambert 的理想化猜測值 (等同 GMAT DC1 在做的事)
-    v1_req, dc_converged, miss_km, _dc_iters = refine_lambert_burn(
-        r_curr, v1_guess, r_A_target, t_final_leg, mu, j2_val, re_val
+    # 用含 J2 的高精度模型微分修正 Lambert 的理想化猜測值 (等同 GMAT DC1 在做的事)。
+    # 注意：這裡修正的目標是瞄準點 r_aim，不是 A 的真實位置，回傳的 miss_km 只代表
+    # 「有沒有準確命中瞄準點」，不是最終真正跟 A 差多遠 —— 後者要另外算 (見下)。
+    v1_req, dc_converged, _miss_from_aim_km, _dc_iters = refine_lambert_burn(
+        r_curr, v1_guess, r_aim, t_final_leg, mu, j2_val, re_val
     )
 
     dv_final_vec = v1_req - v_curr
     dv_final_mag = fast_norm(dv_final_vec)
     dv_final_vnb = to_vnb_frame(r_curr, v_curr, dv_final_vec)
 
+    # 真正跟 A 的距離：用修正後的 v1_req 實際傳播一次，量測最終位置跟 A 真實位置
+    # (不是瞄準點) 的距離 —— 這才是規則真正在乎、也是計分公式要用的 Δr。
+    r_final_actual, _ = propagate_rk4(r_curr, v1_req, t_final_leg, 10.0, mu, j2_val, re_val)
+    miss_km = fast_norm(r_final_actual - r_A_target)
+
     burn_logs.append({"time": current_time, "dv_vec": dv_final_vec, "dv_vnb": dv_final_vnb, "dv_mag": dv_final_mag, "type": "Final Burn"})
     times.append(intercept_time)
 
-    return burn_logs, times, miss_km, dc_converged
+    # r_aim 一併回傳：GMAT script 的打靶目標要瞄準這個點，不能只瞄準 A 的真實位置，
+    # 不然 GMAT 自己的 DC 會把我們刻意換來的省油設計修正掉 (詳見 script_generator)。
+    return burn_logs, times, miss_km, dc_converged, r_aim
