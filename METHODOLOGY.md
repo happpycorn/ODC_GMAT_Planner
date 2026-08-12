@@ -159,6 +159,13 @@ GMAT script（[`script_generator.py`](src/script_generator.py)）裡幾個值得
 - **裝飾用參數**：`DryMass`/`Cd`/`Cr`/`DragArea`/`SRPArea`/`Isp`/`GravitationalAccel` 這些欄位不影響任何計算結果——`ForceModel` 的 `Drag=None`、`SRP=Off`（阻力/太陽輻射壓根本沒開），`BurnB*.DecrementMass=false`（質量不會因燃燒減少）。純粹是 GMAT 建立物件的必填欄位，填一艘典型中型化學推進衛星的量級讓腳本看起來完整。
 - **script 內容全程限定 ASCII**：GMAT 的解析器碰到中文/非 ASCII 字元會直接報錯，所以 script 裡（不是 Python 端的 print/註解，是實際寫進 `outputs/output.txt` 的內容）一律用英文。
 
+### 9.1 為什麼還有第二份「固定燃燒版本」（`outputs/output_submit.txt`）
+一般版本的最後一棒要靠 GMAT 的 DC（`Target/Vary/Achieve`）在執行當下即時收斂，這代表**繳交當天在主辦單位的電腦上執行時，DC 的收斂行為理論上得跟我們自己測試時一致，結果才會一樣**——雖然 DC 是 GMAT 核心功能不是外掛，正常不會「跑不出來」，但求解器的收斂路徑本來就比較不容易保證跨環境完全一致。
+
+所以 `main.py` 在一般版本驗證乾淨通過（`InterceptSuccess`/`targeter_converged`/`FinalBurnLegal` 都成立）之後，會多做一步：把 GMAT 剛剛**自己收斂出來**的最後一棒 VNB 分量（不是 Python 的估計值，是 GMAT 實際跑出來的答案，透過 `Report_Intercept` 多加的三欄讀回來）直接當常數寫進一份新腳本，跟其他棒一樣用固定的 `Maneuver` 施加，整份腳本完全不含 `DifferentialCorrector`。這份腳本本身也會再送去 GMAT 驗證一次，確認重新單純傳播出來的結果跟一般版本幾乎一致（實測過差距在公尺等級，可視為雜訊）。
+
+換句話說：**用求解器去找出正確答案（一般版本），但用單純的、確定性的傳播去交出答案（固定版本）**——找答案跟交答案分開，繳交的東西不依賴任何環境相關的收斂行為。
+
 ---
 
 ## 10. 已知限制

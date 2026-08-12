@@ -93,14 +93,22 @@ uv run sweep_burns.py --config configs/practice_scenario.json
 ## 📂 資料夾讀寫說明
 
 * **輸入資料：** 軌道參數與計分參數放在 `configs/config.json`（找不到會自動生成範例）。
-* **GMAT 任務腳本：** 計算完成後，`outputs/output.txt` 永遠是最新一次的結果，可直接匯入 GMAT 執行；同樣的內容也會備份一份帶時間戳記的版本到 `outputs/history/`，避免之後的測試跑動不小心把先前的好結果蓋掉。
-* **GMAT 攔截報表：** 預設會被 `main.py` 自動讀取並印出對照，不用手動找。原始檔案在 GMAT 安裝資料夾下的 `output/GMAT_InterceptReport.txt`（如果想自己手動在 GMAT 裡開 `output.txt` 執行也完全可以，看 `InterceptSuccess` 欄位：1 = 成功、0 = 失敗）。3D 視角 `View_Intercept` 會自動用紅/綠/灰區分 ShipA/ShipB/地球。
-* **執行紀錄：** 每次執行都會把這次用的設定跟結果（時間戳、分數、ΔV、T_team、違規次數、GMAT 實際驗證結果…）附加一行 JSON 到 `outputs/run_history.jsonl`，方便之後比較不同設定/軌道跑出來的分數，以及 Python 預測跟 GMAT 實測差多少。
+* **GMAT 任務腳本（兩份）：**
+  * `outputs/output.txt`：一般版本，最後一棒靠 GMAT 自己的 `DifferentialCorrector`（`Target/Vary/Achieve`）收斂命中瞄準點，用來找出正確答案。
+  * `outputs/output_submit.txt`：**建議拿去正式繳交的版本**。一般版本驗證通過後會自動產生，把 GMAT 剛剛收斂出來的燃燒值直接寫死，整份腳本不含任何求解器——單純傳播＋施加燃燒，換一台電腦（例如比賽當天主辦單位準備的電腦）執行，不用擔心求解器的收斂行為跟我們這邊不一樣，因為根本沒有求解器在跑。想跳過這一步（省幾秒）可以加 `--no-fixed-script`。
+  * 兩份都會各自備份一份帶時間戳記的版本到 `outputs/history/`，避免之後的測試跑動不小心把先前的好結果蓋掉。
+* **GMAT 攔截報表：** 預設會被 `main.py` 自動讀取並印出對照，不用手動找。原始檔案在 GMAT 安裝資料夾下的 `output/GMAT_InterceptReport.txt`（如果想自己手動在 GMAT 裡開 `output.txt`/`output_submit.txt` 執行也完全可以，看 `InterceptSuccess` 欄位：1 = 成功、0 = 失敗）。3D 視角 `View_Intercept` 會自動用紅/綠/灰區分 ShipA/ShipB/地球。
+* **執行紀錄：** 每次執行都會把這次用的設定跟結果（時間戳、分數、ΔV、T_team、違規次數、兩份腳本各自的 GMAT 實際驗證結果…）附加一行 JSON 到 `outputs/run_history.jsonl`，方便之後比較不同設定/軌道跑出來的分數，以及 Python 預測跟 GMAT 實測差多少。
 
 ---
 
 ## ✅ 正式提交前
 
-規則附則：「所有結果以主辦單位驗證程式為準；若結果無法重現，主辦單位得取消其成績。」`main.py` 現在每次執行都會自動跑 GMAT 驗證，**正式提交前還是建議再手動確認一次**：`outputs/output.txt` 對應的 `run_history.jsonl` 那筆記錄裡，`gmat_verified.intercept_success` 是 `true`、`targeter_converged` 是 `true`，且沒有任何一次燃燒超過 1500 m/s。
+規則附則：「所有結果以主辦單位驗證程式為準；若結果無法重現，主辦單位得取消其成績。」`main.py` 現在每次執行都會自動跑 GMAT 驗證，**正式提交前還是建議再手動確認一次**：`run_history.jsonl` 最新那筆記錄裡：
+
+1. `gmat_verified.intercept_success`、`targeter_converged` 都是 `true`，且沒有任何一次燃燒超過 1500 m/s（一般版本，`outputs/output.txt`，用來確認算出來的方案本身沒問題）。
+2. `fixed_script_verified.intercept_success`、`final_burn_legal` 都是 `true`（固定燃燒版本，`outputs/output_submit.txt`，**這份才是建議繳交的檔案**，不含任何求解器，換電腦跑結果會更穩定）。
+
+如果沒有 `fixed_script_verified` 這個欄位，代表一般版本沒有通過驗證（或是有加 `--no-fixed-script`），先確認一般版本乾淨過了，再重跑一次讓固定版本產生出來。
 
 （補充：這份規則 PDF 裡沒有明確寫「繳交格式」是腳本還是別的，「所有結果以主辦單位驗證程式為準」比較像是主辦方會自己重新執行驗證，建議另外跟主辦方確認實際的繳交方式。）

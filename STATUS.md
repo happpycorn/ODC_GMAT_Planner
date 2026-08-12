@@ -99,6 +99,15 @@ STATUS.md 原本寫「大 SMA 落差的情境可能受益，但還沒驗證投�
 值得注意的細節：工具判斷「已經打平」用的容忍度（`--plateau-tol`，預設 0.05 分）是主觀取捨——在 Δv/時間預算寬鬆的情境下（像 practice_scenario 這種），連 1 次燒都能拿到 99.98 分，容忍度一寬就會建議「用最少的那個就好」，但**分數打平不代表 Δr_min/ΔV_team/T_team 這些平手判定用的原始數字也打平**（規則第 6 節：先比 Δr_min，再比 ΔV_team，再比 T_team），這點在工具的結論輸出裡有特別提醒，正式方案還是要回頭看 Mission Plan 的細節數字，不能只看建議就定案。
 - 實測：對 `practice_scenario.json` 跑過完整兩階段（`--burns 1-6`）跟縮小範圍的快速版（`--burns 1-3 --coarse-iters 150`），兩次都正確跑完、印出趨勢表跟建議，`--output-config` 能正確把建議寫成新的 config 檔。
 
+### 新增「固定燃燒版本」的繳交腳本 (`outputs/output_submit.txt`)
+起因：使用者擔心一般版本最後一棒靠 GMAT 的 `Target/Vary/Achieve`（DifferentialCorrector）即時求解，換到比賽當天主辦單位的電腦上執行時，求解器的收斂行為可能跟我們自己測的不一樣。討論後確認方向：**不是拿掉求解器，而是把求解器已經找到的答案變成常數**——先用一般版本 + GMAT 的 DC 把正確答案找出來，驗證乾淨通過後，把 GMAT 自己收斂出的最後一棒 VNB 分量（不是 Python 的估計值）直接寫死，產生一份完全不含任何求解器的新腳本，單純傳播 + 施加燃燒。
+
+改動：
+- `script_generator()` 加 `final_burn_fixed_vnb`/`output_filename` 兩個參數，`None`（預設）走原本的 DC 路徑；給值就走固定路徑（最後一棒跟其他棒一樣直接套用，不進 `Target/Vary/Achieve`）。共用同一份函式，只有 Burns 區塊跟 Mission Sequence 的最後一段分支，其餘（Spacecraft/ForceModel/Propagator/OrbitView/ReportFile）完全共用，避免兩份重複的樣板。
+- `Report_Intercept` 多加三欄（最後一棒的 `Element1/2/3`），讓 `main.py` 讀回 GMAT 實際收斂後的燃燒向量。
+- `main.py`：一般版本驗證乾淨通過（成功+收斂+合規）後，自動用讀回來的向量產生 `outputs/output_submit.txt`，**再送一次 GMAT 驗證**確認這份「重新單純傳播」出來的結果站得住腳，兩者印出來對照。新增 `--no-fixed-script` 可以跳過這一步（省幾秒，開發迭代時用）。`append_run_history` 多記一個 `fixed_script_verified` 欄位。
+- 實測：`configs/practice_scenario.json` 跑一次完整流程，一般版本 MissDistance 3984.786m，固定版本重新驗證出來是 3985.204m——只差 0.4m，證實「寫死 GMAT 收斂後的值再重跑」確實能重現幾乎一樣的結果；另外確認固定版本產生的 script 裡完全沒有任何 `Target`/`Vary`/`Achieve`/`DifferentialCorrector` 實際指令（只有註解提到），也確認 0 個非 ASCII 字元（沒有重踩 `887e64e` 那個雷）。
+
 ## 還沒做 / 值得考慮的
 
 優先順序由高到低：

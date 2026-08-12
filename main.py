@@ -116,6 +116,14 @@ def parse_args():
         "--no-gmat", action="store_true",
         help="跳過自動 GMAT 驗證這一步，只產生 script"
     )
+    parser.add_argument(
+        "--no-fixed-script", action="store_true",
+        help="跳過『固定燃燒版本』的產生+驗證。預設：一般版本 (outputs/output.txt，"
+             "最後一棒靠 GMAT 的 DC 求解器收斂) 通過驗證後，會自動把 GMAT 收斂後的"
+             "燃燒值寫死、產生一份不含任何求解器的版本 (outputs/output_submit.txt)，"
+             "適合正式繳交——換一台電腦跑也不用擔心求解器行為不一致，因為根本沒有"
+             "求解器在跑。開發/迭代時想省這幾秒可以加這個旗標跳過。"
+    )
     return parser.parse_args()
 
 
@@ -163,7 +171,7 @@ def run_gmat_verification(console_path: str, script_path: str, timeout_sec: floa
         return None
 
     try:
-        t_team, miss_km, success_flag, final_dv_mps, final_dv_legal = lines[-1].split()
+        t_team, miss_km, success_flag, final_dv_mps, final_dv_legal, e1, e2, e3 = lines[-1].split()
         return {
             "t_team_sec": float(t_team),
             "miss_km": float(miss_km),
@@ -175,6 +183,10 @@ def run_gmat_verification(console_path: str, script_path: str, timeout_sec: floa
             "final_burn_legal": bool(int(float(final_dv_legal))),
             "targeter_converged": targeter_converged,
             "report_path": report_path,
+            # 最後一棒收斂後的 VNB 分量 (DC 版本才有意義；固定版本這三個值本來就是
+            # 我們自己填的，讀回來只是拿來確認腳本真的照著寫死的值跑)。main.py 用
+            # 這三個值產生「固定燃燒版本」的繳交腳本，見 script_generator() 的說明。
+            "final_burn_vnb": (float(e1), float(e2), float(e3)),
         }
     except ValueError:
         print(f"⚠️ 報表檔格式解析失敗: {lines[-1]!r}")
@@ -182,6 +194,7 @@ def run_gmat_verification(console_path: str, script_path: str, timeout_sec: floa
 
 
 def append_run_history(config, mission_info, execution_time, gmat_result=None,
+                        fixed_script_result=None,
                         path=os.path.join("outputs", "run_history.jsonl")):
     """把這次執行的結果 (連同用的 config) 附加成一行 JSON，累積成可回頭比較的執行紀錄。"""
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -209,6 +222,17 @@ def append_run_history(config, mission_info, execution_time, gmat_result=None,
             "t_team_sec": round(gmat_result["t_team_sec"], 2),
             "final_burn_dv_mps": round(gmat_result["final_burn_dv_mps"], 2),
             "final_burn_legal": gmat_result["final_burn_legal"],
+        }
+    # 固定燃燒版本 (outputs/output_submit.txt，沒有求解器) 的驗證結果——正式提交前
+    # 檢查這個欄位是不是 intercept_success/final_burn_legal 都 true，比 gmat_verified
+    # 那個 (DC 版本) 更接近實際要繳交的東西。
+    if fixed_script_result is not None:
+        record["fixed_script_verified"] = {
+            "intercept_success": fixed_script_result["intercept_success"],
+            "miss_km": round(fixed_script_result["miss_km"], 6),
+            "t_team_sec": round(fixed_script_result["t_team_sec"], 2),
+            "final_burn_dv_mps": round(fixed_script_result["final_burn_dv_mps"], 2),
+            "final_burn_legal": fixed_script_result["final_burn_legal"],
         }
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -276,8 +300,50 @@ def main():
                   f"(Python 預測 {mission_info['T_team']:.2f} s)")
             print(f"  報表原始檔案     : {gmat_result['report_path']}")
 
+    # 3.5 DC 版本驗證乾淨通過後，把 GMAT 自己收斂出來的燃燒值寫死，產生一份不含
+    # 任何求解器的「固定燃燒版本」——換一台電腦跑，不用擔心求解器 (DC) 的收斂行為
+    # 跟我們這邊不一樣，因為這份腳本裡根本沒有求解器，單純傳播+施加燃燒。
+    fixed_script_result = None
+    if not args.no_gmat and not args.no_fixed_script:
+        if gmat_result and gmat_result["intercept_success"] and gmat_result["targeter_converged"] \
+                and gmat_result["final_burn_legal"]:
+            print("\n🔒 一般版本驗證乾淨通過，產生固定燃燒版本 (適合正式繳交)...")
+            script_generator(
+                config["orbit_A"]["SMA"], config["orbit_A"]["ECC"], config["orbit_A"]["INC"],
+                config["orbit_A"]["RAAN"], config["orbit_A"]["AOP"], config["orbit_A"]["TA"],
+                config["orbit_B"]["SMA"], config["orbit_B"]["ECC"], config["orbit_B"]["INC"],
+                config["orbit_B"]["RAAN"], config["orbit_B"]["AOP"], config["orbit_B"]["TA"],
+                burns, times, aim_point=mission_info["aim_point"],
+                max_dv=optimizer.MAX_DV, use_j2=optimizer.USE_J2,
+                final_burn_fixed_vnb=gmat_result["final_burn_vnb"],
+                output_filename="output_submit.txt",
+            )
+            fixed_script_result = run_gmat_verification(
+                args.gmat_console, os.path.join("outputs", "output_submit.txt")
+            )
+            if fixed_script_result:
+                fmatch = "✅" if fixed_script_result["intercept_success"] else "❌"
+                fdv_match = "✅" if fixed_script_result["final_burn_legal"] else "❌"
+                print("\n--- 🔒 固定燃燒版本驗證結果 (outputs/output_submit.txt，沒有求解器) ---")
+                print(f"  InterceptSuccess : {fmatch} {'成功' if fixed_script_result['intercept_success'] else '失敗'}")
+                print(f"  MissDistance     : {fixed_script_result['miss_km']*1000:.3f} m   "
+                      f"(一般版本 {gmat_result['miss_km']*1000:.3f} m)")
+                print(f"  最後一棒實際 Δv  : {fixed_script_result['final_burn_dv_mps']:.1f} m/s   "
+                      f"{fdv_match} {'合規 (≤1500 m/s)' if fixed_script_result['final_burn_legal'] else '⚠️ 超過 1500 m/s 限制！'}")
+                if fixed_script_result["intercept_success"] and fixed_script_result["final_burn_legal"]:
+                    print("  👉 這份可以拿去正式繳交。")
+                else:
+                    print("  ⚠️ 固定版本驗證沒有通過 (理論上應該跟一般版本幾乎一樣，這不應該發生)，"
+                          "先用一般版本 (outputs/output.txt) 為準，這個狀況值得回報排查。")
+            else:
+                print("  ⚠️ 固定版本沒有跑成功 (GMAT 呼叫失敗)，先用一般版本 (outputs/output.txt) 為準。")
+        elif gmat_result:
+            print("\n⚠️ 一般版本沒有完全通過驗證 (成功/收斂/合規三者其一是 false)，不產生固定燃燒版本——"
+                  "這組解本身就有問題，先處理好再重跑。")
+
     # 4. 附加寫入執行紀錄，方便之後比較不同設定/軌道跑出來的分數
-    append_run_history(config, mission_info, execution_time, gmat_result=gmat_result)
+    append_run_history(config, mission_info, execution_time,
+                        gmat_result=gmat_result, fixed_script_result=fixed_script_result)
 
     # 輸出效能報告
     if ENABLE_PROFILING:
