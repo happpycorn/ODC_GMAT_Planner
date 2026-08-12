@@ -78,6 +78,18 @@ uv run main.py --no-gmat                                              # 只要 P
 
 ---
 
+## （選用）掃描一個新情境需要燒幾次：`sweep_burns.py`
+
+拿到一個新情境（尤其正式測資公布後）時，`optimization.MAX_BURNS` 該放多寬沒有標準答案——燃燒次數越多，決策變數維度跟族群大小都線性放大，搜尋時間也跟著拉長，但不一定換得到更好的分數（詳見 [METHODOLOGY.md](METHODOLOGY.md)）。
+
+```bash
+uv run sweep_burns.py --config configs/practice_scenario.json
+```
+
+會先用調低的 `MAXITER` 快速粗掃一個寬範圍的燃燒次數（預設 1~6），找出分數大概從哪裡開始不再明顯進步，再針對那附近用 config 原本的 `MAXITER` 重新跑一次「公平」的精細驗證，最後給一個 `MAX_BURNS` 的建議。常用參數：`--burns 1-8`（調整粗掃範圍）、`--coarse-iters 300`（粗掃代數）、`--output-config x.json`（把建議直接寫成新的 config 檔）。**這是效率工具，不是最終判定**——工具的結論是「分數打平」，但規則的平手判定看的是 `Δr_min`/`ΔV_team`/`T_team` 這些原始數字，正式方案還是要回頭核對細節。
+
+---
+
 ## 📂 資料夾讀寫說明
 
 * **輸入資料：** 軌道參數與計分參數放在 `configs/config.json`（找不到會自動生成範例）。

@@ -167,6 +167,10 @@ def fast_fitness_evaluator(
 class MissionOptimizer:
     def __init__(self, config):
         self.config = config
+        # run_study() 跑完後，這裡會存每個 MAX_BURNS 案例的 (raw_fitness, epochs_run, note)，
+        # 不只是最終贏家——sweep_burns.py 用這個畫「燃燒次數 vs 分數」的趨勢表。
+        # main.py 的正常流程不需要這個，只是額外多存一份，不影響 run_study() 原本的回傳值。
+        self.burn_case_results: dict = {}
         # config 分兩塊環境設定：rules (主辦方規定/公告，我們不能改) 跟 strategy
         # (我們自己的任務設計選項，不是規則要求)。詳見 main.py 的 DEFAULT_CONFIG 註解。
         rules = config["rules"]
@@ -382,6 +386,9 @@ class MissionOptimizer:
                     b_count, best_x, best_score, epochs_run, note = future.result()
                     tqdm.write(f"✅ 推進 {b_count} 次完成：目標值 {best_score:.4f}，"
                                f"跑了 {epochs_run}/{self.maxiter} 代{note}")
+                    self.burn_case_results[b_count] = {
+                        "fitness": best_score, "epochs_run": epochs_run, "note": note,
+                    }
 
                     if best_score < best_overall_score:
                         best_overall_score = best_score
