@@ -494,6 +494,9 @@ class MissionOptimizer:
             # GMAT script 的打靶目標要瞄準這個點 (EarthMJ2000Eq, km)，不是 ShipA 的
             # 真實位置，不然 GMAT 自己的 DC 會把刻意換來的省油設計修正掉。
             "aim_point": (float(r_aim[0]), float(r_aim[1]), float(r_aim[2])),
+            # 最後一棒 (GMAT 會自己再修正的那把火) Python 端自己的預測值，方便跟
+            # GMAT 實際收斂後的真實大小做對照。
+            "final_burn_dv_mps": burn_logs[-1]["dv_mag"] * 1000.0,
         }
         return burns, times_diff, mission_info
 

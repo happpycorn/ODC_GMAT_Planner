@@ -125,11 +125,16 @@ def run_gmat_verification(console_path: str, script_path: str, timeout_sec: floa
         return None
 
     try:
-        t_team, miss_km, success_flag = lines[-1].split()
+        t_team, miss_km, success_flag, final_dv_mps, final_dv_legal = lines[-1].split()
         return {
             "t_team_sec": float(t_team),
             "miss_km": float(miss_km),
             "intercept_success": bool(int(float(success_flag))),
+            # GMAT 自己的 DC 可以自由調整這棒去命中瞄準點，這是它實際收斂後的真實
+            # 大小，不是 Python 預測的那個值——InterceptSuccess 只看距離，不看這個，
+            # 兩者要分開檢查。
+            "final_burn_dv_mps": float(final_dv_mps),
+            "final_burn_legal": bool(int(float(final_dv_legal))),
             "targeter_converged": targeter_converged,
             "report_path": report_path,
         }
@@ -163,6 +168,8 @@ def append_run_history(config, mission_info, execution_time, gmat_result=None,
             "targeter_converged": gmat_result["targeter_converged"],
             "miss_km": round(gmat_result["miss_km"], 6),
             "t_team_sec": round(gmat_result["t_team_sec"], 2),
+            "final_burn_dv_mps": round(gmat_result["final_burn_dv_mps"], 2),
+            "final_burn_legal": gmat_result["final_burn_legal"],
         }
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -216,11 +223,17 @@ def main():
         gmat_result = run_gmat_verification(args.gmat_console, os.path.join("outputs", "output.txt"))
         if gmat_result:
             match = "✅" if gmat_result["intercept_success"] else "❌"
+            dv_match = "✅" if gmat_result["final_burn_legal"] else "❌"
             print("\n--- 🛰️  GMAT 獨立驗證結果 (真實高階模型，非 Python 預測) ---")
             print(f"  InterceptSuccess : {match} {'成功' if gmat_result['intercept_success'] else '失敗'} "
                   f"(Targeter {'收斂' if gmat_result['targeter_converged'] else '⚠️ 未收斂'})")
             print(f"  MissDistance     : GMAT {gmat_result['miss_km']*1000:.3f} m   "
                   f"(Python 預測 {mission_info['miss_km']*1000:.3f} m)")
+            # GMAT 自己的 DC 可以自由調整最後一棒去命中瞄準點，這是它實際收斂後的
+            # 真實大小，跟 InterceptSuccess 是分開的兩件事，兩個都要看。
+            print(f"  最後一棒實際 Δv  : GMAT {gmat_result['final_burn_dv_mps']:.1f} m/s   "
+                  f"(Python 預測 {mission_info['final_burn_dv_mps']:.1f} m/s)  "
+                  f"{dv_match} {'合規 (≤1500 m/s)' if gmat_result['final_burn_legal'] else '⚠️ 超過 1500 m/s 限制！'}")
             print(f"  T_team           : GMAT {gmat_result['t_team_sec']:.2f} s   "
                   f"(Python 預測 {mission_info['T_team']:.2f} s)")
             print(f"  報表原始檔案     : {gmat_result['report_path']}")

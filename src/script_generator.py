@@ -47,9 +47,11 @@ BurnB{i}.GravitationalAccel = 9.81;
 %---------- Mission Sequence
 %----------------------------------------
 
-Create Variable MissDistance InterceptSuccess;
+Create Variable MissDistance InterceptSuccess FinalBurnDvMps FinalBurnLegal;
 GMAT MissDistance = 0;
 GMAT InterceptSuccess = 0;
+GMAT FinalBurnDvMps = 0;
+GMAT FinalBurnLegal = 0;
 
 BeginMissionSequence;
 """
@@ -114,7 +116,20 @@ If MissDistance <= 5
    GMAT InterceptSuccess = 1;
 EndIf;
 
-Report Report_Intercept ShipB.ElapsedSecs MissDistance InterceptSuccess;
+% The Target/Vary/Achieve block above is free to move this burn anywhere
+% within its Lower/Upper bounds to hit the aim point - Python's predicted
+% magnitude for this burn is NOT necessarily what GMAT actually converged
+% to. Compute the real post-convergence magnitude here so a violation of
+% the rule's 1500 m/s per-burn limit can never happen without showing up
+% in the report (previously this was invisible: InterceptSuccess only
+% checked distance, never the Delta-v GMAT's own corrector actually used).
+GMAT FinalBurnDvMps = sqrt(BurnB{final_burn_idx}.Element1^2 + BurnB{final_burn_idx}.Element2^2 + BurnB{final_burn_idx}.Element3^2) * 1000;
+
+If FinalBurnDvMps <= {max_dv * 1000.0:.1f}
+   GMAT FinalBurnLegal = 1;
+EndIf;
+
+Report Report_Intercept ShipB.ElapsedSecs MissDistance InterceptSuccess FinalBurnDvMps FinalBurnLegal;
 """
 
     # J2 開關：不確定的話用 use_j2 切換，跟 Python 端的 USE_J2 保持同步，不要一邊有
@@ -130,8 +145,13 @@ Report Report_Intercept ShipB.ElapsedSecs MissDistance InterceptSuccess;
 % ShipB = Spacecraft B (the earth ship, active maneuvers, does the intercept)
 % To check whether the intercept succeeded, no need to eyeball the 3D view:
 % after running, open GMAT_InterceptReport.txt (location depends on your
-% GMAT output folder setting) and look at the InterceptSuccess column:
-% 1 = success, 0 = failure. MissDistance (km) is on the same row.
+% GMAT output folder setting) and check TWO columns, both must be 1:
+% - InterceptSuccess: 1 = got within the 5 km miss-distance rule, 0 = failed
+% - FinalBurnLegal: 1 = the final burn's ACTUAL post-convergence magnitude
+%   (FinalBurnDvMps) stayed within the 1500 m/s rule limit, 0 = violated it.
+%   This is the burn GMAT's own targeter is free to adjust to hit the aim
+%   point, so its real magnitude can differ from what Python predicted -
+%   InterceptSuccess alone does NOT tell you whether this burn is legal.
 
 %----------------------------------------
 %---------- Spacecraft
@@ -234,7 +254,9 @@ View_Intercept.ShowPlot = true;
 
 % Text report: after the run, just open this file and read the numbers -
 % no need to squint at the 3D plot.
-% Columns: ShipB elapsed time (s) | final MissDistance (km) | InterceptSuccess (1=success/0=fail)
+% Columns: ShipB elapsed time (s) | final MissDistance (km) | InterceptSuccess
+% (1=success/0=fail) | FinalBurnDvMps (actual post-convergence magnitude of
+% the last burn, m/s) | FinalBurnLegal (1=<=1500 m/s, 0=violated the limit)
 Create ReportFile Report_Intercept;
 Report_Intercept.SolverIterations = Current;
 Report_Intercept.Filename = 'GMAT_InterceptReport.txt';
