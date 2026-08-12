@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import json
 import warnings
@@ -12,6 +13,7 @@ import pstats
 # 引入重構後的新模組
 from src.optimizer import MissionOptimizer
 from src.script_generator import script_generator
+from src.config_validator import validate_config, ConfigValidationError
 
 # GmatConsole 預設路徑 (你的機器上的 GMAT 安裝位置)。不同機器/重灌過可以用
 # --gmat-console 覆蓋，或用 --no-gmat 直接跳過這一步。
@@ -53,15 +55,35 @@ DEFAULT_CONFIG = {
 }
 
 def load_or_create_config(filename=os.path.join("configs", "config.json")):
-    """讀取設定檔；如果不存在，則建立一個預設的設定檔"""
+    """
+    讀取設定檔；如果不存在，則建立一個預設的設定檔。
+    不管是新建的還是讀進來的，都會跑一次 validate_config()——打錯字/型別錯/
+    不合理的值 (負的 SMA、ECC 超出 [0,1) 之類) 會在這裡直接攔下來噴清楚的錯誤
+    訊息，而不是讓程式一路跑到 poliastro/mealpy 深處才炸出一段看不懂的 traceback。
+    驗證失敗時印出訊息並用 sys.exit(1) 結束 (而不是往上丟例外)，讓失敗訊息乾淨、
+    不夾帶一堆跟問題無關的內部呼叫堆疊。
+    """
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     if not os.path.exists(filename):
         print(f"⚠️ 找不到 {filename}，正在自動生成預設設定檔...")
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(DEFAULT_CONFIG, f, indent=4)
-        return DEFAULT_CONFIG
-    with open(filename, "r", encoding="utf-8") as f:
-        return json.load(f)
+        config = DEFAULT_CONFIG
+    else:
+        with open(filename, "r", encoding="utf-8") as f:
+            try:
+                config = json.load(f)
+            except json.JSONDecodeError as exc:
+                print(f"❌ {filename} 不是合法的 JSON: {exc}")
+                sys.exit(1)
+
+    try:
+        validate_config(config)
+    except ConfigValidationError as exc:
+        print(f"❌ {filename} 驗證失敗:\n{exc}")
+        sys.exit(1)
+
+    return config
 
 
 def parse_args():
