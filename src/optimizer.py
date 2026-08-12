@@ -448,13 +448,14 @@ class MissionOptimizer:
     def _replay_mission(self, x, num_burns):
         """純 Python 的日誌重建器，只在最後跑一次，並用含 J2 的高精度模型算出真實成績"""
         print("\n📝 --- 任務執行清單 (Mission Plan) ---")
-        burn_logs, times, miss_km, dc_converged, r_aim = reconstruct_mission_logs(
+        burn_logs, times, miss_km, dc_converged, r_aim, used_retrograde = reconstruct_mission_logs(
             x, num_burns, self.MIN_COAST_TIME, self.T_max,
             self.A_r0, self.A_v0, self.B_r0, self.B_v0,
             self.MU, self.J2_VAL, self.RE_VAL
         )
 
         print(f"任務開始後等待: {x[0]:.1f} 秒")
+        print(f"  最後一棒 Lambert 轉移方向: {'🔄 逆向 (retrograde)' if used_retrograde else '➡️ 順向 (prograde)'}")
         total_dv = 0.0
         penalty_count = 0
         for log in burn_logs:
@@ -599,7 +600,8 @@ def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_
     # 順向/逆向都算一次，取 Δv 較小的那個當初始猜測 (跟 fast_fitness_evaluator 邏輯一致)
     v1_guess_pro, _ = izzo(mu, r_curr, r_aim, t_final_leg, M=0, prograde=True, lowpath=True, numiter=35, rtol=1e-8)
     v1_guess_retro, _ = izzo(mu, r_curr, r_aim, t_final_leg, M=0, prograde=False, lowpath=True, numiter=35, rtol=1e-8)
-    if fast_norm(v1_guess_retro - v_curr) < fast_norm(v1_guess_pro - v_curr):
+    used_retrograde = fast_norm(v1_guess_retro - v_curr) < fast_norm(v1_guess_pro - v_curr)
+    if used_retrograde:
         v1_guess = v1_guess_retro
     else:
         v1_guess = v1_guess_pro
@@ -625,4 +627,4 @@ def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_
 
     # r_aim 一併回傳：GMAT script 的打靶目標要瞄準這個點，不能只瞄準 A 的真實位置，
     # 不然 GMAT 自己的 DC 會把我們刻意換來的省油設計修正掉 (詳見 script_generator)。
-    return burn_logs, times, miss_km, dc_converged, r_aim
+    return burn_logs, times, miss_km, dc_converged, r_aim, used_retrograde
