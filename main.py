@@ -233,15 +233,14 @@ def main():
     end_time = time.perf_counter()
     execution_time = end_time - start_time
 
-    print("\n" + "="*40)
-    print(f"⏳ 總計算時間: {execution_time:.2f} 秒")
-    if execution_time > 60:
-        print(f"   (大約 {execution_time / 60:.2f} 分鐘)")
-    print("="*40)
+    minute_note = f" (約 {execution_time / 60:.2f} 分鐘)" if execution_time > 60 else ""
+    print(f"\n⏳ 總計算時間: {execution_time:.2f} 秒{minute_note}")
 
     # 3. 自動呼叫 GMAT 做無頭驗證，不用再手動開 GUI 點來點去
     gmat_result = None
-    if not args.no_gmat:
+    if args.no_gmat:
+        print("（跳過了 GMAT 驗證，記得手動開 GMAT 跑一次 outputs/output.txt 確認 InterceptSuccess）")
+    else:
         gmat_result = run_gmat_verification(args.gmat_console, os.path.join("outputs", "output.txt"))
         if gmat_result:
             match = "✅" if gmat_result["intercept_success"] else "❌"

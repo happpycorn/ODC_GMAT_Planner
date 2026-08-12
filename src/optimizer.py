@@ -255,8 +255,14 @@ class MissionOptimizer:
     def _optimize_burn_case(self, current_burns, scalar_params, vector_params):
         """
         獨立的工作包：負責在單一核心上，執行特定推進次數的最佳化。
+
+        注意：這個函式是透過 ProcessPoolExecutor 丟到「子行程」執行的，不是主行程。
+        tqdm 的進度條物件活在主行程裡，子行程完全不知道它的存在/游標位置——如果在
+        這裡直接 print()/tqdm.write()，好幾個子行程各自不同時間點寫同一個終端機，
+        會跟主行程進度條的 `\r` 覆寫互相打架，實測會讓進度條每次重繪變成往下多印
+        一行 (而不是原地覆蓋)，越跑越長。所以這裡只回傳資訊，所有會印出來的訊息都
+        留給呼叫端 (run_study，在主行程) 統一印，讓 tqdm 全程只在單一行程裡運作。
         """
-        print(f"⏳ [核心啟動] 開始計算推進次數: {current_burns} ...")
         lb, ub = self._generate_bounds(current_burns)
         # 族群大小依「真正的決策變數維度」縮放 (n_dims * POPSIZE)，而不是舊版的
         # (15+3*燃燒次數)*POPSIZE —— 舊公式在低燃燒次數時嚴重超編：1 次燃燒只有 2 維
@@ -313,13 +319,19 @@ class MissionOptimizer:
         raw_fitness = g_best.target.fitness
         current_best_score = float(raw_fitness) if raw_fitness is not None else float('inf')
 
-        # 實際跑了幾代 (用來判斷 MAX_EARLY_STOP 有沒有提早介入，MAXITER 設定合不合理)
+        # 實際跑了幾代 (用來判斷 MAX_EARLY_STOP 有沒有提早介入，MAXITER 設定合不合理)。
+        # 只有「提早停止」跟「seed 已設定所以退回單執行緒」這兩種情況值得特別提醒
+        # (前者代表 MAX_EARLY_STOP 提前介入、後者代表這次跑得比較慢是預期中的取捨)，
+        # 平常每次都印的 thread 數對使用者判斷任務規劃結果沒什麼幫助，不印。
         epochs_run = len(model.history.list_epoch_time)
-        early = " (提早停止)" if epochs_run < self.maxiter else ""
-        mode_desc = f"{n_workers} threads/process" if self.seed is None else "單執行緒 (seed 已設定，犧牲速度換可重現性)"
-        tqdm.write(f"   ↳ 推進 {current_burns} 次：實際跑了 {epochs_run}/{self.maxiter} 代，{mode_desc}{early}")
+        note = ""
+        if epochs_run < self.maxiter:
+            note += "，提早停止"
+        if self.seed is not None:
+            note += "，單執行緒 (seed 已設定)"
 
-        return current_burns, current_best_x, current_best_score, epochs_run
+        # note 回傳給主行程印，不在這裡印 (見函式開頭的說明)
+        return current_burns, current_best_x, current_best_score, epochs_run, note
     
     def run_study(self):
         print(f"🚀 啟動 JIT 極速版 L-SHADE 軌道最佳化 (多核心巨觀平行化)...")
@@ -340,26 +352,32 @@ class MissionOptimizer:
         # 開啟多行程池，最大核心數設定為你要測試的推進情境總數 (例如 burns = [1, 2, 3] 就是開 3 個)
         num_cases = len(self.burns)
         
+        # 提交所有任務：把不同的 current_burns 丟給不同的核心。「開始計算」訊息在這裡
+        # 印 (主行程)，不是在 _optimize_burn_case 裡 (子行程) 印——子行程不知道下面的
+        # tqdm 進度條長什麼樣，兩邊搶著寫同一個終端機會讓進度條沒辦法原地覆寫，越跑
+        # 越長 (見 _optimize_burn_case 開頭的說明)。
+        print(f"⏳ 開始計算推進次數 {sorted(self.burns, reverse=True)} ...")
         with concurrent.futures.ProcessPoolExecutor(max_workers=num_cases) as executor:
-            # 1. 提交所有任務：把不同的 current_burns 丟給不同的核心
             futures = [
                 executor.submit(self._optimize_burn_case, b, scalar_params, vector_params)
                 for b in sorted(self.burns, reverse=True)
             ]
 
-            # 2. 監聽完成狀態：哪個核心先算完 4000 代，就先驗收誰的結果
+            # 監聽完成狀態：哪個核心先算完就先驗收誰的結果。不逐次印「發現新最佳解」
+            # (哪個燃燒次數先跑完純粹看排程，中途領先沒有意義)，只在全部跑完後報一次
+            # 最終選了哪個方案。
             for future in tqdm(concurrent.futures.as_completed(futures), total=num_cases):
                 try:
-                    # 接收 _optimize_burn_case 回傳的四個變數
-                    b_count, best_x, best_score, epochs_run = future.result()
-                    tqdm.write(f"✅ [核心回傳] 推進 {b_count} 次完成！最佳目標值: {best_score:.4f}")
+                    # note 是子行程準備好、交回主行程印的狀態備註 (同樣是為了不讓子行程
+                    # 直接寫終端機)，平常是空字串，只有「提早停止」/「單執行緒」才有內容。
+                    b_count, best_x, best_score, epochs_run, note = future.result()
+                    tqdm.write(f"✅ 推進 {b_count} 次完成：目標值 {best_score:.4f}，"
+                               f"跑了 {epochs_run}/{self.maxiter} 代{note}")
 
-                    # 更新全局最佳解
                     if best_score < best_overall_score:
                         best_overall_score = best_score
                         best_overall_params = best_x
                         best_burns_count = b_count
-                        tqdm.write(f"⭐ 發現目前全局新最佳解！推進次數: {best_burns_count}")
 
                 except Exception as exc:
                     tqdm.write(f"❌ [核心錯誤] 崩潰: {exc}")
@@ -368,7 +386,7 @@ class MissionOptimizer:
             print("\n❌ 最佳化失敗：所有的嘗試都撞毀或違規了。")
             return None, None, (None, None)
 
-        print(f"\n✅ 最佳化完成！")
+        print(f"\n✅ 最佳化完成！採用推進 {best_burns_count} 次的方案 (目標值 {best_overall_score:.4f})")
         return self.refine_trajectory(best_overall_params, best_burns_count, best_overall_score)
 
     def refine_trajectory(self, initial_guess_x, num_burns, initial_fitness=None):

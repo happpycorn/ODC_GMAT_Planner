@@ -294,5 +294,4 @@ Report_Intercept.ColumnWidth = 20;
     with open(archive_path, "w", encoding="utf-8") as f:
         f.write(script_content)
 
-    print(f"檔案已成功建立！(outputs/output.txt，備份於 {archive_path})")
-    print("執行完後記得看 GMAT_InterceptReport.txt 確認 InterceptSuccess")
+    print(f"📄 GMAT script 已建立：outputs/output.txt (備份於 {archive_path})")
