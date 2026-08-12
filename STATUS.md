@@ -72,6 +72,16 @@ STATUS.md 原本寫「大 SMA 落差的情境可能受益，但還沒驗證投�
 - 動機：規則第 7 節說晉級賽「會有更具挑戰性的情境與動態環境條件」，但這份 PDF 只涵蓋初賽，沒寫這三個數字會不會變——不確定，但不管會不會變，這樣改都是合理的架構收斂：晉級賽如果規則數字真的不一樣，改 config 就好，不用再回來翻 `optimizer.py`。
 - 實測：`validate_config` 對三個新欄位的必填/值域檢查都如預期觸發；直接 instantiate `MissionOptimizer` 塞不同的數字進去，確認 `self.MAX_DV`/`self.MIN_COAST_TIME`/`self.T_max` 三個屬性都正確反映 config 的值（不是巧合等於預設）；用預設值跑一次完整流程 (含 GMAT)，分數/Δv 跟改之前完全一致，確認沒有把初賽這一輪跑壞。
 
+### config.json 分組整理（使用者反映參數變多、有點亂）
+上面幾輪陸續加欄位後，config 頂層累積了 12 個欄位（`orbit_A`/`orbit_B`/`optimization` 三個巢狀物件 + 9 個攤平的純量欄位），改成 4 個頂層區塊，依「誰決定這個數字」分組：
+- `orbit_A` / `orbit_B`：軌道六根數，不變
+- `rules`：主辦方規定/公告、我們不能改的數字 —— `MAX_DV_MPS`/`MIN_MANEUVER_INTERVAL_SEC`/`T_MAX_PERIOD_MULTIPLE`/`k_t`/`C_t`/`k_v`/`C_v` 全部搬進來
+- `strategy`：我們自己的任務設計選項，不是規則要求 —— `USE_J2`/`MISS_TOLERANCE_KM` 搬進來
+- `optimization`：純演算法搜尋設定，不變
+
+改動範圍：`configs/config.json`、`main.py`（`DEFAULT_CONFIG` + `append_run_history` 記錄的欄位）、`src/optimizer.py`（`MissionOptimizer.__init__` 改讀 `config["rules"]`/`config.get("strategy", {})`）、`src/config_validator.py`（拆成 `_validate_rules`/`_validate_strategy` 兩個新函式）、`README.md` 欄位表。
+- 實測：新結構的 config 通過驗證；故意拿掉整個 `rules`/`strategy` 區塊、`strategy.USE_J2` 型別錯、`rules.k_t` 是負的（軟性警告）都如預期觸發；設定檔不存在時自動生成的預設範例也是新結構，且能自己通過驗證；用不變的正式 config 跑一次全流程 (含 GMAT)，分數/Δv/T_team 跟改之前完全一致 (100/100, InterceptSuccess ✅)；順便確認 `run_history.jsonl` 記錄的是完整的 `rules`/`strategy` 物件，不是拆散的欄位。
+
 ## 還沒做 / 值得考慮的
 
 優先順序由高到低：

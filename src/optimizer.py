@@ -167,31 +167,36 @@ def fast_fitness_evaluator(
 class MissionOptimizer:
     def __init__(self, config):
         self.config = config
+        # config 分兩塊環境設定：rules (主辦方規定/公告，我們不能改) 跟 strategy
+        # (我們自己的任務設計選項，不是規則要求)。詳見 main.py 的 DEFAULT_CONFIG 註解。
+        rules = config["rules"]
+        strategy = config.get("strategy", {})
+
         # 從 config 提取環境常數 (避免每次呼叫都查字典)
-        self.k_t = config.get("k_t", 0.0001)
-        self.C_t = config.get("C_t", 11000.0)
-        self.k_v = config.get("k_v", 0.005)
-        self.C_v = config.get("C_v", 1200.0)
-        
+        self.k_t = rules.get("k_t", 0.0001)
+        self.C_t = rules.get("C_t", 11000.0)
+        self.k_v = rules.get("k_v", 0.005)
+        self.C_v = rules.get("C_v", 1200.0)
+
         # 物理常數與限制
         self.MU = 398600.4418          # 地球標準重力參數
         # USE_J2 開關：不確定哪一輪/哪個場景真的有 J2 擾動時，用 config 切換，
         # 不用改程式碼。關掉時 J2_VAL=0，Python 端傳播跟 GMAT script 的重力場設定
         # (script_generator 的 use_j2 參數) 會一起同步變成純點質量模型。
-        self.USE_J2 = bool(config.get("USE_J2", True))
+        self.USE_J2 = bool(strategy.get("USE_J2", True))
         self.J2_VAL = 1.08262668e-3 if self.USE_J2 else 0.0
         self.RE_VAL = 6378.137
         self.MIN_PERIAPSIS = self.RE_VAL + 100.0
         # ΔV_lim、機動間隔下限、T_max 的週期倍數：這三個是規則規定的數字 (初賽規則
-        # 第 2、3 節：ΔV_lim=1500 m/s、間隔≥100s、T_max=4×T_A)，放進 config 跟
-        # k_t/C_t/k_v/C_v 放一起，不寫死在程式碼裡——如果晉級賽的規則數字不一樣，
+        # 第 2、3 節：ΔV_lim=1500 m/s、間隔≥100s、T_max=4×T_A)，放進 config["rules"]
+        # 跟 k_t/C_t/k_v/C_v 放一起，不寫死在程式碼裡——如果晉級賽的規則數字不一樣，
         # 改 config 就好，不用回來改這裡。預設值等於目前初賽規則的數字。
-        self.MAX_DV = float(config.get("MAX_DV_MPS", 1500.0)) / 1000.0  # 換算成 km/s，下面全部用 km/s
+        self.MAX_DV = float(rules.get("MAX_DV_MPS", 1500.0)) / 1000.0  # 換算成 km/s，下面全部用 km/s
         # 搜尋/微調階段用的「內部目標」比規則的真實上限更嚴一點 (留 10 m/s 安全邊界)，
         # 避免 NLP 微調的數值梯度在邊界上把解推過真正的 ΔV_lim 那一側才被扣分。
         # 最終回報/合規判定 (_replay_mission) 仍然用 self.MAX_DV 這個真實規則上限去算。
         self.MAX_DV_SOFT = self.MAX_DV - 0.01
-        self.MIN_COAST_TIME = float(config.get("MIN_MANEUVER_INTERVAL_SEC", 100.0))
+        self.MIN_COAST_TIME = float(rules.get("MIN_MANEUVER_INTERVAL_SEC", 100.0))
 
         # 攔截容許範圍：規則只要求 Δr ≤ 這個值，超出的精準度不會多加分 (Δr_min 會被
         # 地板夾住)，開放讓最後一棒 Lambert 瞄準這個球內最省油的點，而不是死盯著 A
@@ -204,7 +209,7 @@ class MissionOptimizer:
         # 的最大落差多留將近一倍緩衝，犧牲一點理論上可榨出的省油空間換安全感。
         # 這仍然是「目前測過的情境」歸納出來的經驗值，不是嚴謹上界，正式測資公布後
         # 拿到真實軌道參數，最好針對那組實際場景再測一次確認這個邊界仍然夠用。
-        self.MISS_TOLERANCE_KM = max(0.0, min(5.0, float(config.get("MISS_TOLERANCE_KM", 5.0))))
+        self.MISS_TOLERANCE_KM = max(0.0, min(5.0, float(strategy.get("MISS_TOLERANCE_KM", 5.0))))
         self.MISS_TOLERANCE_SOFT = max(0.0, self.MISS_TOLERANCE_KM - 1.5)
 
         # 初始化軌道
@@ -231,7 +236,7 @@ class MissionOptimizer:
 
         # 計算時間上限 (T_max = T_MAX_PERIOD_MULTIPLE × A 的軌道週期，見上面的說明)
         self.Ta_sec = 2.0 * np.pi * np.sqrt(config["orbit_A"]["SMA"]**3 / self.MU)
-        self.T_max = float(config.get("T_MAX_PERIOD_MULTIPLE", 4.0)) * self.Ta_sec
+        self.T_max = float(rules.get("T_MAX_PERIOD_MULTIPLE", 4.0)) * self.Ta_sec
     
     def _generate_bounds(self, num_burns: int) -> Tuple[list, list]:
         """

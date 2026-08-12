@@ -85,6 +85,57 @@ def _validate_orbit(orbit_cfg, label: str, errors: list):
                 )
 
 
+def _validate_rules(rules_cfg, errors: list):
+    """rules：主辦方規定/公告的數字 (ΔV_lim、機動間隔、T_max 倍數、k_t/C_t/k_v/C_v)。"""
+    if not isinstance(rules_cfg, dict):
+        errors.append(f"rules 應該是一個物件，但收到 {type(rules_cfg).__name__}")
+        return
+
+    required = ["MAX_DV_MPS", "MIN_MANEUVER_INTERVAL_SEC", "T_MAX_PERIOD_MULTIPLE",
+                "k_t", "C_t", "k_v", "C_v"]
+    missing = [f for f in required if f not in rules_cfg]
+    if missing:
+        errors.append(f"rules 缺少欄位: {missing}")
+
+    # 這三個是規則規定的數字 (ΔV_lim/機動間隔下限/T_max 週期倍數)，必須是正數才有意義
+    if "MAX_DV_MPS" in rules_cfg:
+        v = rules_cfg["MAX_DV_MPS"]
+        if not _is_number(v) or v <= 0:
+            errors.append(f"rules.MAX_DV_MPS 必須是 >0 的數字 (單位 m/s)，但收到 {v!r}")
+    if "MIN_MANEUVER_INTERVAL_SEC" in rules_cfg:
+        v = rules_cfg["MIN_MANEUVER_INTERVAL_SEC"]
+        if not _is_number(v) or v < 0:
+            errors.append(f"rules.MIN_MANEUVER_INTERVAL_SEC 必須是 >=0 的數字 (單位秒)，但收到 {v!r}")
+    if "T_MAX_PERIOD_MULTIPLE" in rules_cfg:
+        v = rules_cfg["T_MAX_PERIOD_MULTIPLE"]
+        if not _is_number(v) or v <= 0:
+            errors.append(f"rules.T_MAX_PERIOD_MULTIPLE 必須是 >0 的數字，但收到 {v!r}")
+
+    for f in ("k_t", "C_t", "k_v", "C_v"):
+        if f in rules_cfg and not _is_number(rules_cfg[f]):
+            errors.append(f"rules.{f} 必須是有限數字，但收到 {rules_cfg[f]!r}")
+
+
+def _validate_strategy(strategy_cfg, errors: list):
+    """strategy：我們自己的任務設計選項，不是規則要求 (USE_J2、MISS_TOLERANCE_KM)。"""
+    if not isinstance(strategy_cfg, dict):
+        errors.append(f"strategy 應該是一個物件，但收到 {type(strategy_cfg).__name__}")
+        return
+
+    required = ["USE_J2", "MISS_TOLERANCE_KM"]
+    missing = [f for f in required if f not in strategy_cfg]
+    if missing:
+        errors.append(f"strategy 缺少欄位: {missing}")
+
+    if "USE_J2" in strategy_cfg and not isinstance(strategy_cfg["USE_J2"], bool):
+        errors.append(f"strategy.USE_J2 必須是 true/false，但收到 {strategy_cfg['USE_J2']!r}")
+
+    if "MISS_TOLERANCE_KM" in strategy_cfg:
+        v = strategy_cfg["MISS_TOLERANCE_KM"]
+        if not _is_number(v) or v < 0:
+            errors.append(f"strategy.MISS_TOLERANCE_KM 必須是 >=0 的數字，但收到 {v!r}")
+
+
 def _validate_optimization(opt_cfg, errors: list):
     if not isinstance(opt_cfg, dict):
         errors.append(f"optimization 應該是一個物件，但收到 {type(opt_cfg).__name__}")
@@ -139,9 +190,9 @@ def validate_config(config) -> None:
 
     errors: list = []
 
-    top_required = ["orbit_A", "orbit_B", "optimization", "USE_J2",
-                     "MISS_TOLERANCE_KM", "MAX_DV_MPS", "MIN_MANEUVER_INTERVAL_SEC",
-                     "T_MAX_PERIOD_MULTIPLE", "k_t", "C_t", "k_v", "C_v"]
+    # config 分四塊：orbit_A/orbit_B (軌道)、rules (主辦方規定/公告，我們不能改)、
+    # strategy (我們自己的任務設計選項)、optimization (純演算法搜尋設定)。
+    top_required = ["orbit_A", "orbit_B", "rules", "strategy", "optimization"]
     missing = [k for k in top_required if k not in config]
     if missing:
         errors.append(f"config 缺少欄位: {missing}")
@@ -150,34 +201,12 @@ def validate_config(config) -> None:
         _validate_orbit(config["orbit_A"], "orbit_A", errors)
     if "orbit_B" in config:
         _validate_orbit(config["orbit_B"], "orbit_B", errors)
+    if "rules" in config:
+        _validate_rules(config["rules"], errors)
+    if "strategy" in config:
+        _validate_strategy(config["strategy"], errors)
     if "optimization" in config:
         _validate_optimization(config["optimization"], errors)
-
-    if "USE_J2" in config and not isinstance(config["USE_J2"], bool):
-        errors.append(f"USE_J2 必須是 true/false，但收到 {config['USE_J2']!r}")
-
-    if "MISS_TOLERANCE_KM" in config:
-        v = config["MISS_TOLERANCE_KM"]
-        if not _is_number(v) or v < 0:
-            errors.append(f"MISS_TOLERANCE_KM 必須是 >=0 的數字，但收到 {v!r}")
-
-    # 這三個是規則規定的數字 (ΔV_lim/機動間隔下限/T_max 週期倍數)，必須是正數才有意義
-    if "MAX_DV_MPS" in config:
-        v = config["MAX_DV_MPS"]
-        if not _is_number(v) or v <= 0:
-            errors.append(f"MAX_DV_MPS 必須是 >0 的數字 (單位 m/s)，但收到 {v!r}")
-    if "MIN_MANEUVER_INTERVAL_SEC" in config:
-        v = config["MIN_MANEUVER_INTERVAL_SEC"]
-        if not _is_number(v) or v < 0:
-            errors.append(f"MIN_MANEUVER_INTERVAL_SEC 必須是 >=0 的數字 (單位秒)，但收到 {v!r}")
-    if "T_MAX_PERIOD_MULTIPLE" in config:
-        v = config["T_MAX_PERIOD_MULTIPLE"]
-        if not _is_number(v) or v <= 0:
-            errors.append(f"T_MAX_PERIOD_MULTIPLE 必須是 >0 的數字，但收到 {v!r}")
-
-    for f in ("k_t", "C_t", "k_v", "C_v"):
-        if f in config and not _is_number(config[f]):
-            errors.append(f"{f} 必須是有限數字，但收到 {config[f]!r}")
 
     if errors:
         header = f"設定檔驗證失敗，共 {len(errors)} 個問題:"
@@ -185,16 +214,18 @@ def validate_config(config) -> None:
         raise ConfigValidationError(f"{header}\n{body}")
 
     # --- 軟性可疑值：不擋執行，但值得提醒使用者 ---
+    rules_cfg = config.get("rules", {})
+    strategy_cfg = config.get("strategy", {})
     warnings = []
-    if _is_number(config.get("MISS_TOLERANCE_KM")) and config["MISS_TOLERANCE_KM"] > 5.0:
+    if _is_number(strategy_cfg.get("MISS_TOLERANCE_KM")) and strategy_cfg["MISS_TOLERANCE_KM"] > 5.0:
         warnings.append(
-            f"MISS_TOLERANCE_KM={config['MISS_TOLERANCE_KM']} 超過規則門檻 5km，"
+            f"strategy.MISS_TOLERANCE_KM={strategy_cfg['MISS_TOLERANCE_KM']} 超過規則門檻 5km，"
             f"optimizer 會悄悄把它夾回 5.0，不會真的用到你設的值"
         )
-    if _is_number(config.get("k_t")) and config["k_t"] < 0:
-        warnings.append("k_t < 0 會讓時間分數隨任務時間變長反而變高，方向可能跟規則的意圖相反，請確認不是打錯正負號")
-    if _is_number(config.get("k_v")) and config["k_v"] < 0:
-        warnings.append("k_v < 0 會讓 Δv 分數隨油耗變大反而變高，方向可能跟規則的意圖相反，請確認不是打錯正負號")
+    if _is_number(rules_cfg.get("k_t")) and rules_cfg["k_t"] < 0:
+        warnings.append("rules.k_t < 0 會讓時間分數隨任務時間變長反而變高，方向可能跟規則的意圖相反，請確認不是打錯正負號")
+    if _is_number(rules_cfg.get("k_v")) and rules_cfg["k_v"] < 0:
+        warnings.append("rules.k_v < 0 會讓 Δv 分數隨油耗變大反而變高，方向可能跟規則的意圖相反，請確認不是打錯正負號")
 
     for w in warnings:
         print(f"⚠️  設定檔警告: {w}")

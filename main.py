@@ -24,14 +24,40 @@ GMAT_CONSOLE_DEFAULT = "/Users/corn/Documents/GMAT R2026a/bin/GmatConsole"
 # 串洗版；真的要抓效能瓶頸時再手動打開。
 ENABLE_PROFILING = False
 
+# config 分四大塊，各自對應「誰決定這個數字」：
+# - orbit_A / orbit_B：軌道六根數
+# - rules：主辦方規定/公告的數字，我們不能改，只能照填 (ΔV_lim、機動間隔、T_max
+#   倍數是規則白紙黑字寫的常數；k_t/C_t/k_v/C_v 是每次比賽前才公告的計分參數)
+# - strategy：我們自己的任務設計選項，不是規則要求，但會影響算出來的任務規劃
+# - optimization：純演算法搜尋設定，只影響「找不找得到好解、要跑多久」，不影響
+#   規則本身怎麼定義
 DEFAULT_CONFIG = {
     "orbit_A": {
-        "SMA": 9000.0, "ECC": 0.0, "INC": 0.0, 
+        "SMA": 9000.0, "ECC": 0.0, "INC": 0.0,
         "RAAN": 0.0, "AOP": 0.0, "TA": 0.0
     },
     "orbit_B": {
-        "SMA": 7500.0, "ECC": 0.0, "INC": 0.0, 
+        "SMA": 7500.0, "ECC": 0.0, "INC": 0.0,
         "RAAN": 0.0, "AOP": 0.0, "TA": 0.0
+    },
+    "rules": {
+        # 這三個是規則規定的數字 (初賽規則第 2、3 節)，不是我們自己編的。預設值等於
+        # 目前初賽規則的數字；晉級賽如果規則數字不一樣，改這裡就好，不用動程式碼。
+        "MAX_DV_MPS": 1500.0,                # 單次機動 Δv 上限 (ΔV_lim)
+        "MIN_MANEUVER_INTERVAL_SEC": 100.0,  # 兩次機動間至少要間隔多久
+        "T_MAX_PERIOD_MULTIPLE": 4.0,        # T_max = 這個值 × A 的軌道週期
+        # 主辦方公告的環境計分參數 (依軌道分布狀況，每次比賽前會公告)
+        "k_t": 0.0001,
+        "C_t": 11000.0,
+        "k_v": 0.005,
+        "C_v": 1200.0,
+    },
+    "strategy": {
+        "USE_J2": True,  # 不確定某一輪/場景有沒有 J2 擾動時用這個切換，Python 端跟
+                         # 產生的 GMAT script 會同步套用，不用改程式碼
+        "MISS_TOLERANCE_KM": 5.0,  # 規則只要求 Δr <= 這個值 (預設對齊規則的 5km)，可以
+                                    # 彈性調小 (甚至設 0 退回精準瞄準)，讓最後一棒 Lambert
+                                    # 在容許範圍內找最省油的落點，而不是死盯著 A 的精確位置
     },
     "optimization": {
         "MAX_BURNS": [1, 2, 3], # 範例：讓它依序嘗試不同的推進次數
@@ -42,22 +68,6 @@ DEFAULT_CONFIG = {
         "TOL": 0.02,  # Score 是 0~100 分量表，這個值要跟這個量表相稱，太小早停形同虛設
         "SEED": None,  # 設一個整數可以讓同一組設定每次重現一樣的結果，方便比較改動
     },
-    "USE_J2": True,  # 不確定某一輪/場景有沒有 J2 擾動時用這個切換，Python 端跟產生的
-                     # GMAT script 會同步套用，不用改程式碼
-    "MISS_TOLERANCE_KM": 5.0,  # 規則只要求 Δr <= 這個值 (預設對齊規則的 5km)，可以彈性
-                                # 調小 (甚至設 0 退回精準瞄準)，讓最後一棒 Lambert 在
-                                # 容許範圍內找最省油的落點，而不是死盯著 A 的精確位置
-    # 以下三個是規則規定的數字 (初賽規則第 2、3 節)，不是我們自己編的——放在 config
-    # 裡跟 k_t/C_t/k_v/C_v 放一起，晉級賽如果規則數字不一樣，改這裡就好，不用動程式碼。
-    # 預設值等於目前初賽規則的數字。
-    "MAX_DV_MPS": 1500.0,             # 單次機動 Δv 上限 (ΔV_lim)
-    "MIN_MANEUVER_INTERVAL_SEC": 100.0,  # 兩次機動間至少要間隔多久
-    "T_MAX_PERIOD_MULTIPLE": 4.0,     # T_max = 這個值 × A 的軌道週期
-    # 主辦方公告的環境計分參數 (依軌道分布狀況，每次比賽前會公告)
-    "k_t": 0.0001,
-    "C_t": 11000.0,
-    "k_v": 0.005,
-    "C_v": 1200.0
 }
 
 def load_or_create_config(filename=os.path.join("configs", "config.json")):
@@ -187,7 +197,8 @@ def append_run_history(config, mission_info, execution_time, gmat_result=None,
         "execution_time_sec": round(execution_time, 2),
         "orbit_A": config["orbit_A"],
         "orbit_B": config["orbit_B"],
-        "k_t": config["k_t"], "C_t": config["C_t"], "k_v": config["k_v"], "C_v": config["C_v"],
+        "rules": config["rules"],
+        "strategy": config.get("strategy", {}),
         "optimization": config["optimization"],
     }
     if gmat_result is not None:
