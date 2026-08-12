@@ -1,6 +1,6 @@
 # 專案狀態筆記（交接用）
 
-給下一個 session（不管是我自己回來還是你自己看）快速抓回上下文用的。技術細節看 commit log 跟程式碼註解，這份主要是「現在做到哪、還缺什麼、為什麼」的整理。
+給下一個 session（不管是我自己回來還是你自己看）快速抓回上下文用的，這份主要是「現在做到哪、還缺什麼、為什麼」的整理。**怎麼用這個工具看 [README.md](README.md)；演算法/物理模型原理看 [METHODOLOGY.md](METHODOLOGY.md)**；更細節的技術決策看 commit log 跟程式碼註解。
 
 最後更新：2026-08-12。`improve-optimizer-and-gmat-integration` 分支已經 fast-forward
 merge 回 `Master` 並 push，分支本身已刪除——**現在直接在 `Master` 上開發**。同一天內
@@ -81,6 +81,11 @@ STATUS.md 原本寫「大 SMA 落差的情境可能受益，但還沒驗證投�
 
 改動範圍：`configs/config.json`、`main.py`（`DEFAULT_CONFIG` + `append_run_history` 記錄的欄位）、`src/optimizer.py`（`MissionOptimizer.__init__` 改讀 `config["rules"]`/`config.get("strategy", {})`）、`src/config_validator.py`（拆成 `_validate_rules`/`_validate_strategy` 兩個新函式）、`README.md` 欄位表。
 - 實測：新結構的 config 通過驗證；故意拿掉整個 `rules`/`strategy` 區塊、`strategy.USE_J2` 型別錯、`rules.k_t` 是負的（軟性警告）都如預期觸發；設定檔不存在時自動生成的預設範例也是新結構，且能自己通過驗證；用不變的正式 config 跑一次全流程 (含 GMAT)，分數/Δv/T_team 跟改之前完全一致 (100/100, InterceptSuccess ✅)；順便確認 `run_history.jsonl` 記錄的是完整的 `rules`/`strategy` 物件，不是拆散的欄位。
+
+### 新增 METHODOLOGY.md（拆分文件：怎麼用 vs 怎麼算的）
+使用者反映應該把「怎麼用」跟「怎麼算的」拆成兩份文件。`README.md` 本來就幾乎全是「怎麼用」的內容（安裝/config/執行/輸出/提交前檢查），不用大改；新寫了 [METHODOLOGY.md](METHODOLOGY.md)，把散落在程式碼註解跟這份 STATUS.md 裡的技術知識整理成一份對外可讀的說明：問題設定、整體流程、物理模型 (RK4+J2)、決策變數編碼 (球座標參數化)、Lambert 攔截 + 命中容許範圍利用、安全邊界設計、L-SHADE/L-BFGS-B 最佳化、計分公式、GMAT 驗證流程 (含 aim-point sync 那個 bug 的故事)、已知限制。兩份文件互相加了連結。
+- 寫的時候把引用的具體數字都回頭對照過原始碼/STATUS.md 抓錯了一個：族群大小超編寫成「快 200 倍」，實際是「180 倍」(360 個體 / 2 維)，已修正；其他引用數字 (108m 積分誤差、863m 命中容許壓力測試落差、17m 理論最差 Achieve 誤差) 都對照過原文確認無誤才留著。
+- 副作用：這份文件剛好也對得上規則第 6 節「設計理論」平手加賽的要求（同分要上台講 5 分鐘軌道設計方法論），晉級賽如果真的平手用得到。
 
 ## 還沒做 / 值得考慮的
 
