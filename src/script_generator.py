@@ -37,6 +37,9 @@ BurnB{i}.Axes = VNB;
 BurnB{i}.Element1 = {burns[i][0]:.7f};
 BurnB{i}.Element2 = {burns[i][1]:.7f};
 BurnB{i}.Element3 = {burns[i][2]:.7f};
+% DecrementMass=false: mass never decreases, so Isp/GravitationalAccel below
+% are cosmetic-only (300s is a typical bipropellant value) - see the comment
+% above the Spacecraft block for the full explanation.
 BurnB{i}.DecrementMass = false;
 BurnB{i}.Isp = 300;
 BurnB{i}.GravitationalAccel = 9.81;
@@ -157,6 +160,16 @@ Report Report_Intercept ShipB.ElapsedSecs MissDistance InterceptSuccess FinalBur
 %---------- Spacecraft
 %----------------------------------------
 
+% The DryMass/Cd/Cr/DragArea/SRPArea/BurnB*.Isp/GravitationalAccel values below
+% are cosmetic: they are required fields for Spacecraft/ImpulsiveBurn objects,
+% but Drag=None and SRP=Off in DefaultProp_ForceModel (see below) mean drag and
+% solar radiation pressure are never actually applied, so Cd/Cr/DragArea/SRPArea
+% have no effect on the propagated trajectory; BurnB*.DecrementMass = false means
+% mass never decreases, so Isp/GravitationalAccel don't affect any burn's actual
+% Delta-v or the resulting orbit either. The numbers below are just typical
+% values for a mid-size chemical-propulsion satellite, kept here so the script
+% looks complete and passes GMAT's parser - changing them will NOT change
+% InterceptSuccess/FinalBurnLegal.
 Create Spacecraft ShipA;
 ShipA.DateFormat = TAIModJulian;
 ShipA.Epoch = '21545';
@@ -171,8 +184,8 @@ ShipA.TA = {a_ta};
 ShipA.DryMass = 850;
 ShipA.Cd = 2.2;
 ShipA.Cr = 1.8;
-ShipA.DragArea = 15;
-ShipA.SRPArea = 1;
+ShipA.DragArea = 6;
+ShipA.SRPArea = 8;
 
 Create Spacecraft ShipB;
 ShipB.DateFormat = TAIModJulian;
@@ -188,8 +201,8 @@ ShipB.TA = {b_ta};
 ShipB.DryMass = 850;
 ShipB.Cd = 2.2;
 ShipB.Cr = 1.8;
-ShipB.DragArea = 15;
-ShipB.SRPArea = 1;
+ShipB.DragArea = 6;
+ShipB.SRPArea = 8;
 
 %----------------------------------------
 %---------- ForceModels
