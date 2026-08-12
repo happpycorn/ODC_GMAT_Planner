@@ -2,8 +2,10 @@
 
 給下一個 session（不管是我自己回來還是你自己看）快速抓回上下文用的。技術細節看 commit log 跟程式碼註解，這份主要是「現在做到哪、還缺什麼、為什麼」的整理。
 
-最後更新：2026-08-12（同一天內追加了 config 驗證 + 多圈 Lambert 評估），分支
-`improve-optimizer-and-gmat-integration`（還沒 merge 回 `Master`，也還沒 push）。
+最後更新：2026-08-12。`improve-optimizer-and-gmat-integration` 分支已經 fast-forward
+merge 回 `Master` 並 push，分支本身已刪除——**現在直接在 `Master` 上開發**。同一天內
+又追加了 tqdm 進度條修復、console 輸出簡化、把 3 個規則數字搬進 config 這幾項，都已
+commit 到 `Master`（尚未 push，見最新的 commit log）。
 
 ## 這是什麼
 
@@ -58,6 +60,17 @@ STATUS.md 原本寫「大 SMA 落差的情境可能受益，但還沒驗證投�
 - `DragArea`/`SRPArea` 原本是 15/1 (SRP 受光面積比阻力面積還小，物理上不太合理)，改成自洽的 6/8。`ForceModel` 的 `Drag=None`、`SRP=Off`，這些欄位本來就是裝飾用不影響結果，純粹是改得更像樣。
 - 在 script 裡加了英文註解，講清楚 `DryMass`/`Cd`/`Cr`/`DragArea`/`SRPArea`/`Isp`/`GravitationalAccel` 為什麼是裝飾用 (Drag/SRP 關閉、`DecrementMass=false`)，不用下次再重新想一遍。
 - **過程中抓到自己的一個回歸**：第一版註解寫成中文，直接會重踩這個分支前面已經修過的雷 (`887e64e`：非 ASCII 字元讓 GMAT 解析器直接報錯)。改成跟其他註解一致的純英文，並且實際掃過產生出來的 `outputs/output.txt` 確認 0 個非 ASCII 字元，再整套跑一次含 GMAT 驗證確認腳本還是能正常解析/收斂 (`InterceptSuccess`/`FinalBurnLegal` 都是 true) 才收工。
+
+### tqdm 進度條修復 + console 輸出簡化
+- **根因**：`_optimize_burn_case`（跑在 `ProcessPoolExecutor` 的子行程裡）直接呼叫 `print`/`tqdm.write`，但外層進度條活在主行程——子行程不知道進度條的游標位置，好幾個子行程各自時間點搶著寫同一個終端機，跟主行程的 `\r` 覆寫互相打架，導致進度條沒辦法原地更新，越印越往下（使用者回報的症狀）。
+- **修法**：子行程改成只回傳資訊 (`epochs_run` + 一個簡短備註字串)，所有 print 都收斂到主行程做，讓 tqdm 全程只在單一行程裡運作。用 `cat -vet` 看過原始字元確認整段進度條重繪現在是完整不被打斷的 `\r` 序列。
+- 順便把使用者覺得「印太多」的搜尋階段雜訊砍掉：3 條「核心啟動」併成 1 條、每個推進次數完成從 2 行併成 1 行、拿掉每次分數進步就喊一次的「發現新最佳解」（改成搜尋結束後只報一次最終選了哪個方案）、兩段計算時間分隔線併成 1 行、拿掉跟 GMAT 驗證結果重複的提醒。任務清單/最終分數/GMAT 驗證這些真正要看的輸出完全沒動。
+- 實測：全流程含 GMAT 驗證重跑一次，分數/Δv/T_team 跟改之前完全一致 (100/100, InterceptSuccess ✅)，確認只是砍雜訊沒動到邏輯。
+
+### 把規則規定的 3 個數字搬進 config
+翻 `Regulations_PrelimRound-20260605.pdf` 對照程式碼，發現 `ΔV_lim`（1500 m/s）、機動間隔下限（100s）、`T_max` 的週期倍數（4 倍）這三個規則數字是寫死在 `optimizer.py` 裡，沒有跟旁邊的 `k_t/C_t/k_v/C_v`（同樣是規則數字）放在一起。新增三個 config 欄位：`MAX_DV_MPS`、`MIN_MANEUVER_INTERVAL_SEC`、`T_MAX_PERIOD_MULTIPLE`，預設值等於現在初賽規則的數字，`config_validator.py` 也加了必填 + 值域檢查（必須是正數）。
+- 動機：規則第 7 節說晉級賽「會有更具挑戰性的情境與動態環境條件」，但這份 PDF 只涵蓋初賽，沒寫這三個數字會不會變——不確定，但不管會不會變，這樣改都是合理的架構收斂：晉級賽如果規則數字真的不一樣，改 config 就好，不用再回來翻 `optimizer.py`。
+- 實測：`validate_config` 對三個新欄位的必填/值域檢查都如預期觸發；直接 instantiate `MissionOptimizer` 塞不同的數字進去，確認 `self.MAX_DV`/`self.MIN_COAST_TIME`/`self.T_max` 三個屬性都正確反映 config 的值（不是巧合等於預設）；用預設值跑一次完整流程 (含 GMAT)，分數/Δv 跟改之前完全一致，確認沒有把初賽這一輪跑壞。
 
 ## 還沒做 / 值得考慮的
 

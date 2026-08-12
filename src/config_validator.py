@@ -140,7 +140,8 @@ def validate_config(config) -> None:
     errors: list = []
 
     top_required = ["orbit_A", "orbit_B", "optimization", "USE_J2",
-                     "MISS_TOLERANCE_KM", "k_t", "C_t", "k_v", "C_v"]
+                     "MISS_TOLERANCE_KM", "MAX_DV_MPS", "MIN_MANEUVER_INTERVAL_SEC",
+                     "T_MAX_PERIOD_MULTIPLE", "k_t", "C_t", "k_v", "C_v"]
     missing = [k for k in top_required if k not in config]
     if missing:
         errors.append(f"config 缺少欄位: {missing}")
@@ -159,6 +160,20 @@ def validate_config(config) -> None:
         v = config["MISS_TOLERANCE_KM"]
         if not _is_number(v) or v < 0:
             errors.append(f"MISS_TOLERANCE_KM 必須是 >=0 的數字，但收到 {v!r}")
+
+    # 這三個是規則規定的數字 (ΔV_lim/機動間隔下限/T_max 週期倍數)，必須是正數才有意義
+    if "MAX_DV_MPS" in config:
+        v = config["MAX_DV_MPS"]
+        if not _is_number(v) or v <= 0:
+            errors.append(f"MAX_DV_MPS 必須是 >0 的數字 (單位 m/s)，但收到 {v!r}")
+    if "MIN_MANEUVER_INTERVAL_SEC" in config:
+        v = config["MIN_MANEUVER_INTERVAL_SEC"]
+        if not _is_number(v) or v < 0:
+            errors.append(f"MIN_MANEUVER_INTERVAL_SEC 必須是 >=0 的數字 (單位秒)，但收到 {v!r}")
+    if "T_MAX_PERIOD_MULTIPLE" in config:
+        v = config["T_MAX_PERIOD_MULTIPLE"]
+        if not _is_number(v) or v <= 0:
+            errors.append(f"T_MAX_PERIOD_MULTIPLE 必須是 >0 的數字，但收到 {v!r}")
 
     for f in ("k_t", "C_t", "k_v", "C_v"):
         if f in config and not _is_number(config[f]):

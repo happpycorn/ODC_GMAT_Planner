@@ -182,12 +182,16 @@ class MissionOptimizer:
         self.J2_VAL = 1.08262668e-3 if self.USE_J2 else 0.0
         self.RE_VAL = 6378.137
         self.MIN_PERIAPSIS = self.RE_VAL + 100.0
-        self.MAX_DV = 1.5
+        # ΔV_lim、機動間隔下限、T_max 的週期倍數：這三個是規則規定的數字 (初賽規則
+        # 第 2、3 節：ΔV_lim=1500 m/s、間隔≥100s、T_max=4×T_A)，放進 config 跟
+        # k_t/C_t/k_v/C_v 放一起，不寫死在程式碼裡——如果晉級賽的規則數字不一樣，
+        # 改 config 就好，不用回來改這裡。預設值等於目前初賽規則的數字。
+        self.MAX_DV = float(config.get("MAX_DV_MPS", 1500.0)) / 1000.0  # 換算成 km/s，下面全部用 km/s
         # 搜尋/微調階段用的「內部目標」比規則的真實上限更嚴一點 (留 10 m/s 安全邊界)，
         # 避免 NLP 微調的數值梯度在邊界上把解推過真正的 ΔV_lim 那一側才被扣分。
         # 最終回報/合規判定 (_replay_mission) 仍然用 self.MAX_DV 這個真實規則上限去算。
         self.MAX_DV_SOFT = self.MAX_DV - 0.01
-        self.MIN_COAST_TIME = 100.0
+        self.MIN_COAST_TIME = float(config.get("MIN_MANEUVER_INTERVAL_SEC", 100.0))
 
         # 攔截容許範圍：規則只要求 Δr ≤ 這個值，超出的精準度不會多加分 (Δr_min 會被
         # 地板夾住)，開放讓最後一棒 Lambert 瞄準這個球內最省油的點，而不是死盯著 A
@@ -225,9 +229,9 @@ class MissionOptimizer:
         self.seed = config["optimization"].get("SEED")
 
 
-        # 計算時間上限
+        # 計算時間上限 (T_max = T_MAX_PERIOD_MULTIPLE × A 的軌道週期，見上面的說明)
         self.Ta_sec = 2.0 * np.pi * np.sqrt(config["orbit_A"]["SMA"]**3 / self.MU)
-        self.T_max = 4.0 * self.Ta_sec
+        self.T_max = float(config.get("T_MAX_PERIOD_MULTIPLE", 4.0)) * self.Ta_sec
     
     def _generate_bounds(self, num_burns: int) -> Tuple[list, list]:
         """
