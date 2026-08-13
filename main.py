@@ -145,8 +145,11 @@ def run_gmat_verification(console_path: str, script_path: str, timeout_sec: floa
     """
     console_path = os.path.expanduser(console_path)
     if not os.path.exists(console_path):
-        print(f"⚠️ 找不到 GmatConsole ({console_path})，略過自動 GMAT 驗證 "
-              f"(用 --gmat-console 指到正確路徑，或用 --no-gmat 關掉這個提示)。")
+        print(f"⚠️ 找不到 GmatConsole ({console_path})，略過自動 GMAT 驗證。"
+              f"每次都要打 --gmat-console 太麻煩的話，可以在 config.json 裡加："
+              f'\n   "local": {{"gmat_console_path": "你的 GmatConsole 完整路徑"}}'
+              f"\n（這個設定只在你自己的 config.json 裡，不會跟著 git 到處跑）。"
+              f"不想跑 GMAT 驗證就用 --no-gmat 關掉這個提示。")
         return None
 
     bin_dir = os.path.dirname(console_path)
