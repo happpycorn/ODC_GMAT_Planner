@@ -124,15 +124,41 @@ def fast_fitness_evaluator(
     # 呼叫 Poliastro 內建的純 Numba Lambert 求解器 (izzo)
     # izzo 回傳的是 (v1_req, v2_req)。順向/逆向兩種轉移都算一次，取 Δv 較小的那個 —
     # A/B 兩軌道傾角差大時，逆向解常常明顯省油，只算順向會漏掉更好的解。
-    v1_req_pro, _ = izzo(
-        mu, r_curr, r_aim, t_final_leg,
-        M=0, prograde=True, lowpath=True, numiter=35, rtol=1e-8
-    )
-    v1_req_retro, _ = izzo(
-        mu, r_curr, r_aim, t_final_leg,
-        M=0, prograde=False, lowpath=True, numiter=35, rtol=1e-8
-    )
-    if fast_norm(v1_req_retro - v_curr) < fast_norm(v1_req_pro - v_curr):
+    #
+    # izzo 內部的 Householder/Halley 疊代對某些幾何 (轉移角接近 0°/180°、極端的
+    # SMA 落差之類) 會直接丟 RuntimeError("Failed to converge")，不是回傳一個
+    # 很爛的解——沒接住的話，L-SHADE 族群裡剛好抽到一個這種候選解，會讓整個
+    # model.solve() 當掉，白白浪費掉那個燃燒次數案例已經算好的所有結果 (實測
+    # 抓到過：測極端大 SMA 的情境時 3 個案例裡有 2 個因為這樣整組報廢)。跟
+    # check_constraints 撞地球的處理方式一致：算不出來就當作這組候選解爛掉，
+    # 回傳 0 分讓 L-SHADE 自然淘汰它，不要讓一個候選解拖垮整次搜尋。
+    pro_ok = True
+    v1_req_pro = np.zeros(3, dtype=np.float64)
+    try:
+        v1_req_pro, _ = izzo(
+            mu, r_curr, r_aim, t_final_leg,
+            M=0, prograde=True, lowpath=True, numiter=35, rtol=1e-8
+        )
+    except Exception:
+        pro_ok = False
+
+    retro_ok = True
+    v1_req_retro = np.zeros(3, dtype=np.float64)
+    try:
+        v1_req_retro, _ = izzo(
+            mu, r_curr, r_aim, t_final_leg,
+            M=0, prograde=False, lowpath=True, numiter=35, rtol=1e-8
+        )
+    except Exception:
+        retro_ok = False
+
+    if not pro_ok and not retro_ok:
+        return 0.0
+    elif not retro_ok:
+        v1_req = v1_req_pro
+    elif not pro_ok:
+        v1_req = v1_req_retro
+    elif fast_norm(v1_req_retro - v_curr) < fast_norm(v1_req_pro - v_curr):
         v1_req = v1_req_retro
     else:
         v1_req = v1_req_pro
@@ -634,10 +660,30 @@ def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_
     ])
     r_aim = r_A_target + offset_vec
 
-    # 順向/逆向都算一次，取 Δv 較小的那個當初始猜測 (跟 fast_fitness_evaluator 邏輯一致)
-    v1_guess_pro, _ = izzo(mu, r_curr, r_aim, t_final_leg, M=0, prograde=True, lowpath=True, numiter=35, rtol=1e-8)
-    v1_guess_retro, _ = izzo(mu, r_curr, r_aim, t_final_leg, M=0, prograde=False, lowpath=True, numiter=35, rtol=1e-8)
-    used_retrograde = fast_norm(v1_guess_retro - v_curr) < fast_norm(v1_guess_pro - v_curr)
+    # 順向/逆向都算一次，取 Δv 較小的那個當初始猜測 (跟 fast_fitness_evaluator 邏輯一致)。
+    # 這裡理論上不太會撞到 izzo 的 Failed to converge (fast_fitness_evaluator 已經把
+    # 會崩潰的候選解擋在搜尋階段淘汰掉了，能走到重播這一步的解本來就是搜尋階段判定
+    # 「算得出來」的那個)，但還是接住例外，萬一真的撞到給一句看得懂的錯誤，不要噴
+    # poliastro 內部的 raw traceback。
+    pro_ok, retro_ok = True, True
+    try:
+        v1_guess_pro, _ = izzo(mu, r_curr, r_aim, t_final_leg, M=0, prograde=True, lowpath=True, numiter=35, rtol=1e-8)
+    except Exception:
+        pro_ok = False
+        v1_guess_pro = np.zeros(3)
+    try:
+        v1_guess_retro, _ = izzo(mu, r_curr, r_aim, t_final_leg, M=0, prograde=False, lowpath=True, numiter=35, rtol=1e-8)
+    except Exception:
+        retro_ok = False
+        v1_guess_retro = np.zeros(3)
+
+    if not pro_ok and not retro_ok:
+        raise RuntimeError(
+            "重播最佳解時，izzo Lambert 求解器兩個方向都沒收斂 (Failed to converge)——"
+            "理論上不該發生 (搜尋階段已經會淘汰這種候選解)，如果真的看到這個訊息，"
+            "代表這組解的幾何非常邊緣，回報這個狀況並檢查是不是要換一組軌道參數重跑。"
+        )
+    used_retrograde = retro_ok and (not pro_ok or fast_norm(v1_guess_retro - v_curr) < fast_norm(v1_guess_pro - v_curr))
     if used_retrograde:
         v1_guess = v1_guess_retro
     else:
