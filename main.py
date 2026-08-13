@@ -206,7 +206,7 @@ def run_gmat_verification(console_path: str, script_path: str, timeout_sec: floa
 
 
 def append_run_history(config, mission_info, execution_time, gmat_result=None,
-                        fixed_script_result=None,
+                        fixed_script_result=None, fixed_script_source=None,
                         path=os.path.join("outputs", "run_history.jsonl")):
     """把這次執行的結果 (連同用的 config) 附加成一行 JSON，累積成可回頭比較的執行紀錄。"""
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -240,6 +240,12 @@ def append_run_history(config, mission_info, execution_time, gmat_result=None,
     # 那個 (DC 版本) 更接近實際要繳交的東西。
     if fixed_script_result is not None:
         record["fixed_script_verified"] = {
+            # "gmat_dc"：一般版本乾淨通過，燃燒值來自 GMAT DC 收斂後的答案 (最可信)。
+            # "python_fallback"：一般版本 (DC) 沒有乾淨通過 (通常是 DC 的 Vary 邊界卡在
+            # 合法 Δv 範圍、搆不到 Python 認為需要的值)，改用 Python 自己算出的燃燒值
+            # 繞過 DC 直接驗證——這種情況下 final_burn_legal 可能是 false，代表這個方案
+            # 命中但超標，依規則第 5 節扣 10 分/次，不是取消資格，仍然是可評估的方案。
+            "source": fixed_script_source,
             "intercept_success": fixed_script_result["intercept_success"],
             "miss_km": round(fixed_script_result["miss_km"], 6),
             "t_team_sec": round(fixed_script_result["t_team_sec"], 2),
@@ -320,14 +326,52 @@ def main():
                   f"(Python 預測 {mission_info['T_team']:.2f} s)")
             print(f"  報表原始檔案     : {gmat_result['report_path']}")
 
-    # 3.5 DC 版本驗證乾淨通過後，把 GMAT 自己收斂出來的燃燒值寫死，產生一份不含
-    # 任何求解器的「固定燃燒版本」——換一台電腦跑，不用擔心求解器 (DC) 的收斂行為
-    # 跟我們這邊不一樣，因為這份腳本裡根本沒有求解器，單純傳播+施加燃燒。
+    # 3.5 產生「固定燃燒版本」(不含任何求解器，單純傳播+施加燃燒)。
+    #
+    # 燃燒值來源分兩種情況：
+    # (a) 一般版本 (DC) 驗證乾淨通過 → 用 GMAT 自己收斂出的值 (最可信，GMAT 高精度模型
+    #     自己找到的答案)。
+    # (b) 一般版本沒有乾淨通過 (DC 沒收斂 / 命中失敗) → 改用 Python 自己 (refine_lambert_burn)
+    #     算出的值當 fallback。這個分支存在的理由：DC 的 Vary 邊界寫死卡在合法 Δv 範圍
+    #     (script_generator 的 max_dv 參數)，如果真正需要的燃燒本來就超過規則上限，DC
+    #     不管怎樣都不可能收斂到那個值——這不代表 Python 找到的方案是垃圾，只代表「透過
+    #     GMAT DC 求解」這條路線走不通。而規則第 5 節明講：單次燃燒超標只是每次扣 10 分
+    #     (扣到 0 分為止)，不是直接取消資格，所以「命中但超標」仍然是一個可能值得採用、
+    #     至少值得誠實跑出來看看分數的方案，不該被 DC 收斂失敗吃掉、變成一份根本產生不出來
+    #     的結果。用 Python 自己的值繞過 DC 直接驗證，才知道這個方案實際上能不能重現、
+    #     真正的 Δv 是多少。
+    #
+    # 兩種情況都需要先確認 mission_info["dc_converged"] (Python 端 refine_lambert_burn
+    # 有沒有在它自己的模型內收斂到瞄準點)——如果連 Python 自己都沒收斂，代表這組解本身
+    # 就沒有一個自洽的燃燒值可以拿來 fallback，兩條路都走不通。
     fixed_script_result = None
+    fixed_script_source = None  # "gmat_dc" | "python_fallback" | None，寫進 run_history 方便回頭查
     if not args.no_gmat and not args.no_fixed_script:
-        if gmat_result and gmat_result["intercept_success"] and gmat_result["targeter_converged"] \
-                and gmat_result["final_burn_legal"]:
-            print("\n🔒 一般版本驗證乾淨通過，產生固定燃燒版本 (適合正式繳交)...")
+        clean_dc = bool(
+            gmat_result and gmat_result["intercept_success"]
+            and gmat_result["targeter_converged"] and gmat_result["final_burn_legal"]
+        )
+        final_burn_vnb = None
+        if clean_dc:
+            fixed_script_source = "gmat_dc"
+            final_burn_vnb = gmat_result["final_burn_vnb"]
+            print("\n🔒 一般版本 (GMAT DC) 驗證乾淨通過，用 GMAT 收斂後的值產生固定燃燒版本...")
+        elif mission_info["dc_converged"]:
+            fixed_script_source = "python_fallback"
+            final_burn_vnb = tuple(burns[-1])
+            reason = "GMAT 呼叫失敗/找不到 GmatConsole" if gmat_result is None else (
+                "Targeter 未收斂" if not gmat_result["targeter_converged"] else
+                "命中失敗 (Δr > 5km)" if not gmat_result["intercept_success"] else
+                "最後一棒超過 Δv 上限"
+            )
+            print(f"\n⚠️ 一般版本 (GMAT DC) 沒有乾淨通過（{reason}），"
+                  f"改用 Python 自己算出的燃燒值產生固定燃燒版本，繞過 DC 直接驗證這個方案"
+                  f"能不能重現、真正的 Δv 是多少...")
+        else:
+            print("\n⚠️ 一般版本沒有通過，Python 自己的模型也沒收斂到瞄準點——這組解本身"
+                  "沒有可信的燃燒值可以拿來當 fallback，先處理好再重跑。")
+
+        if final_burn_vnb is not None:
             script_generator(
                 config["orbit_A"]["SMA"], config["orbit_A"]["ECC"], config["orbit_A"]["INC"],
                 config["orbit_A"]["RAAN"], config["orbit_A"]["AOP"], config["orbit_A"]["TA"],
@@ -335,7 +379,7 @@ def main():
                 config["orbit_B"]["RAAN"], config["orbit_B"]["AOP"], config["orbit_B"]["TA"],
                 burns, times, aim_point=mission_info["aim_point"],
                 max_dv=optimizer.MAX_DV, use_j2=optimizer.USE_J2,
-                final_burn_fixed_vnb=gmat_result["final_burn_vnb"],
+                final_burn_fixed_vnb=final_burn_vnb,
                 output_filename="output_submit.txt",
             )
             fixed_script_result = run_gmat_verification(
@@ -343,27 +387,34 @@ def main():
             )
             if fixed_script_result:
                 fmatch = "✅" if fixed_script_result["intercept_success"] else "❌"
-                fdv_match = "✅" if fixed_script_result["final_burn_legal"] else "❌"
+                fdv_match = "✅" if fixed_script_result["final_burn_legal"] else "⚠️"
+                src_label = "GMAT DC 收斂後的值" if fixed_script_source == "gmat_dc" \
+                    else "Python 自己算的值 (DC 沒有乾淨通過的 fallback)"
                 print("\n--- 🔒 固定燃燒版本驗證結果 (outputs/output_submit.txt，沒有求解器) ---")
+                print(f"  燃燒值來源       : {src_label}")
                 print(f"  InterceptSuccess : {fmatch} {'成功' if fixed_script_result['intercept_success'] else '失敗'}")
-                print(f"  MissDistance     : {fixed_script_result['miss_km']*1000:.3f} m   "
-                      f"(一般版本 {gmat_result['miss_km']*1000:.3f} m)")
+                print(f"  MissDistance     : {fixed_script_result['miss_km']*1000:.3f} m")
                 print(f"  最後一棒實際 Δv  : {fixed_script_result['final_burn_dv_mps']:.1f} m/s   "
-                      f"{fdv_match} {'合規 (≤1500 m/s)' if fixed_script_result['final_burn_legal'] else '⚠️ 超過 1500 m/s 限制！'}")
+                      f"{fdv_match} {'合規 (≤1500 m/s)' if fixed_script_result['final_burn_legal'] else '超過 1500 m/s 限制'}")
                 if fixed_script_result["intercept_success"] and fixed_script_result["final_burn_legal"]:
-                    print("  👉 這份可以拿去正式繳交。")
+                    print("  👉 命中成功且合規，這份可以拿去正式繳交。")
+                elif fixed_script_result["intercept_success"]:
+                    print("  👉 命中成功但這棒超標：依規則第 5 節，超標的燃燒每次扣 10 分（扣到 0 分為止），"
+                          "不是直接取消資格，這份仍然是一個能重現、可以評估的方案——但先確認這是不是目前")
+                    print("     找得到分數最高的解（例如用 sweep_burns.py 或加大搜尋預算/棒數，看看有沒有")
+                    print("     同樣能命中、Δv 壓在合法範圍內的更好方案），不要一找到能命中的就直接採用。")
                 else:
-                    print("  ⚠️ 固定版本驗證沒有通過 (理論上應該跟一般版本幾乎一樣，這不應該發生)，"
-                          "先用一般版本 (outputs/output.txt) 為準，這個狀況值得回報排查。")
+                    print("  ⚠️ 固定版本仍然沒有命中——如果來源是 GMAT DC 收斂後的值，理論上應該跟一般版本")
+                    print("     幾乎一樣，這不應該發生，值得回報排查；如果來源是 Python fallback，代表這組解")
+                    print("     本身站不住腳（例如 Python 的簡化模型跟 GMAT 在這個轉移時間尺度上有落差），")
+                    print("     不建議採用，回頭檢查搜尋設定或考慮換一組解。")
             else:
-                print("  ⚠️ 固定版本沒有跑成功 (GMAT 呼叫失敗)，先用一般版本 (outputs/output.txt) 為準。")
-        elif gmat_result:
-            print("\n⚠️ 一般版本沒有完全通過驗證 (成功/收斂/合規三者其一是 false)，不產生固定燃燒版本——"
-                  "這組解本身就有問題，先處理好再重跑。")
+                print("  ⚠️ 固定版本沒有跑成功 (GMAT 呼叫失敗)。")
 
     # 4. 附加寫入執行紀錄，方便之後比較不同設定/軌道跑出來的分數
     append_run_history(config, mission_info, execution_time,
-                        gmat_result=gmat_result, fixed_script_result=fixed_script_result)
+                        gmat_result=gmat_result, fixed_script_result=fixed_script_result,
+                        fixed_script_source=fixed_script_source)
 
     # 輸出效能報告
     if ENABLE_PROFILING:

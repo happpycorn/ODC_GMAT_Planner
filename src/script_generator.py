@@ -22,13 +22,27 @@ def script_generator(
     corrector (starting from Python's Lambert-based guess) to converge onto
     aim_point using GMAT's own higher-fidelity model. Pass a (v, n, b) tuple
     here instead to generate a "submission" variant: the final burn is fixed
-    to these exact VNB components (normally GMAT's own *converged* answer
-    from a prior DC run, read back from the report) and applied directly like
-    every other burn — no solver runs anywhere in this script. Rationale:
-    once GMAT's DC has already found and validated the correct burn once,
-    baking that answer in as a constant removes any dependency on the DC
-    solver behaving identically on whatever machine actually runs the
-    submission — it's pure propagate-and-maneuver, nothing to "not converge".
+    to these exact VNB components and applied directly like every other burn
+    — no solver runs anywhere in this script. Rationale: once a burn value has
+    already been found and validated once, baking it in as a constant removes
+    any dependency on a solver behaving identically on whatever machine
+    actually runs the submission — it's pure propagate-and-maneuver, nothing
+    to "not converge".
+
+    This value normally comes from one of two sources (see main.py):
+    (a) GMAT's own *converged* DC answer, read back from a prior normal-mode
+        run — the usual, most-trusted case. The DC's Vary bounds are clamped
+        to [-max_dv, max_dv], so a value from this source is always legal by
+        construction.
+    (b) A fallback: Python's own refine_lambert_burn result, used when the
+        normal DC-based script failed to converge or missed the target. This
+        happens whenever the true required burn exceeds max_dv — the DC's
+        Vary bounds structurally cannot reach it, so it can never converge no
+        matter how good the underlying solution is (the rules only deduct 10
+        points per violating maneuver, they don't disqualify — see
+        Regulations section 5 — so an over-limit-but-intercepting solution
+        can still be worth submitting). A value from this source is NOT
+        guaranteed legal — check FinalBurnLegal in the report.
     See METHODOLOGY.md/STATUS.md for the full reasoning.
     """
     aim_x, aim_y, aim_z = aim_point
