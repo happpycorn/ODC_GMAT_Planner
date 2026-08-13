@@ -346,6 +346,9 @@ Report_Intercept.ColumnWidth = 20;
     # outputs/<output_filename> 永遠是「這個變體最新一次」的固定路徑，同時把同樣的
     # 內容備份一份帶時間戳記的版本到 outputs/history/，避免像剛剛那樣一次測試/爛解
     # 就把前面跑出來的好結果蓋掉，想找回舊版本直接去 history 資料夾撈。
+    # outputs/ 整個被 .gitignore 排除，全新 git clone 下來這個資料夾根本不存在
+    # (git 不會建立空資料夾)，這裡的 makedirs 之前漏了，寫檔案前一定要先確保資料夾在。
+    os.makedirs("outputs", exist_ok=True)
     output_path = os.path.join("outputs", output_filename)
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(script_content)
