@@ -47,7 +47,20 @@ def fast_fitness_evaluator(
 
     total_dv = 0.0
     penalty_count = 0
-    dt = 60.0 # RK4 步長
+    # RK4 步長：固定 60 秒對「一般規模」的軌道 (T_max 落在幾萬秒等級，目前測過的
+    # 情境都是這樣) 夠用，但軌道大到某個程度 (例如 SMA 上看幾萬公里) 時，T_max
+    # 會拉到幾十萬秒，固定 60 秒步長代表單次傳播要走上萬步，一次搜尋動輒要跑好幾
+    # 分鐘——不是壞掉，是真的在算，只是慢到不能用。
+    # 這裡改成跟 T_max 成比例：目標把最長一次傳播 (跨整個 T_max) 的步數控制在
+    # ~1600 步上下，公式是 max(60.0, T_max / 1600.0)。1600 這個目標步數是照目前
+    # 測過的「一般規模」情境反推的——T_max 在那個量級時 T_max/1600 ≈ 60，跟原本
+    # 固定值幾乎沒差 (實測差在 0.1 秒等級)，等於這個改動只在真的需要放大步長時
+    # 才會生效，不會動到已經驗證過的情境的行為。propagate_rk4 本身 (core_math.py)
+    # 每次呼叫的最後一步都會夾到剛好對齊 tof，所以就算 dt 比較大，比 tof 短的傳播
+    # (例如最後一棒常見的 100 秒滑行) 也不會被單一步「跳過頭」，還是能正確收斂，
+    # 只是精細度變粗——這一段的精度風險已經拿含 J2 的 GMAT 高階模型實測驗證過
+    # (見 STATUS.md)。
+    dt = max(60.0, T_max / 1600.0)
 
     # 1. 初始等待時間 (t_wait)
     current_time = float(x[0])
@@ -583,8 +596,11 @@ def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_
     """
     burn_logs = []
     times = [0.0]
-    dt = 60.0
-    
+    # 跟 fast_fitness_evaluator 用同一套邏輯 (見那裡的詳細說明)：一般規模的軌道
+    # 維持原本的 60 秒，只有 T_max 大到步數會爆炸的情境才會放大步長。重播用的
+    # 傳播器必須跟搜尋階段一致，不然重播出來的分數會對不上搜尋時算的。
+    dt = max(60.0, T_max / 1600.0)
+
     current_time = float(x[0])
     times.append(current_time)
     r_curr, v_curr = propagate_rk4(B_r0, B_v0, current_time, dt, mu, j2_val, re_val)
