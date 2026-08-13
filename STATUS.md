@@ -108,6 +108,12 @@ STATUS.md 原本寫「大 SMA 落差的情境可能受益，但還沒驗證投�
 - `main.py`：一般版本驗證乾淨通過（成功+收斂+合規）後，自動用讀回來的向量產生 `outputs/output_submit.txt`，**再送一次 GMAT 驗證**確認這份「重新單純傳播」出來的結果站得住腳，兩者印出來對照。新增 `--no-fixed-script` 可以跳過這一步（省幾秒，開發迭代時用）。`append_run_history` 多記一個 `fixed_script_verified` 欄位。
 - 實測：`configs/practice_scenario.json` 跑一次完整流程，一般版本 MissDistance 3984.786m，固定版本重新驗證出來是 3985.204m——只差 0.4m，證實「寫死 GMAT 收斂後的值再重跑」確實能重現幾乎一樣的結果；另外確認固定版本產生的 script 裡完全沒有任何 `Target`/`Vary`/`Achieve`/`DifferentialCorrector` 實際指令（只有註解提到），也確認 0 個非 ASCII 字元（沒有重踩 `887e64e` 那個雷）。
 
+### 清掉沒用到的重量級依賴 + 加「部署到新電腦」的說明
+起因：使用者問「這個要部署到一台全新電腦要怎麼做」——查 `pyproject.toml` 發現 `torch`/`optuna`/`pymoo`/`line-profiler` 四個依賴，整個 repo (`src/`、`main.py`、`sweep_burns.py`) 完全沒有 import 過，應該是早期實驗階段（`GPU_Trial` 分支、舊版 `optuna_optimizer.py`）留下的殘留，這兩個都已經在前面的 session 清掉了，但 `pyproject.toml` 沒有跟著清。`torch` 又特別重，`uv lock` 重新解析後移除了一整串 NVIDIA CUDA 函式庫（`nvidia-cublas`/`nvidia-cudnn`/`nvidia-cusolver`...）、`sqlalchemy`、`sympy`、`networkx` 等一堆間接依賴——這台完全沒有 GPU 的機器上根本用不到。
+- 改動：`pyproject.toml` 的 `dependencies` 從 7 個砍到 3 個（`astropy`/`mealpy`/`poliastro`，`numpy`/`numba`/`scipy`/`tqdm` 是這幾個的間接依賴，不用列）；重新 `uv lock`；README 補了「Python 3.8+」跟 `pyproject.toml` 實際要求的 3.12+ 對不上的錯誤，順手修正。
+- 實測：清完後跑 `configs/practice_scenario.json --no-gmat` 完整流程一次，確認 tqdm（雖然被移除出直接依賴，但透過 mealpy 間接帶進來）跟其他套件都還在，沒有 ImportError，結果正常。目前 `.venv` 大小 1.1GB（清之前含 torch+CUDA 套件應該大好幾倍，沒留清之前的數字對照，但移除的套件清單看得出差很多）。
+- README 新增「🖥️ 部署到一台全新電腦」章節，分兩種情況講清楚：(A) 要在新電腦跑整套設計工具（`configs/` 被 gitignore 排除、GMAT 要另外裝、`--gmat-console` 一定要蓋掉寫死的預設路徑）；(B) 比賽當天主辦單位的電腦——**其實不需要部署這整套東西**，`outputs/output_submit.txt` 本身就是一份純文字 GMAT script，直接帶去在對方的 GMAT 裡開檔執行就好，不需要 Python/uv/這個 repo 的任何程式碼。這個區分本身也是「固定燃燒版本」那個功能存在的意義。
+
 ## 還沒做 / 值得考慮的
 
 優先順序由高到低：

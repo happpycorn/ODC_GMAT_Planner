@@ -10,8 +10,7 @@
 
 ## ⚠️ 系統環境需求
 
-請確認您的電腦已安裝 **Python 3.8 或以上版本**。
-（若尚未安裝，請至 [Python 官方網站](https://www.python.org/downloads/) 下載安裝）
+本專案需要 **Python 3.12 或以上版本**（`pyproject.toml` 寫死 `requires-python = ">=3.12"`）。不用自己先裝好——下面的 `uv` 工具會自動抓一份對的版本回來，不會跟你電腦上其他專案用的 Python 打架。
 
 ---
 
@@ -99,6 +98,34 @@ uv run sweep_burns.py --config configs/practice_scenario.json
   * 兩份都會各自備份一份帶時間戳記的版本到 `outputs/history/`，避免之後的測試跑動不小心把先前的好結果蓋掉。
 * **GMAT 攔截報表：** 預設會被 `main.py` 自動讀取並印出對照，不用手動找。原始檔案在 GMAT 安裝資料夾下的 `output/GMAT_InterceptReport.txt`（如果想自己手動在 GMAT 裡開 `output.txt`/`output_submit.txt` 執行也完全可以，看 `InterceptSuccess` 欄位：1 = 成功、0 = 失敗）。3D 視角 `View_Intercept` 會自動用紅/綠/灰區分 ShipA/ShipB/地球。
 * **執行紀錄：** 每次執行都會把這次用的設定跟結果（時間戳、分數、ΔV、T_team、違規次數、兩份腳本各自的 GMAT 實際驗證結果…）附加一行 JSON 到 `outputs/run_history.jsonl`，方便之後比較不同設定/軌道跑出來的分數，以及 Python 預測跟 GMAT 實測差多少。
+
+---
+
+## 🖥️ 部署到一台全新電腦
+
+分兩種情況，需要的東西差很多：
+
+### A. 要在新電腦上跑整套設計工具（例如隊友的筆電）
+
+1. **裝 `uv`**：`pip install uv`（Windows 用命令提示字元/PowerShell，Mac/Linux 用終端機）。
+2. **拿到程式碼**：`git clone https://github.com/happpycorn/ODC_GMAT_Planner.git`，或直接把整個資料夾複製過去。
+3. **`configs/` 資料夾要另外處理**：這個資料夾整個被 `.gitignore` 排除（避免測試用的軌道數字不小心被當成正式資料 commit 上去），`git clone` 下來 `configs/` 會是空的。兩個選項：
+   - 直接跑 `uv run main.py`，找不到設定檔會自動生成一份範例（`orbit_A`/`orbit_B` 都是佔位數字，記得換成真的資料）。
+   - 或者手動把原本電腦上 `configs/*.json` 複製過去（USB / 雲端硬碟 / email 都行，就是幾個文字檔）。
+4. **第一次執行會比較慢**：`uv run main.py` 第一次跑，`uv` 會自動下載對應版本的 Python（3.12+）跟所有套件（`numpy`/`numba`/`scipy`/`astropy`/`poliastro`/`mealpy` 等，現在裝起來大約 1GB 左右——早期版本不小心留了 `torch`/`optuna`/`pymoo` 這些完全沒用到的重量級依賴，已經清掉了，不然會大好幾倍），**這一步需要網路**。之後每次執行都是用裝好的環境，不會重新下載。
+5. **GMAT 是完全獨立的一套軟體，`uv` 不會幫你裝**：這台新電腦要另外安裝 GMAT，然後用 `--gmat-console` 指到正確路徑：
+   ```bash
+   uv run main.py --gmat-console "C:\Program Files\GMAT\bin\GmatConsole.exe"   # Windows 範例路徑
+   uv run main.py --gmat-console "/path/to/GMAT/bin/GmatConsole"               # Mac/Linux 範例路徑
+   ```
+   （`main.py` 裡寫死的預設路徑是我這台機器的路徑，新電腦上一定對不上，一定要用這個參數蓋掉，不然只會印警告然後跳過 GMAT 驗證。）
+6. **建議先拿一個小情境（例如 `configs/practice_scenario.json`）跑一次 `--no-gmat` 版本，確認 Python 端能跑，再測 GMAT 那段**，不要直接拿正式資料在新電腦上測試新環境。
+
+### B. 比賽當天，主辦單位準備的電腦
+
+**不需要部署上面這整套東西。** 規則寫明「太空船的指令下達與模擬，需使用主辦/承辦單位所準備的電腦」，但正式要拿去執行的 `outputs/output_submit.txt` 本身就是一份**純文字的 GMAT script**，不含任何求解器（見上面「固定燃燒版本」的說明）——只要那台電腦上有裝 GMAT（官方應該會確保這件事，畢竟整場比賽都靠 GMAT 跑），直接把這個檔案帶過去（USB/email 都行），在 GMAT 裡開檔執行就好，完全不需要 Python、`uv`、或這個 repo 的任何程式碼。
+
+真正需要在自己電腦上（賽前「先期模擬與運算」）跑的是這整套工具，用來**找出**這份 script；比賽現場要交出去的只是**結果**。兩件事分開想，能大幅降低「主辦單位電腦環境跟我們不一樣」的風險——順便也是這個 session 加「固定燃燒版本」的動機。
 
 ---
 
