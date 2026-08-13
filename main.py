@@ -15,8 +15,12 @@ from src.optimizer import MissionOptimizer
 from src.script_generator import script_generator
 from src.config_validator import validate_config, ConfigValidationError
 
-# GmatConsole 預設路徑 (你的機器上的 GMAT 安裝位置)。不同機器/重灌過可以用
-# --gmat-console 覆蓋，或用 --no-gmat 直接跳過這一步。
+# GmatConsole 路徑的最後備援值 (只在 --gmat-console 沒給、config.json 也沒有
+# local.gmat_console_path 時才用得到)。這個路徑寫死在這裡、被 git 追蹤，換一台機器/
+# 換一個人開發大概率對不上——所以優先順序是 --gmat-console > config 的
+# local.gmat_console_path (config.json 本來就被 gitignore 排除，換人/換機器各自維護
+# 自己的這塊，不用改這個檔案) > 這裡的最後備援值 (目前是我這台機器的路徑，純粹是圖
+# 我自己方便，不建議依賴它)。
 GMAT_CONSOLE_DEFAULT = "/Users/corn/Documents/GMAT R2026a/bin/GmatConsole"
 
 # 是否開啟效能分析 (True: 顯示 Top 20 耗時函式)。預設關閉：這份報告主要反映的是主行程
@@ -24,13 +28,17 @@ GMAT_CONSOLE_DEFAULT = "/Users/corn/Documents/GMAT R2026a/bin/GmatConsole"
 # 串洗版；真的要抓效能瓶頸時再手動打開。
 ENABLE_PROFILING = False
 
-# config 分四大塊，各自對應「誰決定這個數字」：
+# config 分四大塊 + 一塊選填，各自對應「誰決定這個數字」：
 # - orbit_A / orbit_B：軌道六根數
 # - rules：主辦方規定/公告的數字，我們不能改，只能照填 (ΔV_lim、機動間隔、T_max
 #   倍數是規則白紙黑字寫的常數；k_t/C_t/k_v/C_v 是每次比賽前才公告的計分參數)
 # - strategy：我們自己的任務設計選項，不是規則要求，但會影響算出來的任務規劃
 # - optimization：純演算法搜尋設定，只影響「找不找得到好解、要跑多久」，不影響
 #   規則本身怎麼定義
+# - local (選填，這裡不生成，自己要用再手動加)：跟任務/規則無關的「這台機器」設定，
+#   目前只有 {"gmat_console_path": "/你的路徑/GmatConsole"}——換電腦/換人開發常常
+#   不一樣，寫在這裡而不是 --gmat-console 每次都要打，也不會污染到 git (config.json
+#   本來就被 gitignore 排除)。
 DEFAULT_CONFIG = {
     "orbit_A": {
         "SMA": 9000.0, "ECC": 0.0, "INC": 0.0,
@@ -109,8 +117,9 @@ def parse_args():
         help="設定檔路徑 (預設 configs/config.json)，方便在測試資料/正式測資之間切換而不用互相覆蓋"
     )
     parser.add_argument(
-        "--gmat-console", default=GMAT_CONSOLE_DEFAULT,
-        help="GmatConsole 執行檔路徑，用來自動跑無頭驗證 (預設抓你機器上的安裝路徑)"
+        "--gmat-console", default=None,
+        help="GmatConsole 執行檔路徑，用來自動跑無頭驗證。不給的話依序改抓 config.json 的"
+             "local.gmat_console_path、再來是這台機器上寫死的最後備援值"
     )
     parser.add_argument(
         "--no-gmat", action="store_true",
@@ -251,6 +260,14 @@ def main():
     args = parse_args()
     config = load_or_create_config(args.config)
 
+    # GmatConsole 路徑解析順序：--gmat-console > config.json 的 local.gmat_console_path
+    # > 這裡寫死的最後備援值 (見 GMAT_CONSOLE_DEFAULT 的說明)。
+    gmat_console_path = (
+        args.gmat_console
+        or config.get("local", {}).get("gmat_console_path")
+        or GMAT_CONSOLE_DEFAULT
+    )
+
     start_time = time.perf_counter()
 
     # 1. 啟動最佳化器 (內部已經包含 L-SHADE 與 NLP 微調)
@@ -282,7 +299,7 @@ def main():
     if args.no_gmat:
         print("（跳過了 GMAT 驗證，記得手動開 GMAT 跑一次 outputs/output.txt 確認 InterceptSuccess）")
     else:
-        gmat_result = run_gmat_verification(args.gmat_console, os.path.join("outputs", "output.txt"))
+        gmat_result = run_gmat_verification(gmat_console_path, os.path.join("outputs", "output.txt"))
         if gmat_result:
             match = "✅" if gmat_result["intercept_success"] else "❌"
             dv_match = "✅" if gmat_result["final_burn_legal"] else "❌"
@@ -319,7 +336,7 @@ def main():
                 output_filename="output_submit.txt",
             )
             fixed_script_result = run_gmat_verification(
-                args.gmat_console, os.path.join("outputs", "output_submit.txt")
+                gmat_console_path, os.path.join("outputs", "output_submit.txt")
             )
             if fixed_script_result:
                 fmatch = "✅" if fixed_script_result["intercept_success"] else "❌"

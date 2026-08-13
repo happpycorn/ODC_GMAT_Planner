@@ -136,6 +136,17 @@ def _validate_strategy(strategy_cfg, errors: list):
             errors.append(f"strategy.MISS_TOLERANCE_KM 必須是 >=0 的數字，但收到 {v!r}")
 
 
+def _validate_local(local_cfg, errors: list):
+    """local：跟任務/規則完全無關、純粹是「這台機器」的設定 (目前只有 GMAT 路徑)。
+    選填區塊——config.json 本來就被 gitignore 排除，換電腦/換人開發本來就該各自維護
+    自己的這個區塊，不應該寫死在 main.py 裡進 git。"""
+    if not isinstance(local_cfg, dict):
+        errors.append(f"local 應該是一個物件，但收到 {type(local_cfg).__name__}")
+        return
+    if "gmat_console_path" in local_cfg and not isinstance(local_cfg["gmat_console_path"], str):
+        errors.append(f"local.gmat_console_path 必須是字串 (路徑)，但收到 {local_cfg['gmat_console_path']!r}")
+
+
 def _validate_optimization(opt_cfg, errors: list):
     if not isinstance(opt_cfg, dict):
         errors.append(f"optimization 應該是一個物件，但收到 {type(opt_cfg).__name__}")
@@ -190,8 +201,10 @@ def validate_config(config) -> None:
 
     errors: list = []
 
-    # config 分四塊：orbit_A/orbit_B (軌道)、rules (主辦方規定/公告，我們不能改)、
-    # strategy (我們自己的任務設計選項)、optimization (純演算法搜尋設定)。
+    # config 分四塊必填 + 一塊選填：orbit_A/orbit_B (軌道)、rules (主辦方規定/公告，
+    # 我們不能改)、strategy (我們自己的任務設計選項)、optimization (純演算法搜尋設定)。
+    # local (選填) 是跟任務/規則完全無關的「這台機器」設定 (目前只有 GMAT 路徑)，沒有
+    # 也完全合法，不列進 top_required。
     top_required = ["orbit_A", "orbit_B", "rules", "strategy", "optimization"]
     missing = [k for k in top_required if k not in config]
     if missing:
@@ -205,6 +218,8 @@ def validate_config(config) -> None:
         _validate_rules(config["rules"], errors)
     if "strategy" in config:
         _validate_strategy(config["strategy"], errors)
+    if "local" in config:
+        _validate_local(config["local"], errors)
     if "optimization" in config:
         _validate_optimization(config["optimization"], errors)
 

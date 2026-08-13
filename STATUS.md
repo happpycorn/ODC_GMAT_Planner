@@ -2,10 +2,11 @@
 
 給下一個 session（不管是我自己回來還是你自己看）快速抓回上下文用的，這份主要是「現在做到哪、還缺什麼、為什麼」的整理。**怎麼用這個工具看 [README.md](README.md)；演算法/物理模型原理看 [METHODOLOGY.md](METHODOLOGY.md)**；更細節的技術決策看 commit log 跟程式碼註解。
 
-最後更新：2026-08-12。`improve-optimizer-and-gmat-integration` 分支已經 fast-forward
-merge 回 `Master` 並 push，分支本身已刪除——**現在直接在 `Master` 上開發**。同一天內
-又追加了 tqdm 進度條修復、console 輸出簡化、把 3 個規則數字搬進 config 這幾項，都已
-commit 到 `Master`（尚未 push，見最新的 commit log）。
+最後更新：2026-08-13。`improve-optimizer-and-gmat-integration` 分支已經 fast-forward
+merge 回 `Master` 並 push，分支本身已刪除——**現在直接在 `Master` 上開發**。分支合併後
+又陸續追加了 tqdm 進度條修復、console 輸出簡化、把 3 個規則數字搬進 config、config 分組
+整理、`sweep_burns.py`、固定燃燒繳交腳本、清依賴、`local.gmat_console_path` 這幾項，全部
+已 commit 且已 push（見最新的 commit log）。
 
 ## 這是什麼
 
@@ -113,6 +114,23 @@ STATUS.md 原本寫「大 SMA 落差的情境可能受益，但還沒驗證投�
 - 改動：`pyproject.toml` 的 `dependencies` 從 7 個砍到 3 個（`astropy`/`mealpy`/`poliastro`，`numpy`/`numba`/`scipy`/`tqdm` 是這幾個的間接依賴，不用列）；重新 `uv lock`；README 補了「Python 3.8+」跟 `pyproject.toml` 實際要求的 3.12+ 對不上的錯誤，順手修正。
 - 實測：清完後跑 `configs/practice_scenario.json --no-gmat` 完整流程一次，確認 tqdm（雖然被移除出直接依賴，但透過 mealpy 間接帶進來）跟其他套件都還在，沒有 ImportError，結果正常。目前 `.venv` 大小 1.1GB（清之前含 torch+CUDA 套件應該大好幾倍，沒留清之前的數字對照，但移除的套件清單看得出差很多）。
 - README 新增「🖥️ 部署到一台全新電腦」章節，分兩種情況講清楚：(A) 要在新電腦跑整套設計工具（`configs/` 被 gitignore 排除、GMAT 要另外裝、`--gmat-console` 一定要蓋掉寫死的預設路徑）；(B) 比賽當天主辦單位的電腦——**其實不需要部署這整套東西**，`outputs/output_submit.txt` 本身就是一份純文字 GMAT script，直接帶去在對方的 GMAT 裡開檔執行就好，不需要 Python/uv/這個 repo 的任何程式碼。這個區分本身也是「固定燃燒版本」那個功能存在的意義。
+
+**⚠️ 這次清理留了一個真的會炸的回歸，之後補上了（見下一節）**：上面「實測」那句寫的「tqdm 透過 mealpy 間接帶進來」是錯的——當時本機的 `.venv` 是清理前就裝好的舊環境，`uv run` 沒有重新驗證每個 import 是不是真的能被目前的 lockfile 滿足，所以在自己機器上測不出問題。隊友在全新電腦上 `uv run main.py` 直接 `ModuleNotFoundError: No module named 'tqdm'`。教訓：**改完依賴之後，光靠既有 `.venv` 測不出「全新環境裝不裝得起來」這種問題，得真的刪掉 `.venv` 重來一次**，或者請別人在全新環境上實測。
+
+### 修 tqdm 遺漏（上面那個回歸的修復）
+`src/optimizer.py` 直接 `from tqdm import tqdm`，但 `tqdm` 從來沒被列進 `pyproject.toml` 的 `dependencies`，一直是「賭它會被間接帶進來」。這次清理把 `torch`/`optuna`/`pymoo`/`line-profiler` 拿掉之後，间接依賴的解析結果變了，`tqdm` 完全沒被解析進 lockfile——不是只有回報的那位隊友的環境特殊，是**這次清理之後所有全新安裝都會炸**。
+- 修法：把 `tqdm` 明確加進 `pyproject.toml` 的 `dependencies`（本來就該這樣，直接 import 的東西不該賭它靠間接依賴活著）。
+- 實測：這次真的刪掉本機 `.venv` 重來，`uv lock` 印出 `Added tqdm v4.70.0`、`Added colorama v0.4.6`（tqdm 在 Windows 上的顏色套件依賴）——證實清理前 `tqdm` 真的完全沒被解析進來，不是我看錯。重新從乾淨環境跑一次完整流程確認正常。
+- 因為是會擋住別人立刻沒辦法動的回歸，這次直接 commit + push，沒有照平常「累積幾個 commit 再問要不要推」的節奏。
+
+### 新增 `local.gmat_console_path`（選填的 config 欄位）
+起因：使用者發現 `GMAT_CONSOLE_DEFAULT` 寫死在 `main.py`（被 git 追蹤），換一台電腦/換一個人開發，這個值一定要改，但改了又變成本地修改污染 git、容易在 pull/merge 卡住。既然 `configs/config.json` 本來就被 gitignore 排除，機器相關的設定放在那裡才是一致的做法，不該混進 `main.py`。
+- 新增 config 第五塊（選填，不在 `top_required` 裡）：`local`，目前只有 `gmat_console_path` 一個欄位。`config_validator.py` 加 `_validate_local`（型別檢查：必須是字串，不強制要有這個區塊）。
+- `main.py` 的 `--gmat-console` 解析優先順序：CLI 參數 > `config["local"]["gmat_console_path"]` > `GMAT_CONSOLE_DEFAULT`（最後備援，就是我這台機器的路徑）。
+- 實測：故意在 config 裡塞一個錯的路徑（不帶 `--gmat-console`），確認真的印出「找不到 GmatConsole (那個錯路徑)」的警告，不是悄悄退回寫死的正確路徑；換回正確路徑、完全不帶 `--gmat-console`，確認 GMAT 驗證正常跑完；最後確認 `--gmat-console` 給錯路徑時還是蓋得過 config 的正確值——三層優先順序都驗證過。
+
+### 順手驗證：USE_J2 關掉，Python 端跟 GMAT script 是不是真的同步
+使用者問的，追蹤程式碼確認 `strategy.USE_J2` → `optimizer.USE_J2`/`J2_VAL`（Python 端傳播）→ `main.py` 兩處 `script_generator()` 呼叫（一般版本+固定版本）都帶 `use_j2=optimizer.USE_J2` → GMAT script 的 `GravityField.Earth.Degree/Order` 跟著變 0/0。重力場開關那段是共用模板，不在 DC/固定版本的分支邏輯裡，兩種腳本都會同步。實測：`USE_J2=false` 跑一次，`outputs/output.txt` 裡 `Degree`/`Order` 確認都是 0，GMAT 驗證照樣成功。結論：**兩邊確實同步，沒有問題**。
 
 ## 還沒做 / 值得考慮的
 
