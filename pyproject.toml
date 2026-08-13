@@ -8,4 +8,5 @@ dependencies = [
     "astropy>=5.3.4",
     "mealpy>=3.0.3",
     "poliastro>=0.17.0",
+    "tqdm>=4.66.0",
 ]
