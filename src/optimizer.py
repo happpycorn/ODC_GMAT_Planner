@@ -355,9 +355,19 @@ class MissionOptimizer:
         的窄時間窗口裡，實測過純隨機初始化跑到 2000 代都撞不到；反過來，一個便宜的
         低維度粗掃 (只掃 t_wait/flight_time，不用管其他維度) 幾秒到幾十秒內就能找到。
 
-        只對 num_burns==1 有效，回傳空列表讓多棒案例自然退回純隨機初始化——多棒的
-        中間燃燒方向/滑行時間本身也是決策變數，這裡的簡單粗掃邏輯不會生成，種子
-        邏輯要複雜很多，先不處理 (見 STATUS.md「還沒做」清單)。
+        多棒 (num_burns>1) 種子 (2026-08-15 補上，見 STATUS.md「多棒分段接力種子」節)：
+        不是重新對高維度決策空間做網格搜尋 (維度詛咒，25點網格在9維會爆炸到 25^9)，
+        而是「分段貪婪接力」——先遞迴呼叫這個方法本身 (num_burns=1) 拿到單棒候選，
+        每個候選本質上是一組「(t_wait_final, final_leg_frac) 這樣接力就能命中」的
+        時機答案；把它原封不動當成「最後一棒」的時機，前面 (num_burns-1) 棒全部
+        設成 Δv=0 的空燒 (方向不重要，大小是0，球座標參數化下天生合法)，滑行時間
+        全部卡在 MIN_COAST_TIME (最短間隔)，讓 current_time 精確疊加到跟單棒種子
+        一樣的 t_wait_final。這樣構造出來的種子，重播出來的軌跡跟「直接單棒解」
+        完全等價 (前面幾棒等於沒發生過)，是個合法但保守的起點——L-SHADE 自己會在
+        這個起點附近去試「前面幾棒到底該不該真的燒」，不用種子自己猜方向。
+        測過 (2026-08-15 多棒基準測試)：weird_test.json 的 2 棒案例在同樣的世代
+        預算下，沒種子的話比有種子的單棒還差 (-64.33 vs -76.98)，純隨機在9維
+        空間內明顯吃虧。
 
         候選窗口有「兩種」來源 (2026-08-15 補上第二種，見 STATUS.md「傾角窄窗」節)：
         1. A 離地球最近的時間——對應「離心率把時間壓縮在近地點附近」這種窄窗，是
@@ -384,8 +394,11 @@ class MissionOptimizer:
         組合轉成種子。不追求全域最佳 (那是 L-SHADE 接手後的工作)，只求種子落在
         對的鄰域，讓後續的突變/交叉有機會慢慢逼近真正的最佳值。
         """
-        if num_burns != 1 or n_seeds <= 0:
+        if n_seeds <= 0:
             return []
+
+        if num_burns > 1:
+            return self._generate_multiburn_seed_candidates(num_burns, n_seeds)
 
         dt = 60.0
         mu, j2, j3, j4, re = self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL, self.RE_VAL
@@ -516,6 +529,85 @@ class MissionOptimizer:
             # 自己在種子附近去探索，種子本身只負責把 t_wait/flight_time 帶對地方。
             x = np.array([best_tw, final_leg_frac, 0.0, 0.0, 0.0], dtype=np.float64)
             seeds.append(np.clip(x, lb_arr, ub_arr))
+
+        return seeds
+
+    @staticmethod
+    def _narrow_tolerance_bounds(x, lb, ub):
+        """
+        給一個決策向量 x 算出一組「收緊過的邊界」，給局部 NLP 精修用——時間類變數
+        (t_wait/coast_frac/final_leg_frac) 收緊到 2%，避免微調打亂已經算好的攔截
+        時序；方向/瞄準類變數 (燃燒方向 r/theta/phi、瞄準點偏移) 放寬到 15%，這幾維
+        本來就比較平滑，可以讓 NLP 多探索一點。
+
+        原本這條規則只在 refine_trajectory() (跑完整個 run_study 後，對最終贏家做
+        一次性的精修) 用；2026-08-15 抽出來變成共用方法，讓 _optimize_burn_case
+        裡「每個種子單獨精修」那段也能用同一套規則，而不是原本寫死只認識單棒
+        5 元素陣列的版本 (多棒的話索引對不上，精修會用錯容忍度)。
+
+        陣列結構: [0]=t_wait，中間每 4 個一組 [r, theta, phi, coast_frac]，
+        接著 [n-4]=final_leg_frac，最後三個 [n-3,n-2,n-1]=瞄準點偏移
+        (offset_r, offset_theta, offset_phi)。num_burns==1 時中間沒有任何一組
+        (n=5)，規則一樣適用 (i-1 迴圈範圍是空的，直接落到 offset/final_leg 判斷)。
+        """
+        n = len(x)
+        bounds = []
+        for i, (l, u) in enumerate(zip(lb, ub)):
+            span = u - l
+            is_offset_param = i >= n - 3
+            is_final_leg = (i == n - 4)
+            is_t_wait = (i == 0)
+            if is_offset_param:
+                tolerance = span * 0.15
+            elif is_t_wait or is_final_leg:
+                tolerance = span * 0.02
+            else:
+                tolerance = span * 0.15 if ((i - 1) % 4) < 3 else span * 0.02
+            bounds.append((max(l, x[i] - tolerance), min(u, x[i] + tolerance)))
+        return bounds
+
+    def _generate_multiburn_seed_candidates(self, num_burns: int, n_seeds: int) -> list:
+        """
+        分段貪婪接力：把 num_burns==1 的種子候選，接到 num_burns 棒的決策向量格式，
+        前面 (num_burns-1) 棒全部塞「Δv=0 的空燒、最短間隔滑行」，最後一棒沿用單棒
+        種子找到的 (t_wait_final, final_leg_frac)。詳細動機見 _generate_seed_candidates
+        的 docstring。
+
+        這裡刻意不遞迴呼叫 self._generate_seed_candidates(1, n_seeds) (雖然邏輯上
+        等價)，是因為要避免未來如果 _generate_seed_candidates 的 num_burns==1
+        分支簽章改變時，這裡跟著遞迴呼叫容易搞錯是呼叫「哪一層」——直接呼叫同一個
+        私有方法本身沒問題 (Python 遞迴呼叫 self 的方法就是正常的多型分派)，這裡
+        寫成獨立方法只是讓「單棒種子生成」跟「多棒接力組裝」的職責分開，方便之後
+        個別測試/替換其中一半 (例如以後想換掉接力策略，不用動單棒那段已經驗證過
+        的邏輯)。
+        """
+        base_seeds = self._generate_seed_candidates(1, n_seeds)
+        if not base_seeds:
+            return []
+
+        lb, ub = self._generate_bounds(num_burns)
+        lb_arr, ub_arr = np.array(lb), np.array(ub)
+        n_prefix_burns = num_burns - 1  # 前面要塞幾棒空燒
+
+        seeds = []
+        for base_x in base_seeds:
+            t_wait_final, final_leg_frac = float(base_x[0]), float(base_x[1])
+            # 前面 n_prefix_burns 棒都卡最短間隔，讓 current_time 從 t_wait 精確疊加
+            # 到 t_wait_final；t_wait 本身往前推正好 n_prefix_burns 個 MIN_COAST_TIME。
+            t_wait = t_wait_final - n_prefix_burns * self.MIN_COAST_TIME
+            if t_wait < 0.0:
+                # 單棒種子的時機太早，前面塞不下這麼多空燒——這個候選在這個棒數
+                # 下沒有乾淨的接力方式，跳過 (仍有其他候選可用，不強求每個都成功)。
+                continue
+
+            x = [t_wait]
+            for _ in range(n_prefix_burns):
+                # 球座標 (r, theta, phi, coast_frac)：r=0 天生合法 (Δv 大小為0)，
+                # theta/phi 在 r=0 時無意義，填 0 即可；coast_frac=0 對應最短滑行。
+                x.extend([0.0, 0.0, 0.0, 0.0])
+            x.extend([final_leg_frac, 0.0, 0.0, 0.0])  # 最後一棒 + 瞄準偏移全部置中
+            x = np.clip(np.array(x, dtype=np.float64), lb_arr, ub_arr)
+            seeds.append(x)
 
         return seeds
 
@@ -672,16 +764,10 @@ class MissionOptimizer:
         # 而且要在這裡 (子行程) 做，不能留到外層 (run_study 只會對最終贏家精修一次，
         # 其他燃燒次數案例自己的種子沒有第二次機會)。
         for seed_x in seed_candidates:
-            seed_bounds = []
-            for i, (l, u) in enumerate(zip(lb, ub)):
-                span = u - l
-                # 種子目前只有 num_burns==1 才會產生 (見 _generate_seed_candidates)，
-                # 陣列固定是 [t_wait, final_leg_frac, offset_r, offset_theta, offset_phi]，
-                # 前兩個是時間類 (嚴格容忍度)，後三個是角度/瞄準類 (寬鬆容忍度)——
-                # 跟 refine_trajectory() 對這個特例的容忍度規則一致。之後如果種子邏輯
-                # 擴展到多棒，這裡要跟著改成跟 refine_trajectory() 一樣的完整規則。
-                tolerance = span * (0.02 if i < 2 else 0.15)
-                seed_bounds.append((max(l, seed_x[i] - tolerance), min(u, seed_x[i] + tolerance)))
+            # 2026-08-15：改用共用的 _narrow_tolerance_bounds (跟 refine_trajectory()
+            # 同一套規則)，正確處理多棒種子的完整陣列結構 (原本這裡寫死只認識單棒
+            # 的 5 元素陣列，多棒種子索引會對不上、精修會用錯容忍度)。
+            seed_bounds = self._narrow_tolerance_bounds(seed_x, lb, ub)
             try:
                 seed_nlp = minimize(
                     fun=fitness_wrapper, x0=seed_x, method='L-BFGS-B',
@@ -838,27 +924,10 @@ class MissionOptimizer:
         print("\n🔬 啟動高精度 NLP 微調...")
         bounds = self._generate_bounds(num_burns)
         
-        narrow_bounds = []
-        n = len(initial_guess_x)
-        for i, (lb, ub) in enumerate(zip(*bounds)):
-            x_val = initial_guess_x[i]
-            span = ub - lb
-            # 陣列結構: [0]=t_wait，中間每 4 個一組 [r, theta, phi, coast_frac]，
-            # 接著 [n-4]=final_leg_frac，最後三個 [n-3,n-2,n-1]=瞄準點偏移
-            # (offset_r, offset_theta, offset_phi)。r/theta/phi 類 (燃燒的大小方向、
-            # 瞄準點偏移方向) 給寬容度；時間類變數 (t_wait/coast_frac/final_leg_frac)
-            # 給嚴格限制，避免微調打亂已經算好的攔截時序。
-            is_offset_param = i >= n - 3
-            is_final_leg = (i == n - 4)
-            is_t_wait = (i == 0)
-            if is_offset_param:
-                tolerance = span * 0.15
-            elif is_t_wait or is_final_leg:
-                tolerance = span * 0.02
-            else:
-                tolerance = span * 0.15 if ((i - 1) % 4) < 3 else span * 0.02
-            narrow_bounds.append((max(lb, x_val - tolerance), min(ub, x_val + tolerance)))
-        
+        # 2026-08-15：容忍度規則抽到 _narrow_tolerance_bounds 共用 (原本這裡是
+        # 唯一的實作，_optimize_burn_case 的種子精修現在也用同一套)。
+        narrow_bounds = self._narrow_tolerance_bounds(initial_guess_x, bounds[0], bounds[1])
+
         scalar_params = np.array([
             self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL,
             self.RE_VAL, self.MIN_PERIAPSIS, self.MAX_DV_SOFT, self.k_t, self.C_t, self.k_v, self.C_v
