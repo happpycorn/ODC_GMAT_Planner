@@ -4,10 +4,16 @@ import datetime
 def script_generator(
     a_sma, a_ecc, a_inc, a_raan, a_aop, a_ta,
     b_sma, b_ecc, b_inc, b_raan, b_aop, b_ta,
-    burns, times, aim_point, max_dv=1.5, use_j2=True,
+    burns, times, aim_point, max_dv=1.5, gravity_degree=2,
     final_burn_fixed_vnb=None, output_filename="output.txt",
 ):
     """
+    gravity_degree: highest zonal (m=0) harmonic to include, matching Python's
+    strategy.GRAVITY_DEGREE exactly (0=point mass, 2=J2, 3=J2+J3, 4=J2+J3+J4).
+    Sets GMAT's GravityField.Earth.Degree; Order is always pinned to 0
+    regardless of this value (see the comment near the Degree/Order lines
+    below for why).
+
     aim_point: (x, y, z) in km, EarthMJ2000Eq — the point the final burn's
     Target/Achieve block should actually converge onto. This is usually NOT
     ShipA's exact position: the optimizer is free to aim anywhere within the
@@ -202,10 +208,19 @@ EndIf;
 Report Report_Intercept ShipB.ElapsedSecs MissDistance InterceptSuccess FinalBurnDvMps FinalBurnLegal BurnB{final_burn_idx}.Element1 BurnB{final_burn_idx}.Element2 BurnB{final_burn_idx}.Element3;
 """
 
-    # J2 開關：不確定的話用 use_j2 切換，跟 Python 端的 USE_J2 保持同步，不要一邊有
-    # 擾動一邊沒有 —— Degree/Order=4 涵蓋 J2~J4 等項；關掉就退回純點質量 (0/0)。
-    gravity_degree = 4 if use_j2 else 0
-    gravity_order = 4 if use_j2 else 0
+    # 重力場階數：gravity_degree 直接對應 Python 端的 strategy.GRAVITY_DEGREE
+    # (0=點質量, 2=J2, 3=J2+J3, 4=J2+J3+J4)，不要讓兩邊各算各的、開的擾動項不一樣。
+    #
+    # Order 這裡刻意固定收在 0 (2026-08-14 改)，不管 Degree 是多少——GMAT 的
+    # Degree/Order 分別對應球諧重力場的 n (階) / m (序)，m=0 那一整排就是 zonal
+    # harmonic (J2/J3/J4，跟緯度有關、不跟經度有關)，m>0 是 tesseral/sectoral
+    # (經度也有關的重力異常項)。Python 端 (core_math.fast_dynamics) 目前只實作了
+    # zonal 項，沒有能力算 tesseral——如果這裡讓 Order 跟著 Degree 一起開到 4
+    # (像原本 use_j2 那樣)，GMAT 會多算一堆 Python 端完全沒有的重力異常，兩邊注定
+    # 對不齊。固定 Order=0 讓 GMAT 只算 zonal，跟 Python 端做的事完全一致，才有
+    # 意義比較兩者的傳播結果——這個決定犧牲了 GMAT 端的「真實感」(真實地球重力場
+    # 本來就不是純 zonal) 換取「兩邊模型對齊、可以互相驗證」，是刻意的取捨。
+    gravity_order = 0
 
     header_note = (
         "% SUBMISSION VARIANT: every burn (including the final one) is a fixed\n"
@@ -340,6 +355,38 @@ View_Intercept.DataCollectFrequency = 1;
 View_Intercept.UpdatePlotFrequency = 50;
 View_Intercept.NumPointsToRedraw = 0;
 View_Intercept.ShowPlot = true;
+
+% Second 3D view (2026-08-14 added): a chase camera anchored near ShipB,
+% always aimed at ShipA. The view above is a fixed Earth-centered overview of
+% the whole scene; this one is "what B sees" - the camera follows ShipB
+% (ViewPointReference=ShipB moves with it every frame) and keeps ShipA in
+% frame, making the final-approach geometry/alignment much easier to read
+% visually than the wide Earth view. ViewPointVector is the camera's offset
+% from ShipB, expressed along the EarthMJ2000Eq axes (not ShipB's own
+% attitude axes - GMAT has no native "onboard camera" concept; this is the
+% closest practical approximation, like a chase/lock-on camera in a flight
+% sim). NON-ASCII WARNING: keep every comment in this file plain ASCII - GMAT's
+% parser rejects the whole script outright if any non-ASCII character sneaks
+% in (bit this exact bug once already, see commit 887e64e and STATUS.md).
+Create OrbitView View_ShipBChase;
+View_ShipBChase.SolverIterations = Current;
+View_ShipBChase.Add = {{ShipA, ShipB, Earth}};
+View_ShipBChase.CoordinateSystem = EarthMJ2000Eq;
+View_ShipBChase.ViewPointReference = ShipB;
+View_ShipBChase.ViewPointVector = [ 500 500 500 ];
+View_ShipBChase.ViewDirection = ShipA;
+View_ShipBChase.ViewScaleFactor = 1.0;
+View_ShipBChase.ViewUpCoordinateSystem = EarthMJ2000Eq;
+View_ShipBChase.ViewUpAxis = Z;
+View_ShipBChase.OrbitColor = [ 255 65280 12632256 ];
+View_ShipBChase.TargetColor = [ 8421504 8421504 8421504 ];
+View_ShipBChase.XYPlane = Off;
+View_ShipBChase.Axes = On;
+View_ShipBChase.Grid = Off;
+View_ShipBChase.DataCollectFrequency = 1;
+View_ShipBChase.UpdatePlotFrequency = 50;
+View_ShipBChase.NumPointsToRedraw = 0;
+View_ShipBChase.ShowPlot = true;
 
 % Text report: after the run, just open this file and read the numbers -
 % no need to squint at the 3D plot.

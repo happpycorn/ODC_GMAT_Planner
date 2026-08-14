@@ -12,12 +12,12 @@ from mealpy.evolutionary_based.SHADE import L_SHADE
 
 from src.propagator import get_r0_v0
 from src.scorer import calculate_score
-from src.core_math import propagate_rk4, check_constraints, fast_norm, to_vnb_frame
+from src.core_math import propagate_dop853, check_constraints, fast_norm, to_vnb_frame
 import numba as nb
 from tqdm import tqdm
 
 # 這裡把所有不變的環境常數傳進來，避免 Numba 抓取外部全域變數
-# nogil=True: 純數值運算 (內部呼叫的 propagate_rk4/izzo/calculate_score 也都是 njit)，
+# nogil=True: 純數值運算 (內部呼叫的 propagate_dop853/izzo/calculate_score 也都是 njit)，
 # 沒有碰任何 Python 物件，執行時可以釋放 GIL，讓 mealpy 的 'thread' 平行模式真的吃到多核。
 @njit(nb.float64(nb.float64[:], nb.int64, nb.float64[:], nb.float64[:, :]), fastmath=True, cache=True, nogil=True)
 def fast_fitness_evaluator(
@@ -32,13 +32,15 @@ def fast_fitness_evaluator(
     T_max = scalars[1]
     mu = scalars[2]
     j2_val = scalars[3]
-    re_val = scalars[4]
-    min_periapsis = scalars[5]
-    max_dv = scalars[6]
-    k_t = scalars[7]
-    C_t = scalars[8]
-    k_v = scalars[9]
-    C_v = scalars[10]
+    j3_val = scalars[4]
+    j4_val = scalars[5]
+    re_val = scalars[6]
+    min_periapsis = scalars[7]
+    max_dv = scalars[8]
+    k_t = scalars[9]
+    C_t = scalars[10]
+    k_v = scalars[11]
+    C_v = scalars[12]
 
     A_r0 = vectors[0]
     A_v0 = vectors[1]
@@ -47,13 +49,13 @@ def fast_fitness_evaluator(
 
     total_dv = 0.0
     penalty_count = 0
-    dt = 60.0 # RK4 步長
+    dt = 60.0  # DOP853 初始步長猜測 (自適應積分器會自己調整實際步長)
 
     # 1. 初始等待時間 (t_wait)
     current_time = float(x[0])
     
     # 傳播太空船 B 到第一次點火點
-    r_curr, v_curr = propagate_rk4(B_r0, B_v0, current_time, dt, mu, j2_val, re_val)
+    r_curr, v_curr = propagate_dop853(B_r0, B_v0, current_time, dt, mu, j2_val, j3_val, j4_val, re_val)
 
     idx = 1
     # 2. 執行前 N-1 次機動 (如果 num_burns > 1)
@@ -91,7 +93,7 @@ def fast_fitness_evaluator(
             t_coast += coast_frac * (max_coast - min_coast_time)
             
         # 傳播太空船 B 經過 Coast Time
-        r_curr, v_curr = propagate_rk4(r_curr, v_curr_new, t_coast, dt, mu, j2_val, re_val)
+        r_curr, v_curr = propagate_dop853(r_curr, v_curr_new, t_coast, dt, mu, j2_val, j3_val, j4_val, re_val)
         current_time += t_coast
 
     # 3. 最後一次機動 (Lambert 攔截)
@@ -105,7 +107,7 @@ def fast_fitness_evaluator(
     intercept_time = current_time + t_final_leg
 
     # 傳播太空船 A (目標) 到攔截時間點
-    r_A_target, _ = propagate_rk4(A_r0, A_v0, intercept_time, dt, mu, j2_val, re_val)
+    r_A_target, _ = propagate_dop853(A_r0, A_v0, intercept_time, dt, mu, j2_val, j3_val, j4_val, re_val)
 
     # 規則只要求 Δr <= 門檻 (預設 5km)，Δr_min 超過命中點的部分不會多加分，所以不用
     # 死盯著 A 的精確位置打：球座標 (offset_r, offset_theta, offset_phi) 讓 Lambert
@@ -210,11 +212,19 @@ class MissionOptimizer:
 
         # 物理常數與限制
         self.MU = 398600.4418          # 地球標準重力參數
-        # USE_J2 開關：不確定哪一輪/哪個場景真的有 J2 擾動時，用 config 切換，
-        # 不用改程式碼。關掉時 J2_VAL=0，Python 端傳播跟 GMAT script 的重力場設定
-        # (script_generator 的 use_j2 參數) 會一起同步變成純點質量模型。
-        self.USE_J2 = bool(strategy.get("USE_J2", True))
-        self.J2_VAL = 1.08262668e-3 if self.USE_J2 else 0.0
+        # GRAVITY_DEGREE：重力場模型要算到第幾階 zonal harmonic，不確定哪一輪/哪個
+        # 場景實際會開多少階擾動時用 config 切換，不用改程式碼 (2026-08-14 從原本的
+        # USE_J2 布林值換成這個，因為比賽當天用的重力場設定不一定跟我們現在假設的
+        # 一樣，開放成可調的階數比單純 on/off 更貼近實際情況)。
+        # 0 = 純點質量, 2 = J2 (原本 USE_J2=true 的行為), 3 = J2+J3, 4 = J2+J3+J4。
+        # J2/J3/J4 三個係數直接從 GMAT 用的同一份 JGM2.cof 重力場檔案反算，跟 GMAT
+        # 端 (script_generator 的 gravity_degree 參數) 用同一組數字、同步切換——
+        # GMAT 那邊 Order 固定收在 0 (只算 zonal 不算 tesseral)，確保兩邊算的是
+        # 完全一樣的物理模型，不會再有「GMAT 有 J3/J4 但 Python 沒有」的落差。
+        self.GRAVITY_DEGREE = int(strategy.get("GRAVITY_DEGREE", 2))
+        self.J2_VAL = 1.08262668e-3 if self.GRAVITY_DEGREE >= 2 else 0.0
+        self.J3_VAL = -2.5323078e-6 if self.GRAVITY_DEGREE >= 3 else 0.0
+        self.J4_VAL = -1.62042999e-6 if self.GRAVITY_DEGREE >= 4 else 0.0
         self.RE_VAL = 6378.137
         self.MIN_PERIAPSIS = self.RE_VAL + 100.0
         # ΔV_lim、機動間隔下限、T_max 的週期倍數：這三個是規則規定的數字 (初賽規則
@@ -264,9 +274,28 @@ class MissionOptimizer:
         self.seed = config["optimization"].get("SEED")
 
 
-        # 計算時間上限 (T_max = T_MAX_PERIOD_MULTIPLE × A 的軌道週期，見上面的說明)
-        self.Ta_sec = 2.0 * np.pi * np.sqrt(config["orbit_A"]["SMA"]**3 / self.MU)
-        self.T_max = float(rules.get("T_MAX_PERIOD_MULTIPLE", 4.0)) * self.Ta_sec
+        # 計算時間上限 (T_max = T_MAX_PERIOD_MULTIPLE × A 的軌道週期，見上面的說明)。
+        # 這個公式只在 A 是橢圓/圓軌道 (SMA>0, ECC<1，初賽) 時有意義——A 是雙曲線
+        # 軌道 (SMA<0, ECC>1，排位賽) 時沒有週期可言，這裡直接對負數開根號會炸掉
+        # (NaN/複數)。排位賽的 T_max 定義方式官方目前還沒公告，所以這裡不猜公式，
+        # 改成要求 config 用 rules.T_MAX_SEC 直接指定秒數覆寫——公告後不管公式是
+        # 什麼，把算出來的秒數填進 config 就好，不用等程式碼跟著改。
+        a_sma = config["orbit_A"]["SMA"]
+        ecc_A = config["orbit_A"]["ECC"]
+        t_max_override = rules.get("T_MAX_SEC")
+        is_hyperbolic_A = a_sma <= 0 or ecc_A >= 1.0
+        if t_max_override is not None:
+            self.Ta_sec = None  # 雙曲線/覆寫情境下「A 的週期」沒有意義，不計算
+            self.T_max = float(t_max_override)
+        elif is_hyperbolic_A:
+            raise ValueError(
+                "orbit_A 是雙曲線/拋物線軌道 (SMA<=0 或 ECC>=1)，沒有軌道週期，"
+                "T_max 不能用 4×週期公式推算 (這是排位賽場景，見 STATUS.md)。"
+                "請在 config 的 rules.T_MAX_SEC 直接指定官方公告的 T_max 秒數。"
+            )
+        else:
+            self.Ta_sec = 2.0 * np.pi * np.sqrt(a_sma**3 / self.MU)
+            self.T_max = float(rules.get("T_MAX_PERIOD_MULTIPLE", 4.0)) * self.Ta_sec
     
     def _generate_bounds(self, num_burns: int) -> Tuple[list, list]:
         """
@@ -376,8 +405,8 @@ class MissionOptimizer:
         print(f"🚀 啟動 JIT 極速版 L-SHADE 軌道最佳化 (多核心巨觀平行化)...")
 
         scalar_params = np.array([
-            self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.RE_VAL,
-            self.MIN_PERIAPSIS, self.MAX_DV_SOFT, self.k_t, self.C_t, self.k_v, self.C_v
+            self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL,
+            self.RE_VAL, self.MIN_PERIAPSIS, self.MAX_DV_SOFT, self.k_t, self.C_t, self.k_v, self.C_v
         ], dtype=np.float64)
         
         vector_params = np.vstack([
@@ -457,8 +486,8 @@ class MissionOptimizer:
             narrow_bounds.append((max(lb, x_val - tolerance), min(ub, x_val + tolerance)))
         
         scalar_params = np.array([
-            self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.RE_VAL,
-            self.MIN_PERIAPSIS, self.MAX_DV_SOFT, self.k_t, self.C_t, self.k_v, self.C_v
+            self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL,
+            self.RE_VAL, self.MIN_PERIAPSIS, self.MAX_DV_SOFT, self.k_t, self.C_t, self.k_v, self.C_v
         ], dtype=np.float64)
         
         vector_params = np.vstack([
@@ -511,7 +540,7 @@ class MissionOptimizer:
         burn_logs, times, miss_km, dc_converged, r_aim, used_retrograde = reconstruct_mission_logs(
             x, num_burns, self.MIN_COAST_TIME, self.T_max,
             self.A_r0, self.A_v0, self.B_r0, self.B_v0,
-            self.MU, self.J2_VAL, self.RE_VAL
+            self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL, self.RE_VAL
         )
 
         print(f"任務開始後等待: {x[0]:.1f} 秒")
@@ -563,21 +592,21 @@ class MissionOptimizer:
 # --- 放在同一個檔案或 mission_evaluator.py 中的輔助函式 ---
 def refine_lambert_burn(
     r_curr: np.ndarray, v1_guess: np.ndarray, r_target: np.ndarray, t_flight: float,
-    mu: float, j2_val: float, re_val: float,
+    mu: float, j2_val: float, j3_val: float, j4_val: float, re_val: float,
     dt: float = 10.0, tol_km: float = 0.05, max_iter: int = 8, fd_eps: float = 1e-4
 ):
     """
     Lambert (izzo) 給的 v1_guess 是「無擾動二體」下的理論解。
-    這裡用含 J2 的高精度傳播器 (propagate_rk4) 當作真實模型，對 v1_guess 做
-    牛頓法微分修正 (有限差分算 3x3 Jacobian) —— 邏輯上等同 GMAT 的
-    Target/Vary/Achieve (DC1) 在做的事，只是搬進 Python，讓我們不用真的
-    打開 GMAT 也能拿到「加入 J2 後仍收斂」的最終 Δv 與誤差。
+    這裡用含 J2(+J3+J4，視 GRAVITY_DEGREE 而定) 的高精度傳播器 (propagate_dop853)
+    當作真實模型，對 v1_guess 做牛頓法微分修正 (有限差分算 3x3 Jacobian) ——
+    邏輯上等同 GMAT 的 Target/Vary/Achieve (DC1) 在做的事，只是搬進 Python，
+    讓我們不用真的打開 GMAT 也能拿到「加入重力擾動後仍收斂」的最終 Δv 與誤差。
     回傳: (v1_corrected, converged, final_miss_km, iterations)
     """
     v1 = v1_guess.copy()
 
     for it in range(max_iter):
-        r_pred, _ = propagate_rk4(r_curr, v1, t_flight, dt, mu, j2_val, re_val)
+        r_pred, _ = propagate_dop853(r_curr, v1, t_flight, dt, mu, j2_val, j3_val, j4_val, re_val)
         residual = r_target - r_pred
         miss = fast_norm(residual)
         if miss <= tol_km:
@@ -588,7 +617,7 @@ def refine_lambert_burn(
         for k in range(3):
             dv = np.zeros(3, dtype=np.float64)
             dv[k] = fd_eps
-            r_pert, _ = propagate_rk4(r_curr, v1 + dv, t_flight, dt, mu, j2_val, re_val)
+            r_pert, _ = propagate_dop853(r_curr, v1 + dv, t_flight, dt, mu, j2_val, j3_val, j4_val, re_val)
             jac[:, k] = (r_pert - r_pred) / fd_eps
 
         try:
@@ -597,24 +626,25 @@ def refine_lambert_burn(
             break
         v1 = v1 + delta_v
 
-    r_pred, _ = propagate_rk4(r_curr, v1, t_flight, dt, mu, j2_val, re_val)
+    r_pred, _ = propagate_dop853(r_curr, v1, t_flight, dt, mu, j2_val, j3_val, j4_val, re_val)
     miss = fast_norm(r_target - r_pred)
     return v1, miss <= tol_km, miss, max_iter
 
 
-def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_r0, B_v0, mu, j2_val, re_val):
+def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_r0, B_v0,
+                              mu, j2_val, j3_val, j4_val, re_val):
     """
     一步一步重播最佳解，並把 VNB 轉換和時間記錄下來。
     因為不用 JIT，可以盡情使用 list 和 dict。
     """
     burn_logs = []
     times = [0.0]
-    dt = 60.0
+    dt = 60.0  # DOP853 初始步長猜測 (自適應積分器會自己調整實際步長)
     
     current_time = float(x[0])
     times.append(current_time)
-    r_curr, v_curr = propagate_rk4(B_r0, B_v0, current_time, dt, mu, j2_val, re_val)
-    
+    r_curr, v_curr = propagate_dop853(B_r0, B_v0, current_time, dt, mu, j2_val, j3_val, j4_val, re_val)
+
     idx = 1
     for i in range(1, num_burns):
         # 跟 fast_fitness_evaluator 一致的球座標 (r, theta, phi) -> 直角座標轉換
@@ -638,7 +668,7 @@ def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_
         max_coast = T_max - current_time - min_coast_time
         t_coast = min_coast_time + coast_frac * (max_coast - min_coast_time) if max_coast > min_coast_time else min_coast_time
         
-        r_curr, v_curr = propagate_rk4(r_curr, v_curr_new, t_coast, dt, mu, j2_val, re_val)
+        r_curr, v_curr = propagate_dop853(r_curr, v_curr_new, t_coast, dt, mu, j2_val, j3_val, j4_val, re_val)
         current_time += t_coast
         times.append(current_time)
         
@@ -647,7 +677,7 @@ def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_
     t_final_leg = min_coast_time + final_leg_frac * (max_final - min_coast_time) if max_final > min_coast_time else min_coast_time
     intercept_time = current_time + t_final_leg
 
-    r_A_target, _ = propagate_rk4(A_r0, A_v0, intercept_time, dt, mu, j2_val, re_val)
+    r_A_target, _ = propagate_dop853(A_r0, A_v0, intercept_time, dt, mu, j2_val, j3_val, j4_val, re_val)
 
     # 跟 fast_fitness_evaluator 一致：Lambert 瞄準的是 A 附近容許球內的偏移點
     # (offset_r/theta/phi)，不是 A 的精確位置，藉此換取更省油的轉移。
@@ -693,7 +723,7 @@ def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_
     # 注意：這裡修正的目標是瞄準點 r_aim，不是 A 的真實位置，回傳的 miss_km 只代表
     # 「有沒有準確命中瞄準點」，不是最終真正跟 A 差多遠 —— 後者要另外算 (見下)。
     v1_req, dc_converged, _miss_from_aim_km, _dc_iters = refine_lambert_burn(
-        r_curr, v1_guess, r_aim, t_final_leg, mu, j2_val, re_val
+        r_curr, v1_guess, r_aim, t_final_leg, mu, j2_val, j3_val, j4_val, re_val
     )
 
     dv_final_vec = v1_req - v_curr
@@ -702,7 +732,7 @@ def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_
 
     # 真正跟 A 的距離：用修正後的 v1_req 實際傳播一次，量測最終位置跟 A 真實位置
     # (不是瞄準點) 的距離 —— 這才是規則真正在乎、也是計分公式要用的 Δr。
-    r_final_actual, _ = propagate_rk4(r_curr, v1_req, t_final_leg, 10.0, mu, j2_val, re_val)
+    r_final_actual, _ = propagate_dop853(r_curr, v1_req, t_final_leg, 10.0, mu, j2_val, j3_val, j4_val, re_val)
     miss_km = fast_norm(r_final_actual - r_A_target)
 
     burn_logs.append({"time": current_time, "dv_vec": dv_final_vec, "dv_vnb": dv_final_vnb, "dv_mag": dv_final_mag, "type": "Final Burn"})

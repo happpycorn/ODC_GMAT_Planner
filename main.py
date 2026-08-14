@@ -53,7 +53,12 @@ DEFAULT_CONFIG = {
         # 目前初賽規則的數字；晉級賽如果規則數字不一樣，改這裡就好，不用動程式碼。
         "MAX_DV_MPS": 1500.0,                # 單次機動 Δv 上限 (ΔV_lim)
         "MIN_MANEUVER_INTERVAL_SEC": 100.0,  # 兩次機動間至少要間隔多久
-        "T_MAX_PERIOD_MULTIPLE": 4.0,        # T_max = 這個值 × A 的軌道週期
+        "T_MAX_PERIOD_MULTIPLE": 4.0,        # T_max = 這個值 × A 的軌道週期 (只在 A
+                                              # 是橢圓/圓軌道時有意義，初賽適用)
+        # "T_MAX_SEC": null,                 # 選填：直接指定 T_max 秒數，會蓋過上面
+        # 那條「週期×倍數」公式。排位賽 A 是雙曲線軌道 (沒有週期)，官方公告 T_max
+        # 定義方式後，把算出來的秒數填在這裡——orbit_A.ECC>=1 時這個欄位是必填，
+        # 不然 optimizer 初始化會直接報錯 (週期公式對雙曲線沒有意義)。
         # 主辦方公告的環境計分參數 (依軌道分布狀況，每次比賽前會公告)
         "k_t": 0.0001,
         "C_t": 11000.0,
@@ -61,8 +66,11 @@ DEFAULT_CONFIG = {
         "C_v": 1200.0,
     },
     "strategy": {
-        "USE_J2": True,  # 不確定某一輪/場景有沒有 J2 擾動時用這個切換，Python 端跟
-                         # 產生的 GMAT script 會同步套用，不用改程式碼
+        "GRAVITY_DEGREE": 2,  # 重力場要算到第幾階 zonal harmonic：0=純點質量, 2=J2,
+                              # 3=J2+J3, 4=J2+J3+J4。不確定某一輪/場景實際開多少階擾動時
+                              # 用這個切換，Python 端跟產生的 GMAT script 會同步套用
+                              # (GMAT 端 Order 固定收在 0，只算 zonal 不算 tesseral，
+                              # 確保兩邊模型完全對齊)，不用改程式碼
         "MISS_TOLERANCE_KM": 5.0,  # 規則只要求 Δr <= 這個值 (預設對齊規則的 5km)，可以
                                     # 彈性調小 (甚至設 0 退回精準瞄準)，讓最後一棒 Lambert
                                     # 在容許範圍內找最省油的落點，而不是死盯著 A 的精確位置
@@ -155,6 +163,21 @@ def run_gmat_verification(console_path: str, script_path: str, timeout_sec: floa
     bin_dir = os.path.dirname(console_path)
     report_path = os.path.normpath(os.path.join(bin_dir, "..", "output", "GMAT_InterceptReport.txt"))
 
+    # 關鍵防護 (2026-08-14 抓到的真 bug)：GMAT 執行失敗時 (腳本解析錯誤、跑到一半
+    # 崩潰...) 不一定會清掉舊的報表檔——如果上一次執行 (可能是完全不同的 config/
+    # 情境) 留下的報表檔還在，下面的 `os.path.exists(report_path)` 檢查會誤判成
+    #「這次執行成功了」，讀到的其實是上一次殘留的舊資料，安靜地回傳一份看起來合
+    # 理、實際上完全對不上這次腳本的假結果。實測抓到過：這次 script 因為某個非
+    # ASCII 字元被 GMAT 解析器整個拒絕，但因為報表檔沒被清掉，讀回來的是前一次
+    # (完全不同情境) 的殘留報表，main.py 印出一份看似正常、實則張冠李戴的驗證結果。
+    # 修法：跑之前先把舊報表刪掉，讓「檔案存在」這件事只可能代表「這次真的寫出來
+    # 了」，不會被殘留檔案騙過去。
+    if os.path.exists(report_path):
+        try:
+            os.remove(report_path)
+        except OSError as exc:
+            print(f"⚠️ 無法清除舊的報表檔 ({report_path}): {exc}，這次驗證結果可能不可靠。")
+
     print("\n🛰️  正在呼叫 GmatConsole 做無頭驗證...")
     try:
         result = subprocess.run(
@@ -170,6 +193,14 @@ def run_gmat_verification(console_path: str, script_path: str, timeout_sec: floa
 
     stdout = result.stdout or ""
     targeter_converged = "The Targeter converged!" in stdout
+
+    # returncode 非 0 (腳本解析失敗、執行中崩潰...) 也要當失敗處理，不要只看報表
+    # 檔存不存在——雖然上面已經先清掉舊檔案，這裡多一層檢查讓失敗訊息更明確、
+    # 直接把 GMAT 自己回報的錯誤內容印出來，不用使用者自己去猜為什麼沒有報表。
+    if result.returncode != 0:
+        print(f"⚠️ GmatConsole 執行失敗 (exit code {result.returncode})，GMAT 輸出末段：")
+        print("\n".join(stdout.strip().splitlines()[-15:]))
+        return None
 
     if not os.path.exists(report_path):
         print(f"⚠️ GMAT 執行完但找不到報表檔 ({report_path})，可能腳本執行有誤，GMAT 輸出末段：")
@@ -294,7 +325,7 @@ def main():
         config["orbit_B"]["SMA"], config["orbit_B"]["ECC"], config["orbit_B"]["INC"],
         config["orbit_B"]["RAAN"], config["orbit_B"]["AOP"], config["orbit_B"]["TA"],
         burns, times, aim_point=mission_info["aim_point"],
-        max_dv=optimizer.MAX_DV, use_j2=optimizer.USE_J2
+        max_dv=optimizer.MAX_DV, gravity_degree=optimizer.GRAVITY_DEGREE
     )
 
     end_time = time.perf_counter()
@@ -378,7 +409,7 @@ def main():
                 config["orbit_B"]["SMA"], config["orbit_B"]["ECC"], config["orbit_B"]["INC"],
                 config["orbit_B"]["RAAN"], config["orbit_B"]["AOP"], config["orbit_B"]["TA"],
                 burns, times, aim_point=mission_info["aim_point"],
-                max_dv=optimizer.MAX_DV, use_j2=optimizer.USE_J2,
+                max_dv=optimizer.MAX_DV, gravity_degree=optimizer.GRAVITY_DEGREE,
                 final_burn_fixed_vnb=final_burn_vnb,
                 output_filename="output_submit.txt",
             )

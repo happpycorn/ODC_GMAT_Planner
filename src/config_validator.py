@@ -54,28 +54,54 @@ def _validate_orbit(orbit_cfg, label: str, errors: list):
         if not ok:
             errors.append(f"{label}.{f} 應該是有限數字，但收到 {v!r} ({type(v).__name__})")
 
+    # SMA/ECC 要嘛是橢圓/圓軌道 (SMA>0, 0<=ECC<1)，要嘛是雙曲線軌道 (SMA<0, ECC>1)
+    # ——排位賽 A 是雙曲線飛越軌道 (簡報第 9 頁)，所以這裡兩種都要接受，只擋
+    # 「SMA/ECC 符號兜不起來」這種物理上不成立的組合。ECC==1 (拋物線) 是退化邊界
+    # 情況 (SMA 理論上無限大)，目前不支援，直接當錯誤攔下來。
     if numeric_ok.get("SMA"):
         sma = orbit_cfg["SMA"]
-        if sma <= 0:
-            errors.append(f"{label}.SMA 必須 > 0 (km)，但收到 {sma}")
+        if sma == 0:
+            errors.append(f"{label}.SMA 不能是 0 (km)——正值代表橢圓/圓軌道，負值代表雙曲線軌道")
 
     if numeric_ok.get("ECC"):
         ecc = orbit_cfg["ECC"]
-        if not (0.0 <= ecc < 1.0):
+        if ecc < 0:
+            errors.append(f"{label}.ECC 必須 >= 0，但收到 {ecc}")
+        elif ecc == 1.0:
             errors.append(
-                f"{label}.ECC 必須落在 [0, 1) 之間 (目前程式只處理橢圓/圓軌道；"
-                f"雙曲線軌道是排位賽/四強賽場景，還沒實作)，但收到 {ecc}"
+                f"{label}.ECC == 1 (拋物線軌道) 目前不支援 (SMA 理論上無限大，是退化邊界情況)，"
+                f"如果這是排位賽的雙曲線 A，確認一下數字是不是應該是 ECC > 1"
             )
+
+    if numeric_ok.get("SMA") and numeric_ok.get("ECC"):
+        sma, ecc = orbit_cfg["SMA"], orbit_cfg["ECC"]
+        if ecc != 1.0:  # ECC==1 已經在上面單獨報過錯，這裡不用重複報
+            is_elliptical = 0.0 <= ecc < 1.0
+            is_hyperbolic = ecc > 1.0
+            if is_elliptical and sma <= 0:
+                errors.append(
+                    f"{label}: ECC={ecc} 是橢圓/圓軌道 (0<=ECC<1)，但 SMA={sma} 不是正數——"
+                    f"橢圓/圓軌道的 SMA 必須 > 0"
+                )
+            elif is_hyperbolic and sma >= 0:
+                errors.append(
+                    f"{label}: ECC={ecc} 是雙曲線軌道 (ECC>1)，但 SMA={sma} 不是負數——"
+                    f"依慣例雙曲線軌道的 SMA 必須 < 0 (這是排位賽的 A 軌道類型，見簡報第 9 頁)"
+                )
 
     if numeric_ok.get("INC"):
         inc = orbit_cfg["INC"]
         if not (0.0 <= inc <= 180.0):
             errors.append(f"{label}.INC 必須落在 [0, 180] 度之間，但收到 {inc}")
 
-    # 近地點半徑要在地球表面以上，軌道才有物理意義 (SMA、ECC 都合法時才檢查)
+    # 近地點半徑要在地球表面以上，軌道才有物理意義。SMA*(1-ECC) 這個公式對橢圓
+    # (SMA>0, ECC<1) 跟雙曲線 (SMA<0, ECC>1) 都成立、都會算出正的近地點半徑，
+    # 不用分兩套公式——只有在 SMA/ECC 符號已經兜得起來時才檢查 (兜不起來的組合
+    # 上面已經報過錯了，這裡再算只會產生誤導性的第二個錯誤)。
     if numeric_ok.get("SMA") and numeric_ok.get("ECC"):
         sma, ecc = orbit_cfg["SMA"], orbit_cfg["ECC"]
-        if sma > 0 and 0.0 <= ecc < 1.0:
+        sign_consistent = (sma > 0 and 0.0 <= ecc < 1.0) or (sma < 0 and ecc > 1.0)
+        if sign_consistent:
             periapsis = sma * (1.0 - ecc)
             if periapsis < _EARTH_RE_KM:
                 errors.append(
@@ -111,24 +137,48 @@ def _validate_rules(rules_cfg, errors: list):
         if not _is_number(v) or v <= 0:
             errors.append(f"rules.T_MAX_PERIOD_MULTIPLE 必須是 >0 的數字，但收到 {v!r}")
 
+    # T_MAX_SEC：選填的 T_max 直接覆寫值 (單位秒)。「T_max = 4×A的週期」這個公式
+    # 只在 A 是橢圓/圓軌道時有意義——A 是雙曲線軌道時 (排位賽) 沒有週期可言，
+    # T_max 要怎麼定義官方目前還沒公告 (見簡報第 9 頁「詳細競賽與計分規則擬定後，
+    # 將公告」)。等公告後不管公式是什麼，都可以直接把算出來的秒數填在這裡覆寫，
+    # 不用等程式碼跟著改。SMA/ECC 都合法時 (通過上面的橢圓/雙曲線一致性檢查)，
+    # 只有 A 是雙曲線且沒有給這個覆寫值時才會在 optimizer.py 初始化時報錯——這裡
+    # 不主動要求，因為 A 是橢圓軌道時 (初賽) 完全不需要這個欄位。
+    if "T_MAX_SEC" in rules_cfg and rules_cfg["T_MAX_SEC"] is not None:
+        v = rules_cfg["T_MAX_SEC"]
+        if not _is_number(v) or v <= 0:
+            errors.append(f"rules.T_MAX_SEC 必須是 >0 的數字 (單位秒) 或 null，但收到 {v!r}")
+
     for f in ("k_t", "C_t", "k_v", "C_v"):
         if f in rules_cfg and not _is_number(rules_cfg[f]):
             errors.append(f"rules.{f} 必須是有限數字，但收到 {rules_cfg[f]!r}")
 
 
+_VALID_GRAVITY_DEGREES = (0, 2, 3, 4)
+
+
 def _validate_strategy(strategy_cfg, errors: list):
-    """strategy：我們自己的任務設計選項，不是規則要求 (USE_J2、MISS_TOLERANCE_KM)。"""
+    """strategy：我們自己的任務設計選項，不是規則要求 (GRAVITY_DEGREE、MISS_TOLERANCE_KM)。"""
     if not isinstance(strategy_cfg, dict):
         errors.append(f"strategy 應該是一個物件，但收到 {type(strategy_cfg).__name__}")
         return
 
-    required = ["USE_J2", "MISS_TOLERANCE_KM"]
+    required = ["GRAVITY_DEGREE", "MISS_TOLERANCE_KM"]
     missing = [f for f in required if f not in strategy_cfg]
     if missing:
         errors.append(f"strategy 缺少欄位: {missing}")
 
-    if "USE_J2" in strategy_cfg and not isinstance(strategy_cfg["USE_J2"], bool):
-        errors.append(f"strategy.USE_J2 必須是 true/false，但收到 {strategy_cfg['USE_J2']!r}")
+    # GRAVITY_DEGREE：2026-08-14 從原本的 USE_J2 布林值換成這個——比賽當天實際
+    # 開的重力擾動階數不一定跟現在假設的一樣，開放成可調的階數比單純 on/off 更
+    # 貼近實際情況。0=點質量, 2=J2, 3=J2+J3, 4=J2+J3+J4，其他值 (例如 1，沒有
+    # 對應的 zonal harmonic) 沒有意義，直接擋下來。
+    if "GRAVITY_DEGREE" in strategy_cfg:
+        v = strategy_cfg["GRAVITY_DEGREE"]
+        if not (_is_int(v) and v in _VALID_GRAVITY_DEGREES):
+            errors.append(
+                f"strategy.GRAVITY_DEGREE 必須是 {_VALID_GRAVITY_DEGREES} 其中一個整數 "
+                f"(0=點質量, 2=J2, 3=J2+J3, 4=J2+J3+J4)，但收到 {v!r}"
+            )
 
     if "MISS_TOLERANCE_KM" in strategy_cfg:
         v = strategy_cfg["MISS_TOLERANCE_KM"]
