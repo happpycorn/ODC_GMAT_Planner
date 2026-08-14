@@ -220,10 +220,35 @@ def _validate_optimization(opt_cfg, errors: list):
                 )
 
     for f in ("MAXITER", "MAX_EARLY_STOP", "POPSIZE"):
-        if f in opt_cfg:
-            v = opt_cfg[f]
-            if not (_is_int(v) and v >= 1):
-                errors.append(f"optimization.{f} 必須是 >=1 的整數，但收到 {v!r}")
+        if f not in opt_cfg:
+            continue
+        v = opt_cfg[f]
+        if f == "MAXITER" and isinstance(v, dict):
+            # MAXITER 允許是 {燃燒次數: 世代數} 字典，不只是單一整數——sweep_burns.py
+            # 的粗掃階段依決策變數維度分配公平預算時會用這個形式 (見
+            # src/optimizer.py 的 MissionOptimizer._maxiter_for)。一般手寫的
+            # config.json 幾乎不會用到，但驗證邏輯要支援，不然粗掃階段自己組出來的
+            # stage_config 會被這裡誤判成壞設定直接擋下來。
+            bad_items = {
+                k: val for k, val in v.items()
+                if not (_is_int(k) and k >= 1 and _is_int(val) and val >= 1)
+            }
+            if bad_items:
+                errors.append(
+                    f"optimization.MAXITER 字典的每個 key 都必須是 >=1 的燃燒次數"
+                    f"整數、value 都必須是 >=1 的世代數整數，但有不合法的項目: {bad_items!r}"
+                )
+            mb = opt_cfg.get("MAX_BURNS")
+            if isinstance(mb, list):
+                missing_keys = [b for b in mb if b not in v]
+                if missing_keys:
+                    errors.append(
+                        f"optimization.MAXITER 字典沒有涵蓋 MAX_BURNS 裡的燃燒次數: "
+                        f"{missing_keys}"
+                    )
+            continue
+        if not (_is_int(v) and v >= 1):
+            errors.append(f"optimization.{f} 必須是 >=1 的整數，但收到 {v!r}")
 
     if "NUM_THREADS" in opt_cfg:
         v = opt_cfg["NUM_THREADS"]

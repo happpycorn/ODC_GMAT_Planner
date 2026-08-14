@@ -195,6 +195,20 @@ def fast_fitness_evaluator(
     # Mealpy 預設是找「最小值」，所以我們把分數加負號回傳
     return -score
 
+def decision_variable_dims(num_burns: int) -> int:
+    """
+    _generate_bounds() 產生的決策變數維度：1 (t_wait) + 4*(num_burns-1) (中間燃燒的
+    r/theta/phi/coast_frac) + 1 (final_leg_frac) + 3 (瞄準點偏移
+    offset_r/theta/phi) = 4*num_burns + 1。
+
+    抽成獨立函式 (不只是 _generate_bounds 內部算好就算了) 是因為 sweep_burns.py 的
+    粗掃階段需要靠這個維度數去幫不同燃燒次數案例分配「公平」的世代預算——維度公式
+    只准在這裡改一處，兩邊才不會兜不起來 (_generate_bounds 底部有一個 assert 會在
+    公式不同步時立刻炸出來，不會安靜地算錯)。
+    """
+    return 4 * num_burns + 1
+
+
 class MissionOptimizer:
     def __init__(self, config):
         self.config = config
@@ -267,6 +281,10 @@ class MissionOptimizer:
         
         # 演算法設定
         self.burns = config["optimization"]["MAX_BURNS"]
+        # MAXITER 通常是單一整數 (所有燃燒次數案例共用同一個世代預算)，但也接受
+        # {燃燒次數: 世代數} 字典——sweep_burns.py 的粗掃階段用這個依決策變數維度
+        # 分配公平預算 (見 _maxiter_for 的說明)。一般手寫 config 幾乎不會用到字典
+        # 形式，這裡不強制轉型，交給 _maxiter_for 統一處理兩種情況。
         self.maxiter = config["optimization"]["MAXITER"]
         self.popsize = config["optimization"]["POPSIZE"]
         self.num_threads = config["optimization"]["NUM_THREADS"]
@@ -321,7 +339,29 @@ class MissionOptimizer:
         ub.append(1.0)
         lb.extend([0.0, 0.0, 0.0])
         ub.extend([self.MISS_TOLERANCE_SOFT, math.pi, 2.0 * math.pi])
+        assert len(lb) == decision_variable_dims(num_burns), (
+            "決策變數維度公式跟 _generate_bounds 的實際陣列長度兜不起來——"
+            "改了其中一邊記得同步改 decision_variable_dims()"
+        )
         return lb, ub
+
+    def _maxiter_for(self, num_burns: int) -> int:
+        """
+        self.maxiter 通常是一個整數 (所有燃燒次數案例共用同一個世代預算)，但也可以是
+        一個 {燃燒次數: 世代數} 字典——sweep_burns.py 的粗掃階段會傳這種字典進來：
+        決策變數維度隨燃燒次數線性長，同一個世代預算對高維度案例天生不公平 (棒數越多
+        越吃虧，實測過 6 棒在 MAXITER=1000 下明顯輸 2 棒，拉到 3000 才追上，見
+        STATUS.md「新增 sweep_burns.py」那節)，字典讓每個燃燒次數依維度分配到不同的
+        世代數，粗掃階段的分數比較才公平，不用事後拉大 --window 去補系統性偏差。
+        """
+        if isinstance(self.maxiter, dict):
+            if num_burns not in self.maxiter:
+                raise ValueError(
+                    f"optimization.MAXITER 是字典，但沒有 {num_burns} 這個燃燒次數的"
+                    f"世代預算 (現有的 key: {sorted(self.maxiter.keys())})"
+                )
+            return int(self.maxiter[num_burns])
+        return int(self.maxiter)
 
     @staticmethod
     def _attach_progress_reporting(model, progress_queue, case_id):
@@ -393,8 +433,9 @@ class MissionOptimizer:
             "log_to": None
         }
 
+        case_maxiter = self._maxiter_for(current_burns)
         term_dict = {"max_early_stop": self.mes, "epsilon": self.tol}
-        model = L_SHADE(epoch=self.maxiter, pop_size=pop_size, termination=term_dict)
+        model = L_SHADE(epoch=case_maxiter, pop_size=pop_size, termination=term_dict)
         if progress_queue is not None:
             self._attach_progress_reporting(model, progress_queue, current_burns)
 
@@ -434,7 +475,7 @@ class MissionOptimizer:
         # 平常每次都印的 thread 數對使用者判斷任務規劃結果沒什麼幫助，不印。
         epochs_run = len(model.history.list_epoch_time)
         note = ""
-        if epochs_run < self.maxiter:
+        if epochs_run < case_maxiter:
             note += "，提早停止"
         if self.seed is not None:
             note += "，單執行緒 (seed 已設定)"
@@ -470,15 +511,17 @@ class MissionOptimizer:
         # 進度條的粒度：舊版用「完成的案例數」當總量 (total=num_cases)，代表整個案例
         # (可能要跑幾秒到幾分鐘，燃燒次數越多、決策變數維度越高、族群越大就越貴) 全部
         # 跑完才會跳一格，格與格之間間隔長短很不一致，容易讓人誤判卡住了。改成以「世代」
-        # 為粒度：每個案例都以 self.maxiter 為分母 (不管實際會不會提早停止，先假設跑好
-        # 跑滿)，所有案例的世代數加總當總量，讓進度條在整個搜尋過程中平滑前進。
+        # 為粒度：每個案例都以自己的世代預算為分母 (_maxiter_for，不管實際會不會提早
+        # 停止，先假設跑好跑滿)，所有案例的世代數加總當總量，讓進度條在整個搜尋過程中
+        # 平滑前進。self.maxiter 可能是單一整數 (所有案例共用) 或 {燃燒次數: 世代數}
+        # 字典 (sweep_burns.py 粗掃階段依維度分配公平預算時用)，_maxiter_for 兩種都吃。
         #
         # 世代進度是子行程 (_optimize_burn_case 裡的 mealpy 模型) 透過
         # multiprocessing.Manager().Queue() 回報回來的 (見 _attach_progress_reporting)，
         # 用一個背景執行緒持續清空佇列、更新進度條；主行程本身的 as_completed 迴圈維持
         # 原本的職責 (印「案例完成」訊息、記錄結果、挑最佳解)，兩者用一個 lock 保護
         # 共用的 case_progress/pbar，避免兩邊同時 update() 互相打架。
-        pbar = tqdm(total=num_cases * self.maxiter, desc="搜尋世代進度", unit="gen")
+        pbar = tqdm(total=sum(self._maxiter_for(b) for b in self.burns), desc="搜尋世代進度", unit="gen")
         case_progress: dict = {}
         progress_lock = threading.Lock()
         stop_draining = threading.Event()
@@ -486,7 +529,7 @@ class MissionOptimizer:
         def _bump_progress(case_id, epoch):
             """把某個案例的進度推進到 epoch (不會後退)，回報實際往前推進的量。"""
             with progress_lock:
-                epoch = min(epoch, self.maxiter)
+                epoch = min(epoch, self._maxiter_for(case_id))
                 prev = case_progress.get(case_id, 0)
                 if epoch > prev:
                     pbar.update(epoch - prev)
@@ -534,7 +577,7 @@ class MissionOptimizer:
                         # 直接寫終端機)，平常是空字串，只有「提早停止」/「單執行緒」才有內容。
                         b_count, best_x, best_score, epochs_run, note = future.result()
                         tqdm.write(f"✅ 推進 {b_count} 次完成：目標值 {best_score:.4f}，"
-                                   f"跑了 {epochs_run}/{self.maxiter} 代{note}")
+                                   f"跑了 {epochs_run}/{self._maxiter_for(b_count)} 代{note}")
                         self.burn_case_results[b_count] = {
                             "fitness": best_score, "epochs_run": epochs_run, "note": note,
                         }
@@ -547,11 +590,11 @@ class MissionOptimizer:
                     except Exception as exc:
                         tqdm.write(f"❌ [核心錯誤] 推進 {b} 次案例崩潰: {exc}")
                     finally:
-                        # 不管成功/失敗/提早停止，這個案例的份額都補滿到 self.maxiter——
-                        # 提早停止代表子行程回報的最後一則 epoch < maxiter，崩潰的案例
-                        # 可能完全沒回報過；兩種情況都要補滿，進度條才會在收工時精準到
-                        # 100%，不會卡在 99% 或某個案例的份額整段空白。
-                        _bump_progress(b, self.maxiter)
+                        # 不管成功/失敗/提早停止，這個案例的份額都補滿到它自己的世代
+                        # 預算——提早停止代表子行程回報的最後一則 epoch < 預算，崩潰的
+                        # 案例可能完全沒回報過；兩種情況都要補滿，進度條才會在收工時
+                        # 精準到 100%，不會卡在 99% 或某個案例的份額整段空白。
+                        _bump_progress(b, self._maxiter_for(b))
 
             stop_draining.set()
             drain_thread.join(timeout=2.0)

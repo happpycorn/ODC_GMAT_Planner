@@ -7,11 +7,13 @@
 merge 回 `Master` 並 push，分支本身已刪除——**現在直接在 `Master` 上開發**。
 
 commit `be04de7`（「固定燃燒版本」加 fallback 燃燒值來源）、`8a63480`（DOP853 換上
-主線 + J3/J4 + 排位賽輸入端準備）都已經 commit，**但還沒 push**（`git log
-origin/Master..HEAD` 領先 2 個 commit，working tree 是乾淨的）：下次接手先看
-`git status`/`git log origin/Master..HEAD` 確認這批改動還在不在、有沒有推。
-下面第 9 項「進度條粒度太粗」已在同一天稍晚修好，還沒進這兩個 commit，是新的
-未 commit 改動（`src/optimizer.py`）。
+主線 + J3/J4 + 排位賽輸入端準備）、`6ed3b4a`（修進度條粒度，見下面第 9 項）都已經
+commit，**但還沒 push**（`git log origin/Master..HEAD` 領先 3 個 commit）：下次
+接手先看 `git status`/`git log origin/Master..HEAD` 確認這批改動還在不在、有沒有
+推。`sweep_burns.py` 粗掃階段依維度公平分配世代預算那批改動
+（`src/optimizer.py`/`src/config_validator.py`/`sweep_burns.py`，見下面對應章節
+跟「還沒做」清單第 10~12 項）還沒 commit，下次接手先看 `git status`/`git diff`
+確認還在不在。
 
 **這個 session 做的事，由前到後**（各自的細節都在下面對應章節，這裡只列索引方便
 快速定位）：
@@ -26,6 +28,9 @@ origin/Master..HEAD` 領先 2 個 commit，working tree 是乾淨的）：下次
 5. 系統性掃描 SMA/ECC/雙曲線找出工具的可信邊界：**SMA 不是問題，ECC>0.95 才是**
    → 見「系統性測試軌道參數極限」
 6. 追加：進度條的粒度問題 (使用者發現，同一天稍晚已修，見下面「還沒做」清單第 9 項)
+7. 追加：`sweep_burns.py` 粗掃階段依維度公平分配世代預算 + 加時間上限，過程中
+   發現 MacBook Air 熱降頻讓「順便修 n_workers」這個念頭不再是穩賺 → 見
+   「sweep_burns.py 粗掃階段依維度公平分配世代預算」一節
 
 **上一次 (8/13) 最重要的發現，這次 session 已經拆解出根因，見下面「拆解 GMAT 對不上的
 真正原因」那一節**：「極端軌道」(SMA ~80,000km、ECC ~0.87) 上 Python 預測跟 GMAT 實測
@@ -620,6 +625,83 @@ SMA 越大誤差還越小 (5,000,000km 時只有 4.00m)。**結論：SMA 本身�
 (ECC>1)，也確認不會踩到；唯一需要留意的是「晉級賽如果出現極高離心率 (>0.95) 的
 橢圓軌道」這種還沒被規則提到的情境。
 
+## sweep_burns.py 粗掃階段依維度公平分配世代預算（2026-08-14 下午）
+
+使用者實測 `configs/weird_test.json`（自己編的壓力測試情境：SMA=150,000km、
+ECC=0.93、INC=175°，比 8/13 那組「情境一」的 80,000km/0.87 更極端；`--burns 1-8`
+逼到 8 棒、決策變數維度 33）時發現粗掃階段（`--coarse-iters 80`）光是跑完就要
+15~23 分鐘，而且懷疑粗掃出來的排序不可信——實測抓到證據：MAXITER 從 300 降到
+80 後，2 棒的分數從 -65.4137（比 1 棒好）掉到 -50.0905（比 1 棒還差），排序直接
+反轉。根因跟 `sweep_burns.py` 檔頭註解講的完全一樣：決策變數維度跟族群大小都隨
+燃燒次數線性長，但粗掃階段所有燃燒次數套同一個 `MAXITER`，維度越高的案例天生
+越吃虧，粗掃出來的「最高分」本身可能就是被低估的，`find_elbow()` 選出來的
+`window` 可能永遠不會碰到真正該測的燃燒次數。
+
+### 改動：MAXITER 支援 {燃燒次數: 世代數} 字典，依維度公平分配
+
+- **`src/optimizer.py`**：新增模組層級函式 `decision_variable_dims(num_burns)`
+  （`4×num_burns+1`，跟 `_generate_bounds()` 的陣列長度用同一個公式，
+  `_generate_bounds()` 底部加了 `assert` 防止兩邊以後改到不同步）。
+  `MissionOptimizer.maxiter` 現在除了原本的單一整數，也接受
+  `{燃燒次數: 世代數}` 字典；新增 `_maxiter_for(num_burns)` 統一處理兩種情況，
+  `_optimize_burn_case`/`run_study`（進度條 total、`_bump_progress` 的每案例上限、
+  完成訊息的分母、提早停止判斷）全部改成呼叫這個方法，不再假設所有案例共用同一個
+  `self.maxiter`。
+- **`src/config_validator.py`**：`_validate_optimization` 的 `MAXITER` 檢查
+  多接受字典形式（key 是 >=1 的燃燒次數整數、value 是 >=1 的世代數整數，且必須
+  涵蓋 `MAX_BURNS` 裡的每個燃燒次數），不然粗掃階段自己組出來的 `stage_config`
+  會被誤判成壞設定擋下來。
+- **`sweep_burns.py`**：新增 `scaled_coarse_iters(burns, base_iters, min_iters,
+  max_iters)`——`base_iters` 套在範圍裡維度最小的燃燒次數上，其他燃燒次數依維度
+  比例往上調（縮放比例是從上個 session「6 棒要把 MAXITER 從 1000 拉到 3000 才
+  追上 2 棒」那個實測歸納出來的經驗法則，維度比 25/9≈2.78、代數比 3 倍，大致
+  吻合線性關係，不是嚴謹推導）。新增 `--coarse-popsize`（粗掃階段獨立的族群大小
+  槓桿，不給就沿用 config 原本的值）跟 `--coarse-iters-cap`（世代數硬上限，見
+  下一段為什麼需要這個）。`run_stage()` 的表頭印出改成字典感知，會印
+  `MAXITER(依維度縮放)={1:25, 2:45, ...}` 而不是單一數字。
+
+**驗證過**：純邏輯測試（`decision_variable_dims`/`validate_config` 吃字典、缺
+key/壞 value 會不會正確擋下來）先過，再用便宜情境（4 棒、`--coarse-iters 20`）
+跑一次完整兩階段流程——粗掃階段已經看得出「3、4 棒分數往下掉」是預算不夠的假象
+（跟精細驗證「其實都打平」對照就看得出來），粗掃/精細驗證選出的最佳棒數一致
+（都是 2 棒），17.9 秒粗掃 + 16.5 秒精細，比舊版更快也更可信。
+
+### 重要修正：維度公平縮放不會自動變快，甚至可能更慢——加了硬上限
+
+第一版建議使用者用 `--coarse-iters 30 --coarse-popsize 6` 重跑 `weird_test.json`
+時，事後算帳發現這組參數對 8 棒（維度 33）算出來的世代數（198 代）乘上腰斬的
+族群，總運算量跟舊版「80 代 × 族群 15」幾乎一樣貴——因為公平縮放的方向是「往上
+補」高維度案例的預算，不是「整體往下砍」，而 `run_study()` 是並行跑所有燃燒次數
+案例，**總耗時看最慢的那一個，不是看總和**，補上去的部分直接抵銷了族群減半省下
+來的時間。這是在還沒讓使用者實測、只講了个「應該會快」的判斷後才自己抓出來的
+錯誤，教訓：講「會變快」之前要先把最貴的那個案例單獨算一次，不能只看縮放邏輯
+「感覺合理」。
+
+修法：`scaled_coarse_iters` 加 `max_iters` 硬上限參數（`--coarse-iters-cap`），
+不管維度比例算出來多大都封頂，犧牲最高幾個燃燒次數之間的公平性換一個看得到的
+時間上限。用 `--coarse-iters 25 --coarse-iters-cap 100 --coarse-popsize 6` 算過
+帳：8 案例加總運算量降到舊版的 45%，決定總耗時的最貴案例（8 棒）降到舊版的
+50%——這次有把最貴的案例單獨驗算過，不是只看總量。**這組參數還沒讓使用者實際
+跑過 `weird_test.json` 驗證預估的 7~8 分鐘準不準**，下次接手可以補這個驗證。
+
+### 發現：MacBook Air 熱降頻，讓「順便修 n_workers 沒榨乾」這個念頭也收回
+
+討論過程中發現 `_optimize_burn_case` 裡 `n_workers`（每個案例內部開幾條 thread）
+是案例剛開始時依「總共有幾個案例」算好就固定住，不會隨著其他案例陸續跑完、
+釋放出核心而增加——本來想提議修掉，但使用者確認他的機器是 **MacBook Air（無
+風扇）**，粗掃這種長時間高負載下會熱降頻，CPU 已經有 80%+ 的時間被吃滿。在這種
+機器上，讓剩下的案例多搶 thread 不保證是純贏——更多核心同時全速衝，更容易撞到
+熱牆，可能讓降頻更早/更嚴重，實際效果不確定。**這個修法先不做**，不是因為不值得
+做，是因為在熱降頻的硬體上沒把握是淨賺，貿然做了可能又要重新驗證一次「這樣真的
+比較快嗎」。
+
+**結論**：`weird_test.json` 是刻意編的壓力測試情境，不是官方題目——初賽 A 已知是
+圓軌道，落在「系統性測試軌道參數極限」那節確認的安全範圍，不會踩到這個量級的
+負擔。這個工具在熱降頻的 Air 上跑這麼極端的情境本來就會慢，是硬體限制，不是
+程式碼還沒調好；決定不再花時間在這個工具的速度上，改成如果之後方便，找一台
+有塔散熱器的桌機（使用者提到有一台 5800X）實測比對——**這次的比對還沒做**，
+見下面「還沒做」清單。
+
 ## 還沒做 / 值得考慮的
 
 優先順序由高到低：
@@ -633,6 +715,9 @@ SMA 越大誤差還越小 (5,000,000km 時只有 4.00m)。**結論：SMA 本身�
 7. **物理直覺的初始種子** 沒做（讓 L-SHADE 從一個粗略 Hohmann-like 猜測開始，而不是純隨機初始化）——早期評估過投入產出比不確定，沒有動手。
 8. 四強賽（即時追逐戰，電競直播模式）**完全還沒碰**——這是離線最佳化+腳本產生架構完全不適用的另一種問題，等晉級再說。
 9. ✅ **已解決：進度條粒度太粗，看不出真實進度**（使用者 2026-08-14 下午發現，同一天稍晚修復）。根因是 `run_study()` 原本的 `tqdm(concurrent.futures.as_completed(futures), total=num_cases)` 用「燃燒次數案例數」當總量，整個案例（可能要跑幾秒到幾分鐘）全部跑完才跳一格。改法：`src/optimizer.py` 的 `_optimize_burn_case` 新增 `progress_queue` 參數，用 `_attach_progress_reporting()` monkeypatch mealpy 模型 instance 的 `track_optimize_step`（mealpy 每代結束都會呼叫這個方法，不管 `log_to` 是不是 `None`），讓子行程每跑完一代就把 `(current_burns, epoch)` 塞進一個 `multiprocessing.Manager().Queue()`（不是普通 `multiprocessing.Queue()`——那個只有在子行程「建立當下」當參數傳入才能正確共享，事後才傳給已經活著的 `ProcessPoolExecutor` worker 會直接丟 `RuntimeError`；`Manager().Queue()` 的 proxy 就是設計成能在任意時間點 pickle 送給已經在跑的行程，spawn 下也驗證過沒問題）。主行程開一條背景 thread 持續清空這個佇列、更新一個 `total=num_cases*self.maxiter`（世代數加總）的 tqdm bar，跟原本負責印「案例完成」訊息/挑最佳解的 `as_completed` 迴圈用一個 `threading.Lock` 共用進度資料，避免兩邊同時 `update()` 打架；每個案例 (不管正常完成/提早停止/崩潰) 收尾時都會在 `finally` 補滿進度到 `self.maxiter`，確保 100% 精準收在總量上，不會卡在 99% 或某個案例的份額空白。實測：`practice_scenario.json` 規模 (3 案例×150代=450) 進度條平滑從 0%→2%→4%→...→100%（不是舊版的一次跳 33%），大規模 (2 案例×1000代=2000) 一樣精準跑到 2000/2000，跑完後用 `ps` 確認沒有殘留的子行程/Manager 行程，其餘輸出 (Mission Plan/驗證/分數) 都不受影響。
+10. **`sweep_burns.py` 粗掃階段依維度公平分配世代預算**——已實作、驗證過邏輯正確 (見「sweep_burns.py 粗掃階段依維度公平分配世代預算」那節)，但**建議的加速參數組合 (`--coarse-iters 25 --coarse-iters-cap 100 --coarse-popsize 6`) 還沒讓使用者實際在 `weird_test.json` 上跑過**，估計的 7~8 分鐘只是算帳算出來的，不是實測數字，下次接手可以補這個驗證。
+11. **`_optimize_burn_case` 的 `n_workers` 不會隨著其他案例跑完釋放核心而增加**——已知的 CPU 沒完全榨乾的地方，但使用者的 MacBook Air 會熱降頻，這個修法在他的機器上不保證是淨賺 (更多 thread 同時衝可能讓降頻更早發生)，決定先不做。如果之後主要在有良好散熱 (塔扇桌機等) 的機器上跑，這個修法的價值會比較確定，值得重新評估。
+12. **拿 5800X (使用者提到有塔扇散熱的桌機) 實測比對 MacBook Air (熱降頻)**——同一組 `weird_test.json`，兩台機器對照，量出真正的差距，不要用猜的。**還沒開始**，使用者說先收尾這輪 `sweep_burns.py` 的改動，之後再討論怎麼測 (可能需要在那台機器上照 README「部署到新電腦」那節裝一次環境)。
 
 ## 跑法提醒
 

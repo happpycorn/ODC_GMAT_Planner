@@ -13,9 +13,19 @@ sweep_burns.py —— 掃描「這個情境到底需要燒幾次」的輔助工�
   2. 精細驗證 (fine)：只針對粗掃找出來的候選窗口，用 config 原本的 MAXITER (使用者
      已經調過、信任的預算) 重新跑一次「公平」的比較，這一步的數字才能真的拿來下結論。
 
+粗掃階段本身也會踩到同一個「維度越高越吃虧」的問題——如果整個 --burns 範圍都套
+同一個 --coarse-iters，低燃燒次數 (維度低，很快收斂) 跟高燃燒次數 (維度高，同樣
+代數還沒收斂) 比出來的分數本身就不公平，可能讓 find_elbow 提早停在一個被低估的
+燃燒次數，害精細驗證階段的 --window 根本不會碰到真正該測的範圍。所以粗掃階段的
+MAXITER 預設會依 decision_variable_dims (4×燃燒次數+1) 依比例分配：--coarse-iters
+是套在「這次範圍裡維度最小的燃燒次數」上的世代數，其他燃燒次數依維度比例往上調
+(細節見 scaled_coarse_iters)。這樣同樣測 --burns 1-8，不用为了公平而放寬 --window
+去補找漏掉的高燃燒次數，粗掃階段本身就會給每個燃燒次數一個合理的世代數。
+
 用法：
     uv run sweep_burns.py --config configs/practice_scenario.json
-    uv run sweep_burns.py --config configs/practice_scenario.json --burns 1-8 --coarse-iters 400
+    uv run sweep_burns.py --config configs/practice_scenario.json --burns 1-8 --coarse-iters 80
+    uv run sweep_burns.py --config configs/practice_scenario.json --burns 1-8 --coarse-iters 80 --coarse-popsize 8
 
 跑完會印出兩張趨勢表 + 一個建議的 MAX_BURNS 範圍，用 --output-config 可以直接把
 建議寫成一份新的 config 檔。
@@ -29,7 +39,7 @@ import argparse
 import warnings
 import multiprocessing
 
-from src.optimizer import MissionOptimizer
+from src.optimizer import MissionOptimizer, decision_variable_dims
 from src.config_validator import validate_config, ConfigValidationError
 
 # main.py 已經有讀取+驗證 config 的邏輯，這裡直接借用，不要重複寫一份容易兩邊不同步。
@@ -45,16 +55,61 @@ def parse_burns_arg(spec: str) -> list:
     return [int(x) for x in spec.split(",")]
 
 
+def scaled_coarse_iters(burns: list, base_iters: int, min_iters: int = 20, max_iters: int = None) -> dict:
+    """
+    幫粗掃階段算一份「依決策變數維度分配」的世代預算 ({燃燒次數: 世代數})，取代
+    整個範圍套同一個 MAXITER 的舊做法。
+
+    base_iters 套用在這次範圍裡維度最小的燃燒次數上 (通常就是 min(burns))，其他
+    燃燒次數依維度比例往上調——維度公式跟 MissionOptimizer._generate_bounds 共用
+    同一個 decision_variable_dims()，不會兩邊兜不起來。min_iters 是下限，避免比例
+    算出來的世代數太小 (例如刻意只測極少數幾個高燃燒次數時) 讓 L-SHADE 連基本的
+    探索都做不到。
+
+    這個縮放比例是從 STATUS.md 記錄的實測結果歸納出來的經驗法則 (6 棒需要把
+    MAXITER 從 1000 拉到 3000 才追上 2 棒，維度比 25/9≈2.78、代數比 3 倍，大致
+    吻合線性關係)，不是嚴謹推導的理論公式——粗掃階段本來就只是抓大概的候選範圍，
+    不是精確工具，這裡追求的是「不要系統性冤枉高燃燒次數」，不是完美的公平性。
+
+    max_iters (選填)：硬上限，不管維度比例算出來多大都不會超過這個值。沒有上限的
+    話，--burns 涵蓋的燃燒次數範圍一大 (維度隨之飆高)，公平縮放是「往上補」不是
+    「整體往下砍」，最貴的那個案例反而可能比舊版 flat MAXITER 還貴——而並行跑的
+    情況下，總耗時是看最慢的那個案例，不是看總和，所以這個案例變貴會直接拖累整體
+    等待時間。加上限犧牲一點對最高燃燒次數的公平性，換一個看得到的時間上限。
+    """
+    reference_dims = decision_variable_dims(min(burns))
+    iters = {
+        k: max(min_iters, round(base_iters * decision_variable_dims(k) / reference_dims))
+        for k in burns
+    }
+    if max_iters is not None:
+        iters = {k: min(v, max_iters) for k, v in iters.items()}
+    return iters
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="掃描一個情境需要燒幾次才夠，兩階段：粗掃找候選範圍 → 用真實預算精細驗證"
     )
     parser.add_argument("--config", default=os.path.join("configs", "config.json"),
                          help="要分析的情境設定檔 (預設 configs/config.json)")
-    parser.add_argument("--burns", default="1-6",
+    parser.add_argument("--burns", default="1-8",
                          help="粗掃要測的燃燒次數範圍，例如 '1-6' 或 '1,2,4,8' (預設 1-6)")
-    parser.add_argument("--coarse-iters", type=int, default=300,
-                         help="粗掃階段用的 MAXITER，刻意調低換速度 (預設 300)")
+    parser.add_argument("--coarse-iters", type=int, default=80,
+                         help="粗掃階段套在『維度最小的燃燒次數』上的世代數，其他"
+                              "燃燒次數依維度比例往上調 (見 scaled_coarse_iters，"
+                              "預設 80)")
+    parser.add_argument("--coarse-popsize", type=int, default=None,
+                         help="粗掃階段用的 POPSIZE，不給就沿用 config 原本的值。"
+                              "跟 --coarse-iters 是獨立的兩個加速槓桿——調小這個能"
+                              "再省一輪運算量，不影響 --coarse-iters 的維度縮放")
+    parser.add_argument("--coarse-iters-cap", type=int, default=None,
+                         help="粗掃階段每個燃燒次數的世代數硬上限，不給就不設上限。"
+                              "--burns 範圍涵蓋很高的燃燒次數時，維度縮放會把預算"
+                              "往上補，最貴的案例可能比舊版 flat MAXITER 還貴，"
+                              "拖累整體等待時間 (並行跑，總耗時看最慢的案例)——設"
+                              "這個可以換一個看得到的時間上限，代價是最高燃燒次數"
+                              "之間的比較沒那麼公平")
     parser.add_argument("--window", type=int, default=2,
                          help="精細驗證階段，候選燃燒次數往上延伸幾格 (預設 2，"
                               "即 [elbow-1, elbow, elbow+1, elbow+2])")
@@ -78,7 +133,11 @@ def run_stage(config: dict, burns: list, maxiter: int, popsize=None, label: str 
         print(f"❌ 內部產生的設定檔驗證失敗 (不應該發生，回報這個 bug): {exc}")
         sys.exit(1)
 
-    print(f"\n{'='*60}\n{label} — MAX_BURNS={burns}, MAXITER={maxiter}\n{'='*60}")
+    if isinstance(maxiter, dict):
+        iters_desc = "MAXITER(依維度縮放)={" + ", ".join(f"{k}:{maxiter[k]}" for k in sorted(maxiter)) + "}"
+    else:
+        iters_desc = f"MAXITER={maxiter}"
+    print(f"\n{'='*60}\n{label} — MAX_BURNS={burns}, {iters_desc}\n{'='*60}")
     optimizer = MissionOptimizer(stage_config)
     t0 = time.perf_counter()
     optimizer.run_study()
@@ -120,10 +179,14 @@ def main():
     burns_range = sorted(set(parse_burns_arg(args.burns)))
 
     # --- 第一階段：粗掃 ---
+    # MAXITER 不是整個範圍套同一個數字，而是依決策變數維度分配 (見 scaled_coarse_iters
+    # 的說明)——不然維度低的燃燒次數 (例如 1) 早早收斂，維度高的 (例如 8) 同樣代數還
+    # 沒收斂完，粗掃出來的分數排序會系統性冤枉高燃燒次數。
+    coarse_iters_map = scaled_coarse_iters(burns_range, args.coarse_iters, max_iters=args.coarse_iters_cap)
     coarse_results = run_stage(
-        config, burns_range, args.coarse_iters, label="第一階段：粗掃"
+        config, burns_range, coarse_iters_map, popsize=args.coarse_popsize, label="第一階段：粗掃"
     )
-    print_score_table(coarse_results, "粗掃結果 (MAXITER 調低，數字僅供參考，不是最終結論)")
+    print_score_table(coarse_results, "粗掃結果 (MAXITER 依維度縮放調低，數字僅供參考，不是最終結論)")
 
     if not coarse_results:
         print("\n❌ 粗掃階段所有案例都失敗了，先確認 config 的軌道/規則參數合不合理。")
