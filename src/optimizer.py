@@ -359,14 +359,30 @@ class MissionOptimizer:
         中間燃燒方向/滑行時間本身也是決策變數，這裡的簡單粗掃邏輯不會生成，種子
         邏輯要複雜很多，先不處理 (見 STATUS.md「還沒做」清單)。
 
-        做法分兩步，都刻意做得便宜 (相對於後面真正的 L-SHADE 搜尋而言)：
-        1. 粗掃「A 什麼時候離地球比較近」，跟 B 完全無關，只看 A 自己的軌道——不管
-           A 是週期性軌道 (每圈一次) 還是排位賽的雙曲線 (最多一次飛掠)，這個掃法
-           對兩種都適用，不用特別判斷是哪一種。
-        2. 針對每個候選時間點附近，用 Lambert 做一次粗略的局部收斂 (t_wait 在候選點
-           附近晃動、flight_time 抓幾個常見量級)，找出還不錯的 (t_wait, flight_time)
-           組合轉成種子。不追求全域最佳 (那是 L-SHADE 接手後的工作)，只求種子落在
-           對的鄰域，讓後續的突變/交叉有機會慢慢逼近真正的最佳值。
+        候選窗口有「兩種」來源 (2026-08-15 補上第二種，見 STATUS.md「傾角窄窗」節)：
+        1. A 離地球最近的時間——對應「離心率把時間壓縮在近地點附近」這種窄窗，是
+           原本就有的邏輯。
+        2. A 最靠近 B 軌道平面的時間 (節線附近)——對應「傾角差大」這種窄窗。實測
+           過 (2026-08-15 傾角掃描)：傾角差在 90° 附近時，合法窗口可以窄到只佔
+           220 秒；而且兩種候選來源可能完全對不上——AOP 讓近地點落在離節線很遠的
+           地方時，只用第 1 種來源找到的種子，Δv 比真正的全域最佳差了 7500 m/s
+           以上 (見 inc_aop_adversarial.py 的實測)。所以這裡兩種來源都掃，不能只
+           選一種。
+
+        兩種掃法都刻意做得便宜 (相對於後面真正的 L-SHADE 搜尋而言)，而且共用同一次
+        粗掃迴圈算出來的 A 軌道位置，不用多傳播一次：
+        - 不管 A 是週期性軌道 (每圈一次) 還是排位賽的雙曲線 (最多一次飛掠)，這兩種
+          掃法對兩種軌道形狀都適用，不用特別判斷是哪一種。
+        - B 的軌道平面法向量用 t=0 時的 (B_r0, B_v0) 算 (h_B = r×v 方向)，只當一個
+          便宜的近似候選來源——J2 攝動會讓真實平面慢慢進動，但候選窗口只是要告訴
+          後面的 Lambert 精修「大概去哪裡找」，不要求算得多準，真正精確的收斂交給
+          下面的中解析度/細網格 Lambert 掃描 (跟第 1 種來源的近地點候選是同一個
+          精修管線，來源不同、後續處理完全一樣)。
+
+        接下來對每個候選時間點附近，用 Lambert 做一次粗略的局部收斂 (t_wait 在候選點
+        附近晃動、flight_time 抓幾個常見量級)，找出還不錯的 (t_wait, flight_time)
+        組合轉成種子。不追求全域最佳 (那是 L-SHADE 接手後的工作)，只求種子落在
+        對的鄰域，讓後續的突變/交叉有機會慢慢逼近真正的最佳值。
         """
         if num_burns != 1 or n_seeds <= 0:
             return []
@@ -374,23 +390,40 @@ class MissionOptimizer:
         dt = 60.0
         mu, j2, j3, j4, re = self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL, self.RE_VAL
 
-        # 第一步：粗掃 A 的距地距離，找局部極小值當候選窗口
+        # B 軌道平面法向量 (t=0 時刻的近似，見上面docstring說明)，用來偵測 A 幾時
+        # 靠近這個平面 (節線附近)。萬一 B_r0/B_v0 剛好共線 (理論上不該發生的退化
+        # 軌道) h_B 會是零向量，正規化前先擋一下避免除以零。
+        h_B = np.cross(self.B_r0, self.B_v0)
+        h_B_norm = fast_norm(h_B)
+        h_B_hat = h_B / h_B_norm if h_B_norm > 1e-9 else np.array([0.0, 0.0, 1.0])
+
+        # 第一步：粗掃 A 的距地距離 (窄窗來源1) 跟 A 到 B 軌道平面的垂直距離 (窄窗
+        # 來源2)，找各自的局部極小值當候選窗口。共用同一次傳播迴圈算兩個指標。
         n_coarse = 400
         coarse_ts = np.linspace(0.0, self.T_max, n_coarse)
         dists = np.empty(n_coarse)
+        plane_dists = np.empty(n_coarse)
         for i, t in enumerate(coarse_ts):
             r, _ = propagate_dop853(self.A_r0, self.A_v0, t, dt, mu, j2, j3, j4, re)
             dists[i] = fast_norm(r)
+            plane_dists[i] = abs(np.dot(r, h_B_hat))
 
-        candidate_idxs = []
-        for i in range(n_coarse):
-            left_ok = (i == 0) or (dists[i] <= dists[i - 1])
-            right_ok = (i == n_coarse - 1) or (dists[i] <= dists[i + 1])
-            if left_ok and right_ok:
-                candidate_idxs.append(i)
-        # 依距離排序，只留最近的幾個 (候選太多只會拖慢粗掃，用不到那麼多種子)
-        candidate_idxs.sort(key=lambda i: dists[i])
-        candidate_idxs = candidate_idxs[:max(n_seeds * 2, 5)]
+        def _local_minima_idxs(values):
+            idxs = []
+            for i in range(n_coarse):
+                left_ok = (i == 0) or (values[i] <= values[i - 1])
+                right_ok = (i == n_coarse - 1) or (values[i] <= values[i + 1])
+                if left_ok and right_ok:
+                    idxs.append(i)
+            return idxs
+
+        # 兩種來源各自排序取前幾名，再合併去重——各自的候選數上限砍半，讓合併後
+        # 的候選總數維持在原本 max(n_seeds*2, 5) 差不多的量級，不會因為多了一種
+        # 來源就讓後面的中解析度掃描 (第二步) 的成本翻倍。
+        per_source_cap = max(n_seeds, 3)
+        earth_idxs = sorted(_local_minima_idxs(dists), key=lambda i: dists[i])[:per_source_cap]
+        plane_idxs = sorted(_local_minima_idxs(plane_dists), key=lambda i: plane_dists[i])[:per_source_cap]
+        candidate_idxs = list(dict.fromkeys(earth_idxs + plane_idxs))  # 保序去重
 
         lb, ub = self._generate_bounds(1)
         lb_arr, ub_arr = np.array(lb), np.array(ub)
