@@ -361,19 +361,39 @@ View_Intercept.ShowPlot = true;
 % the whole scene; this one is "what B sees" - the camera follows ShipB
 % (ViewPointReference=ShipB moves with it every frame) and keeps ShipA in
 % frame, making the final-approach geometry/alignment much easier to read
-% visually than the wide Earth view. ViewPointVector is the camera's offset
-% from ShipB, expressed along the EarthMJ2000Eq axes (not ShipB's own
-% attitude axes - GMAT has no native "onboard camera" concept; this is the
-% closest practical approximation, like a chase/lock-on camera in a flight
-% sim). NON-ASCII WARNING: keep every comment in this file plain ASCII - GMAT's
+% visually than the wide Earth view.
+%
+% BUGFIX (2026-08-14, found by real GMAT testing): the first version put
+% ViewPointVector=[500 500 500] in the EarthMJ2000Eq frame - a FIXED inertial
+% direction, not something that tracks ShipB's own position. ShipB's orbital
+% radius (~6400-7000km for a typical LEO) is only a few hundred km bigger than
+% Earth's own radius (6378km), and the offset's magnitude (~866km) is bigger
+% than that margin - so whenever ShipB's orbital phase put it in roughly the
+% opposite direction from the fixed [500 500 500] vector, the offset
+% subtracted more from ShipB's distance-from-Earth than that margin allowed,
+% putting the camera INSIDE the Earth (looked like being swallowed by the
+% planet). Fixed by defining the offset in a coordinate system anchored on
+% ShipB itself with an axis that always points radially outward from Earth
+% (Axes=ObjectReferenced, XAxis=R with Primary=Earth/Secondary=ShipB) instead
+% of a fixed inertial direction - the camera is now always further from Earth
+% than ShipB by construction, regardless of orbital phase.
+Create CoordinateSystem ShipBChaseFrame;
+ShipBChaseFrame.Origin = ShipB;
+ShipBChaseFrame.Axes = ObjectReferenced;
+ShipBChaseFrame.XAxis = R;
+ShipBChaseFrame.ZAxis = N;
+ShipBChaseFrame.Primary = Earth;
+ShipBChaseFrame.Secondary = ShipB;
+
+% NON-ASCII WARNING: keep every comment in this file plain ASCII - GMAT's
 % parser rejects the whole script outright if any non-ASCII character sneaks
 % in (bit this exact bug once already, see commit 887e64e and STATUS.md).
 Create OrbitView View_ShipBChase;
 View_ShipBChase.SolverIterations = Current;
 View_ShipBChase.Add = {{ShipA, ShipB, Earth}};
-View_ShipBChase.CoordinateSystem = EarthMJ2000Eq;
+View_ShipBChase.CoordinateSystem = ShipBChaseFrame;
 View_ShipBChase.ViewPointReference = ShipB;
-View_ShipBChase.ViewPointVector = [ 500 500 500 ];
+View_ShipBChase.ViewPointVector = [ 500 0 200 ];
 View_ShipBChase.ViewDirection = ShipA;
 View_ShipBChase.ViewScaleFactor = 1.0;
 View_ShipBChase.ViewUpCoordinateSystem = EarthMJ2000Eq;
