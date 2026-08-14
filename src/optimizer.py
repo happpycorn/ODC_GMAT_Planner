@@ -345,6 +345,147 @@ class MissionOptimizer:
         )
         return lb, ub
 
+    def _generate_seed_candidates(self, num_burns: int, n_seeds: int) -> list:
+        """
+        幫初始族群準備幾個「有物理根據的猜測」當種子，其餘照舊隨機生成——不是取代
+        隨機初始化，是額外加進去 (見 _optimize_burn_case 呼叫端怎麼混合)。
+
+        動機 (2026-08-14「weird_test.json 深度診斷」那節)：某些極端幾何 (例如目標 A
+        跟 B 的軌道傾角差很大) 下，唯一合法的單棒解可能藏在一個只佔 T_max 千分之幾
+        的窄時間窗口裡，實測過純隨機初始化跑到 2000 代都撞不到；反過來，一個便宜的
+        低維度粗掃 (只掃 t_wait/flight_time，不用管其他維度) 幾秒到幾十秒內就能找到。
+
+        只對 num_burns==1 有效，回傳空列表讓多棒案例自然退回純隨機初始化——多棒的
+        中間燃燒方向/滑行時間本身也是決策變數，這裡的簡單粗掃邏輯不會生成，種子
+        邏輯要複雜很多，先不處理 (見 STATUS.md「還沒做」清單)。
+
+        做法分兩步，都刻意做得便宜 (相對於後面真正的 L-SHADE 搜尋而言)：
+        1. 粗掃「A 什麼時候離地球比較近」，跟 B 完全無關，只看 A 自己的軌道——不管
+           A 是週期性軌道 (每圈一次) 還是排位賽的雙曲線 (最多一次飛掠)，這個掃法
+           對兩種都適用，不用特別判斷是哪一種。
+        2. 針對每個候選時間點附近，用 Lambert 做一次粗略的局部收斂 (t_wait 在候選點
+           附近晃動、flight_time 抓幾個常見量級)，找出還不錯的 (t_wait, flight_time)
+           組合轉成種子。不追求全域最佳 (那是 L-SHADE 接手後的工作)，只求種子落在
+           對的鄰域，讓後續的突變/交叉有機會慢慢逼近真正的最佳值。
+        """
+        if num_burns != 1 or n_seeds <= 0:
+            return []
+
+        dt = 60.0
+        mu, j2, j3, j4, re = self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL, self.RE_VAL
+
+        # 第一步：粗掃 A 的距地距離，找局部極小值當候選窗口
+        n_coarse = 400
+        coarse_ts = np.linspace(0.0, self.T_max, n_coarse)
+        dists = np.empty(n_coarse)
+        for i, t in enumerate(coarse_ts):
+            r, _ = propagate_dop853(self.A_r0, self.A_v0, t, dt, mu, j2, j3, j4, re)
+            dists[i] = fast_norm(r)
+
+        candidate_idxs = []
+        for i in range(n_coarse):
+            left_ok = (i == 0) or (dists[i] <= dists[i - 1])
+            right_ok = (i == n_coarse - 1) or (dists[i] <= dists[i + 1])
+            if left_ok and right_ok:
+                candidate_idxs.append(i)
+        # 依距離排序，只留最近的幾個 (候選太多只會拖慢粗掃，用不到那麼多種子)
+        candidate_idxs.sort(key=lambda i: dists[i])
+        candidate_idxs = candidate_idxs[:max(n_seeds * 2, 5)]
+
+        lb, ub = self._generate_bounds(1)
+        lb_arr, ub_arr = np.array(lb), np.array(ub)
+        step_coarse = self.T_max / (n_coarse - 1)
+        flight_times = np.array([600.0, 1800.0, 3600.0, 7200.0, 14400.0, 43200.0, 86400.0])
+
+        # 第二步 (中解析度)：對每個候選窗口找一個粗略還不錯的 (tw, ft)。這一步刻意
+        # 便宜 (~290 秒間隔)，只用來從一堆候選窗口裡篩出「真的有搞頭」的那幾個，
+        # 不追求精準——真正要靠這個解析度直接找到最佳解不夠細，見下一步。
+        rough_hits = []  # [(best_dv, idx, best_tw, best_ft), ...]
+        for idx in candidate_idxs:
+            center_t = coarse_ts[idx]
+            best_dv, best_tw, best_ft = np.inf, None, None
+            # 要對準的是「B 抵達的時間」(tw+ft) 接近 center_t (A 靠近地球的那個
+            # 時間點)，不是「B 出發的時間」(tw) 本身——出發時間沒有直接的物理意義，
+            # flight_time 拉長時這兩者可以差到快一整天，如果誤把 tw 對準 center_t，
+            # flight_time 一大就會搜到 A 早就已經飛遠的地方去。所以 flight_time 放
+            # 外層，每個 flight_time 各自反推出對應的 tw 搜尋中心 (center_t - ft)。
+            for ft in flight_times:
+                tw_center = center_t - ft
+                local_tws = np.linspace(
+                    max(0.0, tw_center - step_coarse), min(self.T_max, tw_center + step_coarse), 21
+                )
+                for tw in local_tws:
+                    if ft < self.MIN_COAST_TIME or tw < 0.0 or tw + ft > self.T_max:
+                        continue
+                    r_b, v_b = propagate_dop853(self.B_r0, self.B_v0, tw, dt, mu, j2, j3, j4, re)
+                    r_a, _ = propagate_dop853(self.A_r0, self.A_v0, tw + ft, dt, mu, j2, j3, j4, re)
+                    for prograde in (True, False):
+                        try:
+                            v1, _ = izzo(mu, r_b, r_a, ft, M=0, prograde=prograde,
+                                         lowpath=True, numiter=35, rtol=1e-8)
+                            dv = fast_norm(v1 - v_b)
+                        except Exception:
+                            continue
+                        # 真正的評估函式最後還會檢查「整條轉移軌道」的近地點，不是只
+                        # 看起點/終點——Δv 再小，轉移途中擦到地球一樣是廢解，種子挑
+                        # 選要用同一套安檢，不然挑出來的種子有很高機率一開局就是 0 分。
+                        if not check_constraints(r_b, v1, mu, self.MIN_PERIAPSIS):
+                            continue
+                        if dv < best_dv:
+                            best_dv, best_tw, best_ft = dv, tw, ft
+            if best_tw is not None:
+                rough_hits.append((best_dv, idx, best_tw, best_ft))
+
+        # 第三步 (細解析度精修)：只對第二步真正成功、而且 Δv 排名前面的候選做——
+        # 不是對 candidate_idxs 全部都做，避免 n_seeds 開很大 (例如族群大時 5% 換算
+        # 出幾十個) 但真正存在的候選窗口沒那麼多時，浪費時間細修一堆本來就要被
+        # 丟棄的候選。這一步刻意不用梯度類方法 (L-BFGS-B 之類)——實測過 (2026-08-14)
+        # Δv 超標的懲罰是離散跳躍不是平滑漸變，梯度法在這種斷點附近會瞎眼，明明
+        # 只差幾百秒就跨進合法範圍，梯度法完全不會移動過去。網格搜尋雖然單次評估
+        # 比較笨，但保證不會跳過比步長還寬的窗口，這正是這裡需要的特性 (跟
+        # STATUS.md「weird_test.json 深度診斷」那節手動驗證過的方法一致)。
+        rough_hits.sort(key=lambda h: h[0])
+        seeds = []
+        for _, idx, rough_tw, rough_ft in rough_hits[:n_seeds]:
+            best_dv, best_tw, best_ft = np.inf, rough_tw, rough_ft
+            fine_tw_span = step_coarse / 10.0
+            fine_ft_span = max(600.0, rough_ft * 0.3)
+            fine_tws = np.linspace(
+                max(0.0, rough_tw - fine_tw_span), min(self.T_max, rough_tw + fine_tw_span), 25
+            )
+            fine_fts = np.linspace(max(self.MIN_COAST_TIME, rough_ft - fine_ft_span), rough_ft + fine_ft_span, 11)
+            for tw in fine_tws:
+                r_b, v_b = propagate_dop853(self.B_r0, self.B_v0, tw, dt, mu, j2, j3, j4, re)
+                for ft in fine_fts:
+                    if ft < self.MIN_COAST_TIME or tw + ft > self.T_max:
+                        continue
+                    r_a, _ = propagate_dop853(self.A_r0, self.A_v0, tw + ft, dt, mu, j2, j3, j4, re)
+                    for prograde in (True, False):
+                        try:
+                            v1, _ = izzo(mu, r_b, r_a, ft, M=0, prograde=prograde,
+                                         lowpath=True, numiter=35, rtol=1e-8)
+                            dv = fast_norm(v1 - v_b)
+                        except Exception:
+                            continue
+                        if not check_constraints(r_b, v1, mu, self.MIN_PERIAPSIS):
+                            continue
+                        if dv < best_dv:
+                            best_dv, best_tw, best_ft = dv, tw, ft
+
+            max_final = self.T_max - best_tw
+            if max_final > self.MIN_COAST_TIME:
+                final_leg_frac = float(np.clip(
+                    (best_ft - self.MIN_COAST_TIME) / (max_final - self.MIN_COAST_TIME), 0.0, 1.0
+                ))
+            else:
+                final_leg_frac = 0.0
+            # 瞄準點偏移全部給 0 (精準瞄準 A 的真實位置)——省油的偏移瞄準留給 L-SHADE
+            # 自己在種子附近去探索，種子本身只負責把 t_wait/flight_time 帶對地方。
+            x = np.array([best_tw, final_leg_frac, 0.0, 0.0, 0.0], dtype=np.float64)
+            seeds.append(np.clip(x, lb_arr, ub_arr))
+
+        return seeds
+
     def _maxiter_for(self, num_burns: int) -> int:
         """
         self.maxiter 通常是一個整數 (所有燃燒次數案例共用同一個世代預算)，但也可以是
@@ -418,6 +559,22 @@ class MissionOptimizer:
         n_dims = len(lb)
         pop_size = max(30, n_dims * self.popsize)
 
+        # 種子初始化 (2026-08-14)：只對單棒有效 (見 _generate_seed_candidates 的說明)，
+        # 種子只佔族群一小部分 (~5%，至少 1 個)，其餘照舊純隨機——刻意不用種子取代
+        # 隨機初始化，種子猜錯/把族群帶偏的最壞情況也只是浪費掉粗掃那幾十秒，隨機
+        # 探索這個安全網完全保留。找不到種子 (n_seeds<=0 或粗掃沒收斂出結果) 時
+        # seed_candidates 是空列表，starting_solutions 自然變成 None，行為等同
+        # 加這個功能之前的版本。
+        n_seeds = max(1, round(pop_size * 0.05))
+        seed_candidates = self._generate_seed_candidates(current_burns, n_seeds)
+        if seed_candidates:
+            lb_arr, ub_arr = np.array(lb), np.array(ub)
+            n_random = pop_size - len(seed_candidates)
+            random_part = [np.random.uniform(lb_arr, ub_arr) for _ in range(n_random)]
+            starting_solutions = seed_candidates + random_part
+        else:
+            starting_solutions = None
+
         def fitness_wrapper(solution):
             return fast_fitness_evaluator(
                 np.asarray(solution, dtype=np.float64), 
@@ -461,13 +618,47 @@ class MissionOptimizer:
         # 單執行緒換取重現性；沒設 seed (預設) 就照樣用多執行緒換速度，兩者只能選一個。
         if self.seed is not None:
             np.random.seed(self.seed)
-            g_best = model.solve(problem, seed=self.seed)
+            g_best = model.solve(problem, seed=self.seed, starting_solutions=starting_solutions)
         else:
-            g_best = model.solve(problem, mode="thread", n_workers=n_workers, seed=self.seed)
+            g_best = model.solve(problem, mode="thread", n_workers=n_workers, seed=self.seed,
+                                  starting_solutions=starting_solutions)
 
         current_best_x = g_best.solution
         raw_fitness = g_best.target.fitness
         current_best_score = float(raw_fitness) if raw_fitness is not None else float('inf')
+
+        # 種子精修 (2026-08-14)：光把種子丟進初始族群不夠可靠——實測過，種子在整個
+        # 族群裡通常只佔一小部分名額 (5% 是上限，不是保證，真正能用的種子數受限於
+        # _generate_seed_candidates 找到幾個有效候選窗口，可能遠低於 5%)，族群演化
+        # 過程中很容易被其他個體 (尤其是「立刻噴、不管合不合法」這種好找的區域)
+        # 稀釋掉——SHADE 這類 current-to-pbest 變異策略會把整個族群往目前最好的
+        # 方向拉，種子還沒精修完就先被拉走了 (親眼測過這個現象)。修法：不只依賴
+        # L-SHADE 自己的演化去精修種子，額外對每個原始種子單獨做一次局部 NLP 精修
+        # (不受族群其他個體干擾)，贏過 L-SHADE 自己找到的贏家就取代——跟
+        # refine_trajectory() 對最終贏家做的事同一招，只是這裡對每個種子各做一次，
+        # 而且要在這裡 (子行程) 做，不能留到外層 (run_study 只會對最終贏家精修一次，
+        # 其他燃燒次數案例自己的種子沒有第二次機會)。
+        for seed_x in seed_candidates:
+            seed_bounds = []
+            for i, (l, u) in enumerate(zip(lb, ub)):
+                span = u - l
+                # 種子目前只有 num_burns==1 才會產生 (見 _generate_seed_candidates)，
+                # 陣列固定是 [t_wait, final_leg_frac, offset_r, offset_theta, offset_phi]，
+                # 前兩個是時間類 (嚴格容忍度)，後三個是角度/瞄準類 (寬鬆容忍度)——
+                # 跟 refine_trajectory() 對這個特例的容忍度規則一致。之後如果種子邏輯
+                # 擴展到多棒，這裡要跟著改成跟 refine_trajectory() 一樣的完整規則。
+                tolerance = span * (0.02 if i < 2 else 0.15)
+                seed_bounds.append((max(l, seed_x[i] - tolerance), min(u, seed_x[i] + tolerance)))
+            try:
+                seed_nlp = minimize(
+                    fun=fitness_wrapper, x0=seed_x, method='L-BFGS-B',
+                    bounds=seed_bounds, options={'maxiter': 50}
+                )
+                if seed_nlp.fun < current_best_score:
+                    current_best_x, current_best_score = seed_nlp.x, float(seed_nlp.fun)
+            except Exception:
+                # 種子精修失敗 (數值問題之類) 不該讓整個案例報廢，跳過這個種子繼續。
+                continue
 
         # 實際跑了幾代 (用來判斷 MAX_EARLY_STOP 有沒有提早介入，MAXITER 設定合不合理)。
         # 只有「提早停止」跟「seed 已設定所以退回單執行緒」這兩種情況值得特別提醒
@@ -479,6 +670,8 @@ class MissionOptimizer:
             note += "，提早停止"
         if self.seed is not None:
             note += "，單執行緒 (seed 已設定)"
+        if seed_candidates:
+            note += f"，{len(seed_candidates)} 個種子已獨立精修"
 
         # note 回傳給主行程印，不在這裡印 (見函式開頭的說明)
         return current_burns, current_best_x, current_best_score, epochs_run, note
