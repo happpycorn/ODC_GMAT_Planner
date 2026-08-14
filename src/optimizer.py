@@ -4,6 +4,9 @@ import numpy as np
 from numba import njit
 from poliastro.core.iod import izzo
 import concurrent.futures
+import multiprocessing
+import queue
+import threading
 
 from typing import Tuple
 from scipy.optimize import minimize
@@ -320,7 +323,38 @@ class MissionOptimizer:
         ub.extend([self.MISS_TOLERANCE_SOFT, math.pi, 2.0 * math.pi])
         return lb, ub
 
-    def _optimize_burn_case(self, current_burns, scalar_params, vector_params):
+    @staticmethod
+    def _attach_progress_reporting(model, progress_queue, case_id):
+        """
+        幫子行程裡的 mealpy 模型「掛」一個世代回報鉤子。
+
+        mealpy 的 Optimizer.solve() 每跑完一代都會呼叫一次 self.track_optimize_step()
+        (不管 log_to 是不是 None——log_to=None 只是讓它內部的 logger.info() 不印東西，
+        呼叫本身照樣每代都發生)，這是唯一一個「每代結束」都保證會經過的掛勾點。這裡
+        monkeypatch 單一 instance 的 bound method (不是繼承整個 L_SHADE class、也不改
+        mealpy 原始碼)，讓它在原本行為之後，多把 (case_id, epoch) 塞進跨行程共享的
+        progress_queue，範圍降到最小。
+
+        progress_queue 用 multiprocessing.Manager().Queue()（不是普通的
+        multiprocessing.Queue()）——後者只有在「行程建立當下」當參數傳入才能正確跨行程
+        共享，ProcessPoolExecutor 的 worker 是已經活著的行程，事後再把它 pickle 送進去
+        會直接丟 RuntimeError；Manager 的 proxy 物件本來就是設計成能在任意時間點被
+        pickle、送到已經在跑的行程，在 spawn (macOS/Windows 預設) 下也能正常運作。
+        """
+        original_track_step = model.track_optimize_step
+
+        def _wrapped_track_step(pop=None, epoch=None, runtime=None):
+            original_track_step(pop=pop, epoch=epoch, runtime=runtime)
+            try:
+                progress_queue.put_nowait((case_id, epoch))
+            except Exception:
+                # 進度回報是錦上添花，佇列滿了/manager 已關閉之類的問題絕對不該讓
+                # 最佳化本身中斷或整個案例報廢。
+                pass
+
+        model.track_optimize_step = _wrapped_track_step
+
+    def _optimize_burn_case(self, current_burns, scalar_params, vector_params, progress_queue=None):
         """
         獨立的工作包：負責在單一核心上，執行特定推進次數的最佳化。
 
@@ -330,6 +364,11 @@ class MissionOptimizer:
         會跟主行程進度條的 `\r` 覆寫互相打架，實測會讓進度條每次重繪變成往下多印
         一行 (而不是原地覆蓋)，越跑越長。所以這裡只回傳資訊，所有會印出來的訊息都
         留給呼叫端 (run_study，在主行程) 統一印，讓 tqdm 全程只在單一行程裡運作。
+
+        progress_queue (選填)：用來把「這個案例跑到第幾代」回報給主行程畫進度條，
+        見 _attach_progress_reporting 的說明。run_study() 一定會傳；預設 None 只是
+        給直接呼叫這個私有方法的情境 (例如測試) 一個安全的退路，不回報也不出錯，
+        行為等同修這個問題之前的版本。
         """
         lb, ub = self._generate_bounds(current_burns)
         # 族群大小依「真正的決策變數維度」縮放 (n_dims * POPSIZE)，而不是舊版的
@@ -356,6 +395,8 @@ class MissionOptimizer:
 
         term_dict = {"max_early_stop": self.mes, "epsilon": self.tol}
         model = L_SHADE(epoch=self.maxiter, pop_size=pop_size, termination=term_dict)
+        if progress_queue is not None:
+            self._attach_progress_reporting(model, progress_queue, current_burns)
 
         # 外層已經用 ProcessPoolExecutor 依燃燒次數分配了核心 (num_cases 個 process)，
         # 這裡再把剩餘核心切給 mealpy 的 'thread' 模式，讓每一代的族群評估也平行跑。
@@ -419,39 +460,103 @@ class MissionOptimizer:
 
         # 開啟多行程池，最大核心數設定為你要測試的推進情境總數 (例如 burns = [1, 2, 3] 就是開 3 個)
         num_cases = len(self.burns)
-        
+
         # 提交所有任務：把不同的 current_burns 丟給不同的核心。「開始計算」訊息在這裡
         # 印 (主行程)，不是在 _optimize_burn_case 裡 (子行程) 印——子行程不知道下面的
         # tqdm 進度條長什麼樣，兩邊搶著寫同一個終端機會讓進度條沒辦法原地覆寫，越跑
         # 越長 (見 _optimize_burn_case 開頭的說明)。
         print(f"⏳ 開始計算推進次數 {sorted(self.burns, reverse=True)} ...")
-        with concurrent.futures.ProcessPoolExecutor(max_workers=num_cases) as executor:
-            futures = [
-                executor.submit(self._optimize_burn_case, b, scalar_params, vector_params)
-                for b in sorted(self.burns, reverse=True)
-            ]
 
-            # 監聽完成狀態：哪個核心先算完就先驗收誰的結果。不逐次印「發現新最佳解」
-            # (哪個燃燒次數先跑完純粹看排程，中途領先沒有意義)，只在全部跑完後報一次
-            # 最終選了哪個方案。
-            for future in tqdm(concurrent.futures.as_completed(futures), total=num_cases):
+        # 進度條的粒度：舊版用「完成的案例數」當總量 (total=num_cases)，代表整個案例
+        # (可能要跑幾秒到幾分鐘，燃燒次數越多、決策變數維度越高、族群越大就越貴) 全部
+        # 跑完才會跳一格，格與格之間間隔長短很不一致，容易讓人誤判卡住了。改成以「世代」
+        # 為粒度：每個案例都以 self.maxiter 為分母 (不管實際會不會提早停止，先假設跑好
+        # 跑滿)，所有案例的世代數加總當總量，讓進度條在整個搜尋過程中平滑前進。
+        #
+        # 世代進度是子行程 (_optimize_burn_case 裡的 mealpy 模型) 透過
+        # multiprocessing.Manager().Queue() 回報回來的 (見 _attach_progress_reporting)，
+        # 用一個背景執行緒持續清空佇列、更新進度條；主行程本身的 as_completed 迴圈維持
+        # 原本的職責 (印「案例完成」訊息、記錄結果、挑最佳解)，兩者用一個 lock 保護
+        # 共用的 case_progress/pbar，避免兩邊同時 update() 互相打架。
+        pbar = tqdm(total=num_cases * self.maxiter, desc="搜尋世代進度", unit="gen")
+        case_progress: dict = {}
+        progress_lock = threading.Lock()
+        stop_draining = threading.Event()
+
+        def _bump_progress(case_id, epoch):
+            """把某個案例的進度推進到 epoch (不會後退)，回報實際往前推進的量。"""
+            with progress_lock:
+                epoch = min(epoch, self.maxiter)
+                prev = case_progress.get(case_id, 0)
+                if epoch > prev:
+                    pbar.update(epoch - prev)
+                    case_progress[case_id] = epoch
+
+        def _drain_progress_queue(progress_queue):
+            """背景執行緒：持續把子行程回報的 (case_id, epoch) 收進來更新進度條，
+            直到 run_study() 收工 (stop_draining 被設定) 才結束。用短 timeout 輪詢，
+            讓它能定期檢查 stop_draining，不會卡住整個程式收尾。"""
+            while not stop_draining.is_set():
                 try:
-                    # note 是子行程準備好、交回主行程印的狀態備註 (同樣是為了不讓子行程
-                    # 直接寫終端機)，平常是空字串，只有「提早停止」/「單執行緒」才有內容。
-                    b_count, best_x, best_score, epochs_run, note = future.result()
-                    tqdm.write(f"✅ 推進 {b_count} 次完成：目標值 {best_score:.4f}，"
-                               f"跑了 {epochs_run}/{self.maxiter} 代{note}")
-                    self.burn_case_results[b_count] = {
-                        "fitness": best_score, "epochs_run": epochs_run, "note": note,
-                    }
+                    case_id, epoch = progress_queue.get(timeout=0.2)
+                except queue.Empty:
+                    continue
+                except (EOFError, OSError, BrokenPipeError):
+                    # manager 已經在收尾 (run_study 結束前的正常關閉時序)，直接結束。
+                    break
+                _bump_progress(case_id, epoch)
 
-                    if best_score < best_overall_score:
-                        best_overall_score = best_score
-                        best_overall_params = best_x
-                        best_burns_count = b_count
+        # Manager().Queue() 而不是普通 multiprocessing.Queue()：ProcessPoolExecutor
+        # 的 worker 是已經活著的行程，事後才把佇列傳進 submit() 的參數，一般 Queue
+        # 只有在「行程建立當下」當參數傳入才能正確共享，這裡會直接丟 RuntimeError；
+        # Manager 的 proxy 物件本來就設計成能在任何時間點被 pickle 送給已經在跑的
+        # 行程，spawn (macOS/Windows 預設 start method) 下也驗證過能正常運作。
+        with multiprocessing.Manager() as manager:
+            progress_queue = manager.Queue()
+            drain_thread = threading.Thread(
+                target=_drain_progress_queue, args=(progress_queue,), daemon=True
+            )
+            drain_thread.start()
 
-                except Exception as exc:
-                    tqdm.write(f"❌ [核心錯誤] 崩潰: {exc}")
+            with concurrent.futures.ProcessPoolExecutor(max_workers=num_cases) as executor:
+                futures = {
+                    executor.submit(self._optimize_burn_case, b, scalar_params, vector_params, progress_queue): b
+                    for b in sorted(self.burns, reverse=True)
+                }
+
+                # 監聽完成狀態：哪個核心先算完就先驗收誰的結果。不逐次印「發現新最佳解」
+                # (哪個燃燒次數先跑完純粹看排程，中途領先沒有意義)，只在全部跑完後報一次
+                # 最終選了哪個方案。
+                for future in concurrent.futures.as_completed(futures):
+                    b = futures[future]
+                    try:
+                        # note 是子行程準備好、交回主行程印的狀態備註 (同樣是為了不讓子行程
+                        # 直接寫終端機)，平常是空字串，只有「提早停止」/「單執行緒」才有內容。
+                        b_count, best_x, best_score, epochs_run, note = future.result()
+                        tqdm.write(f"✅ 推進 {b_count} 次完成：目標值 {best_score:.4f}，"
+                                   f"跑了 {epochs_run}/{self.maxiter} 代{note}")
+                        self.burn_case_results[b_count] = {
+                            "fitness": best_score, "epochs_run": epochs_run, "note": note,
+                        }
+
+                        if best_score < best_overall_score:
+                            best_overall_score = best_score
+                            best_overall_params = best_x
+                            best_burns_count = b_count
+
+                    except Exception as exc:
+                        tqdm.write(f"❌ [核心錯誤] 推進 {b} 次案例崩潰: {exc}")
+                    finally:
+                        # 不管成功/失敗/提早停止，這個案例的份額都補滿到 self.maxiter——
+                        # 提早停止代表子行程回報的最後一則 epoch < maxiter，崩潰的案例
+                        # 可能完全沒回報過；兩種情況都要補滿，進度條才會在收工時精準到
+                        # 100%，不會卡在 99% 或某個案例的份額整段空白。
+                        _bump_progress(b, self.maxiter)
+
+            stop_draining.set()
+            drain_thread.join(timeout=2.0)
+
+        pbar.close()
 
         if best_overall_score >= 0.0 or best_overall_params is None:
             print("\n❌ 最佳化失敗：所有的嘗試都撞毀或違規了。")

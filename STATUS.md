@@ -6,10 +6,12 @@
 非常長的一天）。`improve-optimizer-and-gmat-integration` 分支已經 fast-forward
 merge 回 `Master` 並 push，分支本身已刪除——**現在直接在 `Master` 上開發**。
 
-commit `be04de7`（「固定燃燒版本」加 fallback 燃燒值來源）已經 commit，**但還沒
-push**。**這之後的所有工作都還沒 commit**（`git diff --stat` 顯示 7 個檔案、
-1203 行新增/147 行刪除，範圍不小）：下次接手先看 `git status`/`git diff` 確認這批
-改動還在不在。
+commit `be04de7`（「固定燃燒版本」加 fallback 燃燒值來源）、`8a63480`（DOP853 換上
+主線 + J3/J4 + 排位賽輸入端準備）都已經 commit，**但還沒 push**（`git log
+origin/Master..HEAD` 領先 2 個 commit，working tree 是乾淨的）：下次接手先看
+`git status`/`git log origin/Master..HEAD` 確認這批改動還在不在、有沒有推。
+下面第 9 項「進度條粒度太粗」已在同一天稍晚修好，還沒進這兩個 commit，是新的
+未 commit 改動（`src/optimizer.py`）。
 
 **這個 session 做的事，由前到後**（各自的細節都在下面對應章節，這裡只列索引方便
 快速定位）：
@@ -23,7 +25,7 @@ push**。**這之後的所有工作都還沒 commit**（`git diff --stat` 顯示
    會誤讀殘留舊報表檔的真 bug，已修 → 見「太空船 B 追蹤視角」
 5. 系統性掃描 SMA/ECC/雙曲線找出工具的可信邊界：**SMA 不是問題，ECC>0.95 才是**
    → 見「系統性測試軌道參數極限」
-6. 追加：進度條的粒度問題 (使用者發現，還沒修，見下面「還沒做」清單新項目)
+6. 追加：進度條的粒度問題 (使用者發現，同一天稍晚已修，見下面「還沒做」清單第 9 項)
 
 **上一次 (8/13) 最重要的發現，這次 session 已經拆解出根因，見下面「拆解 GMAT 對不上的
 真正原因」那一節**：「極端軌道」(SMA ~80,000km、ECC ~0.87) 上 Python 預測跟 GMAT 實測
@@ -630,7 +632,7 @@ SMA 越大誤差還越小 (5,000,000km 時只有 4.00m)。**結論：SMA 本身�
 6. **Encke's method 留著沒接上**——已驗證正確、比 DOP853 之前的比較基準 RK45 準，但比 RK45/DOP853 都慢，`propagate_encke` 留在 `core_math.py` 但主線沒有呼叫。DOP853 換上主線後，這個選項的吸引力更低了 (DOP853 已經同時達到「快」跟「準」)，除非之後有新的理由，否則不建議再花力氣。
 7. **物理直覺的初始種子** 沒做（讓 L-SHADE 從一個粗略 Hohmann-like 猜測開始，而不是純隨機初始化）——早期評估過投入產出比不確定，沒有動手。
 8. 四強賽（即時追逐戰，電競直播模式）**完全還沒碰**——這是離線最佳化+腳本產生架構完全不適用的另一種問題，等晉級再說。
-9. **進度條粒度太粗，看不出真實進度**（使用者 2026-08-14 下午發現，還沒修）。根因在 `optimizer.py` 的 `run_study()`：`tqdm(concurrent.futures.as_completed(futures), total=num_cases)` 這個進度條的「總數」是**燃燒次數案例數**（例如 `MAX_BURNS=[1,2,3,4]` 就是 4），只有整個案例（一次燒幾棒的完整 L-SHADE 搜尋，可能要跑幾秒到幾分鐘）全部跑完才會跳一格——不是照世代數/時間平滑前進。而且不同燃燒次數的案例成本差很多（棒數越多、決策變數維度越高、族群越大），所以進度條的「格與格之間」間隔時間長短很不一致，容易讓人以為卡住了或誤判剩多久。**修法方向**：要做到真正平滑的進度條，需要子行程 (`_optimize_burn_case`，跑在 `ProcessPoolExecutor` 的子行程裡) 把「目前跑到第幾代」回報給主行程——可以用 `multiprocessing.Manager().Queue()` 或 `multiprocessing.Value` 之類的機制，每個子行程每隔幾代 (或用 mealpy 的 callback/hook，如果有的話) 往共享佇列丟一個進度更新，主行程收集所有子行程的進度、算出一個總體百分比再更新 tqdm。這個工程量中等 (跨行程通訊 + 要確認不會拖慢子行程本身的計算速度)，還沒開始做。
+9. ✅ **已解決：進度條粒度太粗，看不出真實進度**（使用者 2026-08-14 下午發現，同一天稍晚修復）。根因是 `run_study()` 原本的 `tqdm(concurrent.futures.as_completed(futures), total=num_cases)` 用「燃燒次數案例數」當總量，整個案例（可能要跑幾秒到幾分鐘）全部跑完才跳一格。改法：`src/optimizer.py` 的 `_optimize_burn_case` 新增 `progress_queue` 參數，用 `_attach_progress_reporting()` monkeypatch mealpy 模型 instance 的 `track_optimize_step`（mealpy 每代結束都會呼叫這個方法，不管 `log_to` 是不是 `None`），讓子行程每跑完一代就把 `(current_burns, epoch)` 塞進一個 `multiprocessing.Manager().Queue()`（不是普通 `multiprocessing.Queue()`——那個只有在子行程「建立當下」當參數傳入才能正確共享，事後才傳給已經活著的 `ProcessPoolExecutor` worker 會直接丟 `RuntimeError`；`Manager().Queue()` 的 proxy 就是設計成能在任意時間點 pickle 送給已經在跑的行程，spawn 下也驗證過沒問題）。主行程開一條背景 thread 持續清空這個佇列、更新一個 `total=num_cases*self.maxiter`（世代數加總）的 tqdm bar，跟原本負責印「案例完成」訊息/挑最佳解的 `as_completed` 迴圈用一個 `threading.Lock` 共用進度資料，避免兩邊同時 `update()` 打架；每個案例 (不管正常完成/提早停止/崩潰) 收尾時都會在 `finally` 補滿進度到 `self.maxiter`，確保 100% 精準收在總量上，不會卡在 99% 或某個案例的份額空白。實測：`practice_scenario.json` 規模 (3 案例×150代=450) 進度條平滑從 0%→2%→4%→...→100%（不是舊版的一次跳 33%），大規模 (2 案例×1000代=2000) 一樣精準跑到 2000/2000，跑完後用 `ps` 確認沒有殘留的子行程/Manager 行程，其餘輸出 (Mission Plan/驗證/分數) 都不受影響。
 
 ## 跑法提醒
 
