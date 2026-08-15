@@ -741,12 +741,28 @@ class MissionOptimizer:
 
         # 燃燒大小策略：不暴力掃，只試幾種「怎麼把 floor 分配給爬升棒」的分法。
         # 種子不需要最優，只要落在正確的區域，後面的 L-SHADE + NLP 會把它磨細。
+        #
+        # 2026-08-15 修：第一版只試「平均分配」跟「每棒燒滿」，n_climb==1 時兩者
+        # 退化成同一個方案 (都是 cap)，等於只試了一種爬升高度。實測 A 的近地點在
+        # 42,000km 那組情境時整批種子產不出來——爬升高度沒得選，最後一棒的 Lambert
+        # 需求就固定了，剛好超標就全軍覆沒。改成沿著「爬多高」這個維度掃幾個比例。
         mag_plans = []
-        even = min(cap, floor / n_climb)
-        mag_plans.append([even] * n_climb)                    # 平均分配
-        mag_plans.append([cap] * n_climb)                     # 每棒燒到上限 (爬最快)
+        for frac in (1.0, 0.85, 0.7, 0.55):
+            per_burn = min(cap, floor * frac / n_climb)
+            if per_burn > 0.05:                     # 太小的爬升沒意義
+                mag_plans.append([per_burn] * n_climb)
+        mag_plans.append([cap] * n_climb)           # 每棒燒滿 (爬最快)
         if n_climb >= 2:
             mag_plans.append([cap] + [max(0.2, floor - cap) / (n_climb - 1)] * (n_climb - 1))
+        # 去掉重複的方案 (n_climb==1 且 floor>=cap 時上面幾種會撞在一起)
+        seen = set()
+        uniq = []
+        for p in mag_plans:
+            key = tuple(round(m, 6) for m in p)
+            if key not in seen:
+                seen.add(key)
+                uniq.append(p)
+        mag_plans = uniq
 
         seeds = []
         # 起燒時機：掃 B 前一個週期內的幾個點 (圓軌道沒有特定近地點，掃幾個就夠；
@@ -787,8 +803,17 @@ class MissionOptimizer:
                 max_final = self.T_max - cur_t
                 if max_final <= self.MIN_COAST_TIME:
                     continue
+                # 最後一段飛行時間的取樣密度：這是整個構造裡唯一真的需要掃的維度，
+                # 太粗就會整批漏掉。2026-08-15 修：第一版固定 40 點，但 max_final
+                # 可以長達好幾天 (例如 724,000s -> 每格 18,500s)，而 A 的週期只有
+                # 184,000s，等於每圈只取樣 10 個點，能命中的窗口比這細得多，實測
+                # 整批種子產不出來。改成依「這段時間裡 A 會繞幾圈」決定點數，每圈
+                # 至少取樣 60 個點，並夾在 [60, 600] 之間控制成本。
+                a_period = getattr(self, "Ta_sec", 0.0) or (max_final / 4.0)
+                revs = max(1.0, max_final / a_period)
+                n_ft = int(min(600, max(60, 60 * revs)))
                 best = None
-                for ft in np.linspace(self.MIN_COAST_TIME, max_final, 40):
+                for ft in np.linspace(self.MIN_COAST_TIME, max_final, n_ft):
                     r_a, _ = propagate_dop853(self.A_r0, self.A_v0, cur_t + float(ft),
                                                dt, mu, j2, j3, j4, re)
                     for prograde in (True, False):

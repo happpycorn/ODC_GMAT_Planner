@@ -599,13 +599,34 @@ def dop853_error_norm(K: np.ndarray, h: float, scale: np.ndarray) -> float:
 def propagate_dop853(
     r0: np.ndarray, v0: np.ndarray, tof: float, dt0: float,
     mu: float, j2: float, j3: float, j4: float, re: float,
-    rtol: float = 1e-9, atol: float = 1e-6
+    rtol: float = 1e-12, atol: float = 1e-9
 ):
     """
     DOP853 自適應步長軌道傳播器。跟 `propagate_rk45` 一樣是「Cowell 式」直接對
     完整狀態數值積分 (不是 Encke 那種只積分偏差量)，差別只在於用 8 階而不是
     5 階的方法——同樣的步長控制骨架 (SAFETY/MIN_FACTOR/MAX_FACTOR 數值也跟 scipy
     的 RungeKutta 基底類一致)，換一套精度更高、每步更貴的係數表。
+
+    容忍度為什麼是 1e-12/1e-9 而不是更寬鬆的值 (2026-08-15 收緊，原本是 1e-9/1e-6)：
+    使用者回報一個 GMAT 對不上的案例，Python 預測命中 3,499.8m、GMAT 實測 88,228m。
+    純二體有解析解 (farnocchia) 可以直接當基準量，查出來是**積分誤差**，而且誤差
+    幾乎全部產生在近地點通過的瞬間——SMA=70,000/ECC=0.9 的軌道 (近地點 7,000km，
+    速度 10.4 km/s) 傳播 4 圈：
+
+        通過 0.5 次近地點 ->   0.00 km
+        通過 1 次         ->   0.08 km
+        通過 2 次         ->  18.95 km
+        通過 3 次         ->  38.35 km
+        通過 4 次         ->  90.35 km   <-- 對得上使用者看到的 88 km
+
+    決定誤差的是**近地點通過次數**，不是總傳播時長。`weird_test.json` 的 A 軌道
+    (SMA=150,000/ECC=0.93) 在舊容忍度下更慘，跨越 T_max 誤差 223 km。
+
+    收緊到 1e-12/1e-9 之後上述全部歸零 (跟解析解差 0.000 km)。代價是傳播變慢
+    1.8~2.9 倍。低偏心軌道在舊容忍度下本來就已經精確 (誤差 0.00 km)，等於白付這個
+    成本——但「安靜地算錯」比「慢一點」嚴重太多，而且高偏心情境完全看不出來哪裡不對
+    (Python 自己回報命中 3.5km，是拿 GMAT 對照才發現差 88km)，所以預設選安全的那邊。
+    真的需要速度時可以在呼叫端明確放寬。
     """
     state = np.empty(6, dtype=np.float64)
     state[0], state[1], state[2] = r0[0], r0[1], r0[2]
