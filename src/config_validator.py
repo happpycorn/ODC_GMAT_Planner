@@ -111,14 +111,36 @@ def _validate_orbit(orbit_cfg, label: str, errors: list):
                 )
 
 
-def _validate_rules(rules_cfg, errors: list):
+def _validate_rules(rules_cfg, errors: list, orbit_a_cfg=None):
     """rules：主辦方規定/公告的數字 (ΔV_lim、機動間隔、T_max 倍數、k_t/C_t/k_v/C_v)。"""
     if not isinstance(rules_cfg, dict):
         errors.append(f"rules 應該是一個物件，但收到 {type(rules_cfg).__name__}")
         return
 
-    required = ["MAX_DV_MPS", "MIN_MANEUVER_INTERVAL_SEC", "T_MAX_PERIOD_MULTIPLE",
+    required = ["MAX_DV_MPS", "MIN_MANEUVER_INTERVAL_SEC",
                 "k_t", "C_t", "k_v", "C_v"]
+
+    # T_MAX_PERIOD_MULTIPLE 是**有條件**必填的。「T_max = 倍數 × A 的週期」這條公式
+    # 只在 A 是橢圓/圓軌道時成立，A 是雙曲線時 (排位賽) 根本沒有週期，這個欄位沒有
+    # 意義，該填的是 T_MAX_SEC。原本這裡把它列成無條件必填，跟下面 T_MAX_SEC 那段
+    # 註解自己寫的「這裡不主動要求」互相矛盾，導致排位賽格式的 config (雙曲線 A +
+    # T_MAX_SEC) 在驗證階段就被擋下，連 optimizer 都進不去。
+    # 判斷規則：只要給了有效的 T_MAX_SEC，就不需要週期倍數 (覆寫值優先，見 optimizer)；
+    # 沒給覆寫值時，A 是橢圓才要求它，A 是雙曲線則要求 T_MAX_SEC。
+    has_override = (rules_cfg.get("T_MAX_SEC") is not None)
+    a_is_hyperbolic = False
+    if isinstance(orbit_a_cfg, dict):
+        a_ecc = orbit_a_cfg.get("ECC")
+        a_is_hyperbolic = _is_number(a_ecc) and a_ecc > 1.0
+    if not has_override:
+        if a_is_hyperbolic:
+            errors.append(
+                "orbit_A 是雙曲線軌道 (ECC>1，排位賽)，沒有週期可以套用 "
+                "T_MAX_PERIOD_MULTIPLE，必須改用 rules.T_MAX_SEC 直接指定 T_max 秒數"
+            )
+        else:
+            required.append("T_MAX_PERIOD_MULTIPLE")
+
     missing = [f for f in required if f not in rules_cfg]
     if missing:
         errors.append(f"rules 缺少欄位: {missing}")
@@ -290,7 +312,8 @@ def validate_config(config) -> None:
     if "orbit_B" in config:
         _validate_orbit(config["orbit_B"], "orbit_B", errors)
     if "rules" in config:
-        _validate_rules(config["rules"], errors)
+        # 傳 orbit_A 進去：T_MAX_PERIOD_MULTIPLE 是否必填，取決於 A 是橢圓還是雙曲線
+        _validate_rules(config["rules"], errors, config.get("orbit_A"))
     if "strategy" in config:
         _validate_strategy(config["strategy"], errors)
     if "local" in config:
