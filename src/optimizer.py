@@ -1287,6 +1287,26 @@ class MissionOptimizer:
         print(f"  違規次數   {penalty_count:>12d}"
               + ("   ⚠️ 依規則第 5 節每次扣 10 分" if penalty_count else ""))
         print(f"  Score      {final_score:>12.2f} / 100")
+
+        # 「荒謬超標」警告 (2026-08-15)：違規懲罰是固定的每次 -10 分，跟超標幅度無關，
+        # 而最後一棒是 Lambert 反算出來的、沒有上界。所以在**根本沒有合法解**的情境裡，
+        # 「花 10 分買一次完美命中 + 最快時間」永遠划算 —— 實測 hyper_fast (ECC=5) 交出
+        # 611,787 m/s (光速的 0.2%) 卻回報 Score 62.76，一個看起來很體面的數字。
+        # 這個計分是**忠於規則的**(規則第 5 節確實是每次扣 10 分、不是取消資格)，所以
+        # 不改分數；但這種方案實務上交不出去：GMAT 的 DifferentialCorrector 的 Vary
+        # 邊界結構上就到不了那個量級，一般版本一定不收斂。不講白的話，隊友看到 62 分
+        # 會以為有東西可以交。
+        worst_ratio = max((log['dv_mag'] / self.MAX_DV for log in burn_logs), default=0.0)
+        if worst_ratio > 3.0:
+            print(f"\n  🔴 最大單棒超標 {worst_ratio:.0f} 倍上限"
+                  f"（{max(log['dv_mag'] for log in burn_logs)*1000:,.0f} m/s "
+                  f"vs 上限 {self.MAX_DV*1000:,.0f} m/s）。")
+            print("     上面的分數是照規則算的（違規只扣 10 分，跟超標幅度無關），但這種"
+                  "方案**實務上交不出去**：")
+            print("     GMAT 的 DifferentialCorrector 收斂不到這個量級，一般版本會直接失敗。")
+            print("     出現這個警告通常代表**這組情境在 T_max 內根本沒有合法解**，"
+                  "搜尋只是在違規解裡挑最好的。")
+            print("     建議：用 feasibility.py 確認，或放寬 T_max / 調整軌道參數。")
         if not dc_converged:
             print("  ⚠️ 最後一棒的差分修正未收斂——這個解的命中距離可能不可靠，"
                   "建議檢查或加大 refine_lambert_burn 的 max_iter。")
