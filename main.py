@@ -325,7 +325,8 @@ def main():
         config["orbit_B"]["SMA"], config["orbit_B"]["ECC"], config["orbit_B"]["INC"],
         config["orbit_B"]["RAAN"], config["orbit_B"]["AOP"], config["orbit_B"]["TA"],
         burns, times, aim_point=mission_info["aim_point"],
-        max_dv=optimizer.MAX_DV, gravity_degree=optimizer.GRAVITY_DEGREE
+        max_dv=optimizer.MAX_DV, gravity_degree=optimizer.GRAVITY_DEGREE,
+        model_scale=config.get("strategy", {}).get("GMAT_MODEL_SCALE", 0.5),
     )
 
     end_time = time.perf_counter()
@@ -417,6 +418,7 @@ def main():
                 max_dv=optimizer.MAX_DV, gravity_degree=optimizer.GRAVITY_DEGREE,
                 final_burn_fixed_vnb=final_burn_vnb,
                 output_filename="output_submit.txt",
+                model_scale=config.get("strategy", {}).get("GMAT_MODEL_SCALE", 0.5),
             )
             fixed_script_result = run_gmat_verification(
                 gmat_console_path, os.path.join("outputs", "output_submit.txt")

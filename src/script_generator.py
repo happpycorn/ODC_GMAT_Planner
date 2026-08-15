@@ -7,6 +7,7 @@ def script_generator(
     b_sma, b_ecc, b_inc, b_raan, b_aop, b_ta,
     burns, times, aim_point, max_dv=1.5, gravity_degree=2,
     final_burn_fixed_vnb=None, output_filename="output.txt",
+    model_scale=0.5,
 ):
     """
     gravity_degree: highest zonal (m=0) harmonic to include, matching Python's
@@ -241,6 +242,19 @@ Report Report_Intercept ShipB.ElapsedSecs MissDistance InterceptSuccess FinalBur
     # 對角線方向 [1,1,1] 的每軸分量：|V| = 分量 × sqrt(3)，要讓 |V| = 2.5 × extent
     view_axis = view_extent * 2.5 / math.sqrt(3.0)
 
+    # 追蹤視角的相機距離也要依情境算 (2026-08-15)。原本寫死 [500 0 200] (距 ShipB
+    # 約 540 km)，但 B 本身離地心才 7,000 km 上下，相機貼那麼近的結果是整個畫面被
+    # 地球塞滿，連地球全貌都看不到，更別說看出飛船相對軌道在哪。
+    #
+    # 取「B 的遠地點」跟一個下限的較大者：地球半徑 6,378 km，相機大約要離地心
+    # 30,000 km 以上才能把整顆地球舒服地framed 進畫面，所以下限抓 20,000 km
+    # (加上 B 自己的軌道半徑後大致就落在那個範圍)。B 的軌道很大時則跟著放大，
+    # 不然遠地點十幾萬公里的情境又會變成貼太近。
+    chase_dist = max(20000.0, _orbit_extent(b_sma, b_ecc) * 1.5)
+    # 方向沿用原本的「後上方」比例 (500:200 = 5:2)，只是整體拉遠
+    chase_back = chase_dist * 5.0 / math.sqrt(29.0)
+    chase_up = chase_dist * 2.0 / math.sqrt(29.0)
+
     header_note = (
         "% SUBMISSION VARIANT: every burn (including the final one) is a fixed\n"
         "% value - no solver runs in this script. See the comment near 'Burns' below.\n"
@@ -301,6 +315,12 @@ ShipA.SRPArea = 8;
 % silently ignored and emits an interpreter warning). Purely a visual aid.
 ShipA.OrbitColor = Red;
 ShipA.TargetColor = Gray;
+% ModelScale: GMAT defaults to 3.0, which only suits small-orbit scenes. The
+% camera distance now scales with orbit size (see View_Intercept) but the
+% spacecraft model does not shrink with it, so a large scene ends up as a
+% screenful of spacecraft - worst in the ShipB chase view, whose camera sits
+% only ~540 km from the ship. Raise strategy.GMAT_MODEL_SCALE if it is too small.
+ShipA.ModelScale = {model_scale};
 
 Create Spacecraft ShipB;
 ShipB.DateFormat = TAIModJulian;
@@ -320,6 +340,7 @@ ShipB.DragArea = 6;
 ShipB.SRPArea = 8;
 ShipB.OrbitColor = Lime;
 ShipB.TargetColor = Gray;
+ShipB.ModelScale = {model_scale};
 
 %----------------------------------------
 %---------- ForceModels
@@ -417,7 +438,7 @@ View_ShipBChase.SolverIterations = Current;
 View_ShipBChase.Add = {{ShipA, ShipB, Earth}};
 View_ShipBChase.CoordinateSystem = ShipBChaseFrame;
 View_ShipBChase.ViewPointReference = ShipB;
-View_ShipBChase.ViewPointVector = [ 500 0 200 ];
+View_ShipBChase.ViewPointVector = [ {chase_back:.0f} 0 {chase_up:.0f} ];
 View_ShipBChase.ViewDirection = ShipA;
 View_ShipBChase.ViewScaleFactor = 1.0;
 View_ShipBChase.ViewUpCoordinateSystem = EarthMJ2000Eq;
