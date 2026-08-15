@@ -22,6 +22,21 @@
 pip install uv
 ```
 
+### 每次 `git pull` 之後：跑一次 `uv sync`
+
+```bash
+uv sync
+```
+
+`uv run` 平常會自動補齊缺少的套件，但**不會清掉已經不需要的舊套件**。如果別人改過
+`pyproject.toml`/`uv.lock`（例如移除某個依賴），你的環境會留著殘骸，而殘骸會掩蓋
+問題——這個專案至少踩過兩次：一次是 `tqdm` 從來沒被列進依賴、靠殘留的舊環境活著，
+換到全新機器就 `ModuleNotFoundError`；一次是清掉 `torch` 之後本機還留著整套 CUDA
+套件，1GB 的東西白佔空間。
+
+`uv sync` 會讓環境**精確等於** lockfile，多的砍掉、缺的補上。養成 pull 完跑一次的
+習慣，就不會遇到「在我這台好好的」這種問題。
+
 ---
 
 ## 步驟二：設定 `configs/config.json`
@@ -35,7 +50,7 @@ config 分四大塊 + 一塊選填，各自對應「誰決定這個數字」：`
 | `orbit_A` / `orbit_B` | 太空船 A / B 的軌道六根數 (SMA, ECC, INC, RAAN, AOP, TA) |
 | `rules.MAX_DV_MPS` / `MIN_MANEUVER_INTERVAL_SEC` / `T_MAX_PERIOD_MULTIPLE` | 規則規定的數字（規則第 2、3 節）：單次機動 Δv 上限 (m/s)、兩次機動間隔下限 (秒)、`T_max` 是 A 軌道週期的幾倍。預設值就是目前初賽規則的 1500 / 100 / 4，晉級賽如果規則數字不一樣，改這裡就好 |
 | `rules.k_t` / `C_t` / `k_v` / `C_v` | 主辦方公告的計分參數（規則第 5 節），跟軌道分布狀況有關，每次比賽前會公告 |
-| `strategy.USE_J2` | 不確定某一輪/場景有沒有 J2 擾動時用這個切換，Python 端跟產生的 GMAT script 會同步套用，不用改程式碼 |
+| `strategy.GRAVITY_DEGREE` | 重力場要算到第幾階 zonal harmonic：`0`=純點質量、`2`=J2、`3`=J2+J3、`4`=J2+J3+J4。Python 端跟產生的 GMAT script 會同步套用，不用改程式碼。**建議用 `4`**——實測最準；設 `0` 雖然讓兩邊模型一致，但等於兩邊都在算不真實的物理，比賽當天主辦方環境若有開擾動就會對不上 |
 | `strategy.MISS_TOLERANCE_KM` | 規則只要求 Δr ≤ 這個值 (預設對齊規則的 5km)，可以彈性調小 (甚至設 0 退回精準瞄準)，讓最後一棒 Lambert 在容許範圍內找最省油的落點，而不是死盯著 A 的精確位置 |
 | `optimization.MAX_BURNS` | 要嘗試的燃燒次數列表，例如 `[1, 2, 3]` 會三種都跑，選分數最高的 |
 | `optimization.MAXITER` / `POPSIZE` | 搜尋精細度。`POPSIZE` 是「每個決策變數維度分配幾個個體」(族群大小 = 維度數 × POPSIZE)，不是總數，越大越準但越久 |
@@ -78,15 +93,62 @@ uv run main.py --no-gmat                                              # 只要 P
 
 ---
 
-## （選用）掃描一個新情境需要燒幾次：`sweep_burns.py`
+## 拿到一個新情境時的建議順序
 
-拿到一個新情境（尤其正式測資公布後）時，`optimization.MAX_BURNS` 該放多寬沒有標準答案——燃燒次數越多，決策變數維度跟族群大小都線性放大，搜尋時間也跟著拉長，但不一定換得到更好的分數（詳見 [METHODOLOGY.md](METHODOLOGY.md)）。
-
-```bash
-uv run sweep_burns.py --config configs/practice_scenario.json
+```
+新測資 → feasibility.py → (範圍很寬才需要 sweep_burns.py) → main.py → 檢查 run_history
 ```
 
-會先用調低的 `MAXITER` 快速粗掃一個寬範圍的燃燒次數（預設 1~6），找出分數大概從哪裡開始不再明顯進步，再針對那附近用 config 原本的 `MAXITER` 重新跑一次「公平」的精細驗證，最後給一個 `MAX_BURNS` 的建議。常用參數：`--burns 1-8`（調整粗掃範圍）、`--coarse-iters 300`（粗掃代數）、`--output-config x.json`（把建議直接寫成新的 config 檔）。**這是效率工具，不是最終判定**——工具的結論是「分數打平」，但規則的平手判定看的是 `Δr_min`/`ΔV_team`/`T_team` 這些原始數字，正式方案還是要回頭核對細節。
+**前面兩步都可以跳過**——`main.py` 已經內建了最關鍵的檢查（見下），直接跑不會出事。
+
+### 1. `feasibility.py`：先問「這題有沒有解」
+
+```bash
+uv run feasibility.py --config configs/x.json           # 快，只做前兩層
+uv run feasibility.py --config configs/x.json --burns 3 # 加做 3 棒可行性 (較慢)
+```
+
+回答三件事：**能量下限（至少要幾棒）**、**合法單棒解存不存在**、**有多稀有**。
+
+存在的理由很實際：搜尋跑完沒找到合法解時，**分不清是「工具不夠力」還是「這題本來
+就無解」**——沒有這個答案，結果完全沒辦法解讀。
+
+輸出怎麼看：
+
+| 情況 | 建議 |
+|---|---|
+| 能量下限 = 0、合法解常見（>1%） | 直接 `main.py`，`MAX_BURNS` 用 `[1]` 或 `[1,2]` |
+| 能量下限 > 每棒上限 | `MAX_BURNS` 從下限起跳，別放更小的（注定違規） |
+| 合法解極稀有（<0.05%） | 窄窗地形，用正式預算別省，靠種子機制找 |
+
+### 2. `sweep_burns.py`：燃燒次數範圍很寬時才划算
+
+```bash
+uv run sweep_burns.py --config configs/x.json --burns 2-8
+```
+
+先用調低的 `MAXITER` 粗掃一個寬範圍，找出分數大概從哪裡開始不再明顯進步，再針對
+那附近用 config 原本的 `MAXITER` 重跑一次「公平」的精細驗證。常用參數：`--burns 1-8`、
+`--coarse-iters 300`、`--output-config x.json`（把建議寫成新的 config 檔）。
+
+**範圍在 3~4 個以內就跳過這步**——`main.py` 本來就會平行跑所有燃燒次數並自動挑
+贏家，再多一層 sweep 只是浪費時間。它真正划算的場合是 `MAX_BURNS` 有十幾個值的時候。
+
+**這是效率工具，不是最終判定**：工具的結論是「分數打平」，但規則的平手判定看的是
+`Δr_min`/`ΔV_team`/`T_team` 這些原始數字，正式方案還是要回頭核對細節。
+
+### `main.py` 已經內建的檢查（所以前面兩步可以跳過）
+
+* **開跑前**：如果 `MAX_BURNS` 裡有「能量上不可能合法」的燃燒次數，會直接警告並建議
+  拿掉（能量下限是封閉解，算一次不到微秒，所以無條件做，不影響速度）。
+* **印任務規劃時**：如果贏家其實是「中間棒 Δv≈0 的空燒」，會明講「這是 N 棒的方案但
+  實際只用到 M 棒」——多棒解退化成單棒很常見，光看棒數會誤以為用了多棒策略。
+
+### 現成的測試情境
+
+`configs/` 被 `.gitignore` 排除，所以情境不會跟著 git 走。**所有測試情境的完整參數
+（六根數 + 規則參數 + 實測難度）記錄在 [SCENARIOS.md](SCENARIOS.md)**，照著貼就能重建。
+換機器、或不小心刪掉時去那裡找。
 
 ---
 

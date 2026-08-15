@@ -1,4 +1,5 @@
 import os
+import math
 import datetime
 
 def script_generator(
@@ -222,6 +223,24 @@ Report Report_Intercept ShipB.ElapsedSecs MissDistance InterceptSuccess FinalBur
     # 本來就不是純 zonal) 換取「兩邊模型對齊、可以互相驗證」，是刻意的取捨。
     gravity_order = 0
 
+    # 3D 視角的相機距離：依實際軌道大小算，不要寫死 (2026-08-15 改)。
+    #
+    # 原本 ViewPointVector 固定 [40000 40000 40000] (距地心約 69,000 km)，遠地點
+    # 十幾萬公里的情境開起來整條軌道都在畫面外，每次都要手動拉遠才看得到全貌。
+    # 改成用「A/B 之中最大的遠地點」推算：相機放在 2.5 倍那個距離的對角線方向上，
+    # 這個倍率實測在小軌道 (LEO 圓軌道) 到大橢圓 (遠地點 19 萬公里) 都能一眼看完。
+    #
+    # 雙曲線 A (排位賽情境) 沒有遠地點 (SMA<0、ECC>1)，退回用近地點的 8 倍當尺度
+    # ——雙曲線的「看得到的部分」大致就在近地點附近幾倍半徑內。
+    def _orbit_extent(sma, ecc):
+        if sma > 0.0 and ecc < 1.0:
+            return sma * (1.0 + ecc)          # 橢圓/圓：遠地點
+        return abs(sma * (1.0 - ecc)) * 8.0   # 雙曲線：近地點的幾倍
+
+    view_extent = max(_orbit_extent(a_sma, a_ecc), _orbit_extent(b_sma, b_ecc))
+    # 對角線方向 [1,1,1] 的每軸分量：|V| = 分量 × sqrt(3)，要讓 |V| = 2.5 × extent
+    view_axis = view_extent * 2.5 / math.sqrt(3.0)
+
     header_note = (
         "% SUBMISSION VARIANT: every burn (including the final one) is a fixed\n"
         "% value - no solver runs in this script. See the comment near 'Burns' below.\n"
@@ -348,9 +367,9 @@ View_Intercept.SolverIterations = Current;
 View_Intercept.Add = {{ShipA, ShipB, Earth}};
 View_Intercept.CoordinateSystem = EarthMJ2000Eq;
 View_Intercept.ViewPointReference = Earth;
-View_Intercept.ViewPointVector = [ 40000 40000 40000 ];
+View_Intercept.ViewPointVector = [ {view_axis:.0f} {view_axis:.0f} {view_axis:.0f} ];
 View_Intercept.ViewDirection = Earth;
-View_Intercept.ViewScaleFactor = 1.3;
+View_Intercept.ViewScaleFactor = 1.0;
 View_Intercept.ViewUpCoordinateSystem = EarthMJ2000Eq;
 View_Intercept.ViewUpAxis = Z;
 View_Intercept.XYPlane = On;
