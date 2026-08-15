@@ -22,10 +22,19 @@ MAXITER 預設會依 decision_variable_dims (4×燃燒次數+1) 依比例分配�
 (細節見 scaled_coarse_iters)。這樣同樣測 --burns 1-8，不用为了公平而放寬 --window
 去補找漏掉的高燃燒次數，粗掃階段本身就會給每個燃燒次數一個合理的世代數。
 
+另外一個「分數高不等於真的需要多棒」的陷阱 (2026-08-15 加的檢查)：多棒解很常
+退化成單棒——決策向量裡中間棒的 Δv 恰好是 0 (種子的空燒結構，L-SHADE 沒離開過
+那個起點)，這種解跟低燃燒次數方案本質上是同一個，分數差異來自別的自由度而不是
+多棒策略。實測在三組不同的極限測資上都看到這個現象 (見 STATUS.md「2026-08-15
+白天」那節)。所以兩張趨勢表都多印一欄「實際用到」幾棒，結論那段也會在建議值
+其實是退化解的時候明講——不然照著建議把 MAX_BURNS 開大只是浪費搜尋時間。
+反過來說，如果每一棒都有實際燃燒 (例如單棒在物理上就不可能合法的情境)，那才是
+真的需要多棒。
+
 用法：
-    uv run sweep_burns.py --config configs/practice_scenario.json
-    uv run sweep_burns.py --config configs/practice_scenario.json --burns 1-8 --coarse-iters 80
-    uv run sweep_burns.py --config configs/practice_scenario.json --burns 1-8 --coarse-iters 80 --coarse-popsize 8
+    uv run sweep_burns.py --config configs/config.json
+    uv run sweep_burns.py --config configs/weird_test.json --burns 1-8 --coarse-iters 80
+    uv run sweep_burns.py --config configs/weird_test.json --burns 1-8 --coarse-iters 80 --coarse-popsize 8
 
 跑完會印出兩張趨勢表 + 一個建議的 MAX_BURNS 範圍，用 --output-config 可以直接把
 建議寫成一份新的 config 檔。
@@ -146,18 +155,52 @@ def run_stage(config: dict, burns: list, maxiter: int, popsize=None, label: str 
     return optimizer.burn_case_results
 
 
+def effective_burns(num_burns: int, best_x, dv_floor_mps: float = 1.0) -> int:
+    """
+    這個解「實際上」用了幾棒——中間棒 Δv 小到可以忽略的不算。
+
+    為什麼需要這個 (2026-08-15)：多棒解很常退化成單棒——決策向量裡中間棒的 Δv
+    欄位恰好是 0，是分段貪婪種子放進去的「空燒」結構，L-SHADE 從頭到尾沒離開過
+    那個起點。實測在三組不同的極限測資上都看到這個現象。這種解的分數跟單棒解的
+    差異只是雜訊 (例如落在窄窗的哪個位置)，不是多棒帶來的優勢，但光看 fitness
+    完全分不出來，得拆開解向量才知道。
+
+    決策向量結構 (見 MissionOptimizer._generate_bounds)：
+      [t_wait, (r,theta,phi,coast_frac)*(num_burns-1), final_leg_frac,
+       offset_r, offset_theta, offset_phi]
+    中間棒 i 的 Δv 大小就是 x[1+4i] (單位 km/s)，不用重新傳播就能讀出來。
+    最後一棒是 Lambert 解出來的，一定是實際燃燒，所以基數從 1 起算。
+    """
+    if best_x is None:
+        return num_burns  # 沒記錄到解向量就不做判斷，回報原本的燃燒次數
+    count = 1
+    for i in range(num_burns - 1):
+        if float(best_x[1 + 4 * i]) * 1000.0 > dv_floor_mps:
+            count += 1
+    return count
+
+
 def print_score_table(results: dict, header: str):
     print(f"\n--- {header} ---")
-    print(f"{'燃燒次數':>8} {'分數':>10} {'代數':>12} {'備註'}")
+    print(f"{'燃燒次數':>8} {'分數':>10} {'實際用到':>9} {'代數':>8} {'備註'}")
     if not results:
         print("  (沒有任何案例成功完成——可能撞地球/違規太多，檢查一下這個情境合不合理)")
         return
     best_k = max(results, key=lambda k: -results[k]["fitness"])
+    any_degenerate = False
     for k in sorted(results):
         r = results[k]
         score = -r["fitness"]
+        eff = effective_burns(k, r.get("best_x"))
         mark = " ⭐" if k == best_k else ""
-        print(f"{k:>8} {score:>10.4f} {r['epochs_run']:>12}{r['note']}{mark}")
+        # 「實際用到」比設定的燃燒次數少 = 中間棒有人在空燒，標星號提醒
+        degen = "" if eff == k else " ⚠"
+        if eff != k:
+            any_degenerate = True
+        print(f"{k:>8} {score:>10.4f} {str(eff)+degen:>9} {r['epochs_run']:>8}{r['note']}{mark}")
+    if any_degenerate:
+        print("  ⚠ = 這個解的中間棒有 Δv≈0 的空燒，實際上等於更少棒的方案——"
+              "它跟低燃燒次數方案的分數差異多半是雜訊，不是多棒優勢。")
 
 
 def find_elbow(results: dict, tol: float) -> int:
@@ -231,6 +274,19 @@ def main():
                   f"這個情境對燃燒次數敏感，值得把預算留給這附近。")
             print(f"👉 建議 MAX_BURNS 用 {window}（精細驗證測過的範圍），"
                   f"或至少包含 {best_k}。")
+            # 2026-08-15：分數有差異不代表真的用到了多棒。實測過好幾次「贏家是多棒
+            # 但中間棒 Δv=0」的情況——那種分數差異來自別的地方 (例如落在窄窗的位置、
+            # 瞄準偏移找到不同的權衡點)，不是多棒本身的貢獻，照著建議把 MAX_BURNS
+            # 開大只會浪費搜尋時間。這裡明講，不要讓使用者誤讀成「這個情境需要多棒」。
+            best_eff = effective_burns(best_k, fine_results[best_k].get("best_x"))
+            if best_eff < best_k:
+                print(f"\n⚠️  但要注意：{best_k} 棒這個贏家**實際上只用到 {best_eff} 棒**"
+                      f"（中間棒 Δv≈0 的空燒）。也就是說它跟 {best_eff} 棒方案本質上是"
+                      f"同一個解，分數差異來自別的自由度而不是多棒策略——"
+                      f"這個情境很可能 {best_eff} 棒就夠了，先用 MAX_BURNS=[{best_eff}] "
+                      f"跑一次對照過再決定要不要真的開到 {best_k}。")
+            else:
+                print(f"（{best_k} 棒這個解的每一棒都有實際燃燒，是真的用到了多棒。）")
 
         if args.output_config:
             suggested = copy.deepcopy(config)

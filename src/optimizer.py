@@ -890,8 +890,15 @@ class MissionOptimizer:
                         b_count, best_x, best_score, epochs_run, note = future.result()
                         tqdm.write(f"✅ 推進 {b_count} 次完成：目標值 {best_score:.4f}，"
                                    f"跑了 {epochs_run}/{self._maxiter_for(b_count)} 代{note}")
+                        # best_x 也記下來 (2026-08-15 新增)：sweep_burns.py 要用它判斷
+                        # 「這個燃燒次數的解，中間棒到底有沒有真的燒」。實測過好幾個
+                        # 情境，多棒解的中間棒 Δv 會恰好是 0 (種子的空燒結構，L-SHADE
+                        # 沒離開過那個起點)，等於退化成單棒——這種情況下的分數差異只是
+                        # 雜訊，不是多棒優勢，光看 fitness 分不出來。見 STATUS.md
+                        # 「2026-08-15 白天」那節。
                         self.burn_case_results[b_count] = {
                             "fitness": best_score, "epochs_run": epochs_run, "note": note,
+                            "best_x": best_x,
                         }
 
                         if best_score < best_overall_score:
