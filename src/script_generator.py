@@ -277,6 +277,11 @@ ShipA.Cd = 2.2;
 ShipA.Cr = 1.8;
 ShipA.DragArea = 6;
 ShipA.SRPArea = 8;
+% Trajectory colors belong on the Spacecraft in R2026a, not on the OrbitView
+% (OrbitView.OrbitColor/TargetColor were removed - setting them there is
+% silently ignored and emits an interpreter warning). Purely a visual aid.
+ShipA.OrbitColor = Red;
+ShipA.TargetColor = Gray;
 
 Create Spacecraft ShipB;
 ShipB.DateFormat = TAIModJulian;
@@ -294,6 +299,8 @@ ShipB.Cd = 2.2;
 ShipB.Cr = 1.8;
 ShipB.DragArea = 6;
 ShipB.SRPArea = 8;
+ShipB.OrbitColor = Lime;
+ShipB.TargetColor = Gray;
 
 %----------------------------------------
 %---------- ForceModels
@@ -346,8 +353,6 @@ View_Intercept.ViewDirection = Earth;
 View_Intercept.ViewScaleFactor = 1.3;
 View_Intercept.ViewUpCoordinateSystem = EarthMJ2000Eq;
 View_Intercept.ViewUpAxis = Z;
-View_Intercept.OrbitColor = [ 255 65280 12632256 ];
-View_Intercept.TargetColor = [ 8421504 8421504 8421504 ];
 View_Intercept.XYPlane = On;
 View_Intercept.Axes = On;
 View_Intercept.Grid = Off;
@@ -398,8 +403,6 @@ View_ShipBChase.ViewDirection = ShipA;
 View_ShipBChase.ViewScaleFactor = 1.0;
 View_ShipBChase.ViewUpCoordinateSystem = EarthMJ2000Eq;
 View_ShipBChase.ViewUpAxis = Z;
-View_ShipBChase.OrbitColor = [ 255 65280 12632256 ];
-View_ShipBChase.TargetColor = [ 8421504 8421504 8421504 ];
 View_ShipBChase.XYPlane = Off;
 View_ShipBChase.Axes = On;
 View_ShipBChase.Grid = Off;
