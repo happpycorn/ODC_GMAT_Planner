@@ -209,6 +209,30 @@ def decision_variable_dims(num_burns: int) -> int:
     return 4 * num_burns + 1
 
 
+def effective_burns(num_burns: int, x, dv_floor_mps: float = 1.0) -> int:
+    """
+    這個解「實際上」用了幾棒——中間棒 Δv 小到可以忽略的不算。
+
+    多棒解很常退化成單棒：決策向量裡中間棒的 Δv 欄位恰好是 0，是分段貪婪種子放進去的
+    「空燒」結構，L-SHADE 從頭到尾沒離開過那個起點 (2026-08-15 在三組不同的極限測資上
+    都觀察到)。這種解跟單棒解的分數差異只是雜訊，不是多棒帶來的優勢，但光看 fitness
+    完全分不出來，得拆開決策向量才知道。
+
+    中間棒 i 的 Δv 大小就是 x[1+4i] (單位 km/s，見 _generate_bounds 的陣列結構)，
+    不用重新傳播就能讀出來。最後一棒是 Lambert 解出來的、一定是實際燃燒，所以基數從 1 起算。
+
+    放在模組層級是因為 main.py (印任務規劃時) 跟 sweep_burns.py (判斷建議值可不可信時)
+    都要用，維度公式只准在這個檔案裡定義一次。
+    """
+    if x is None:
+        return num_burns  # 沒有解向量就不做判斷，回報原本的燃燒次數
+    count = 1
+    for i in range(num_burns - 1):
+        if float(x[1 + 4 * i]) * 1000.0 > dv_floor_mps:
+            count += 1
+    return count
+
+
 class MissionOptimizer:
     def __init__(self, config):
         self.config = config
@@ -398,7 +422,21 @@ class MissionOptimizer:
             return []
 
         if num_burns > 1:
-            return self._generate_multiburn_seed_candidates(num_burns, n_seeds)
+            # 兩個家族混合 (2026-08-15)：
+            #  - 分段貪婪接力：把單棒的好答案接成多棒格式 (前面幾棒空燒)。單棒夠用的
+            #    情境靠這個，實測會正確退化回單棒。
+            #  - 近地點連續推進階梯：真的有燒的中間棒，補上前者的結構性盲區。只有在
+            #    energy_floor_dv() 超過每棒上限 (= 單棒在能量上不可能) 時才會產生東西，
+            #    一般情境直接回空清單，不花成本。
+            # 兩邊都給就好，不用互斥——族群裡多一種起點只會多一個探索方向。
+            relay = self._generate_multiburn_seed_candidates(num_burns, n_seeds)
+            ladder = self._generate_ladder_seed_candidates(num_burns, n_seeds)
+            # 不要在這裡截斷！第一版寫成 (relay+ladder)[:max(n_seeds, len(relay))]，
+            # 而 relay 本來就會回傳到 n_seeds 個，所以那個切片把階梯種子整批丟掉，
+            # 實測「加了種子但種子數完全沒變 (13 -> 13)」才抓到。兩個家族各自已經
+            # 在內部限制數量了，這裡直接相加即可；種子總數相對族群 (n_dims*POPSIZE，
+            # 3 棒是 260) 仍然只佔一成上下，不會淹掉隨機探索。
+            return relay + ladder
 
         dt = 60.0
         mu, j2, j3, j4, re = self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL, self.RE_VAL
@@ -611,6 +649,171 @@ class MissionOptimizer:
 
         return seeds
 
+    def _orbit_radius_range(self, r0, v0) -> Tuple[float, float]:
+        """從狀態向量算這條軌道的 (近地點半徑, 遠地點半徑)。雙曲線遠地點回傳 inf。"""
+        r = fast_norm(r0)
+        v = fast_norm(v0)
+        energy = v * v / 2.0 - self.MU / r
+        h = fast_norm(np.cross(r0, v0))
+        if abs(energy) < 1e-14:
+            return r, float("inf")
+        a = -self.MU / (2.0 * energy)
+        ecc = math.sqrt(max(0.0, 1.0 + 2.0 * energy * h * h / (self.MU * self.MU)))
+        rp = a * (1.0 - ecc)
+        ra = a * (1.0 + ecc) if a > 0 else float("inf")
+        return rp, ra
+
+    def energy_floor_dv(self) -> float:
+        """
+        B 要讓自己的軌道半徑範圍碰到 A 的半徑範圍，最少要花多少 Δv (km/s)。
+
+        封閉解、微秒等級，所以可以無條件算，不會拖慢任何情境。這是**下限不是可達值**：
+        只算「把軌道撐大/縮小到範圍重疊」的能量成本，沒算平面差、相位、命中精度，
+        真正需要的 Δv 一定 >= 這個值。用途是判斷「單棒在能量上是不是根本不可能」——
+        如果連這個下限都超過每棒上限，那再怎麼調時機也不可能有合法單棒解。
+        """
+        rp_b, ra_b = self._orbit_radius_range(self.B_r0, self.B_v0)
+        rp_a, ra_a = self._orbit_radius_range(self.A_r0, self.A_v0)
+        if ra_b >= rp_a and rp_b <= ra_a:
+            return 0.0  # 半徑範圍已經重疊，能量上沒有硬門檻
+        mu = self.MU
+        if ra_b < rp_a:
+            # B 整條軌道都在 A 內側：在 B 的近地點沿速度方向燒，把遠地點抬到 A 的近地點
+            a_b = (rp_b + ra_b) / 2.0
+            v_now = math.sqrt(mu * (2.0 / rp_b - 1.0 / a_b))
+            v_need = math.sqrt(mu * (2.0 / rp_b - 2.0 / (rp_b + rp_a)))
+            return max(0.0, v_need - v_now)
+        # B 整條軌道都在 A 外側：在 B 的遠地點減速，把近地點壓到 A 的遠地點
+        a_b = (rp_b + ra_b) / 2.0
+        v_now = math.sqrt(mu * (2.0 / ra_b - 1.0 / a_b))
+        v_need = math.sqrt(mu * (2.0 / ra_b - 2.0 / (ra_b + ra_a)))
+        return abs(v_now - v_need)
+
+    @staticmethod
+    def _direction_to_spherical(u) -> Tuple[float, float]:
+        """把單位方向向量轉成決策向量用的 (theta, phi)，跟 _replay_mission 的
+        dv_vec = r*[sin(t)cos(p), sin(t)sin(p), cos(t)] 這組公式互為反函數。"""
+        uz = float(np.clip(u[2], -1.0, 1.0))
+        theta = math.acos(uz)
+        phi = math.atan2(float(u[1]), float(u[0]))
+        if phi < 0.0:
+            phi += 2.0 * math.pi
+        return theta, phi
+
+    def _generate_ladder_seed_candidates(self, num_burns: int, n_seeds: int) -> list:
+        """
+        「近地點連續推進」種子 (2026-08-15 新增)：專門補上分段貪婪接力種子的結構性盲區。
+
+        為什麼需要：_generate_multiburn_seed_candidates 產生的多棒種子，前面每一棒都是
+        Δv=0 的空燒——它本質上是「偽裝成多棒的單棒解」，從來不會猜測「中間棒該燒多少」。
+        單棒夠用的情境下這完全正確 (實測過四組情境都會正確退化回單棒)，但遇到「單棒在
+        能量上根本不可能」的情境就整批落在錯誤的區域：實測 hard_mode_test.json (B 在
+        6800km 圓軌道、A 的近地點在 50000km 外) 時，已經證明存在合法 3 棒解
+        (1100+600+1485 m/s、0 違規)，但三個燃燒次數案例全部退化成同一個違規單棒解
+        (2924.8 m/s)，中間棒依然是 0。
+
+        這裡改成用物理構造直接生成「真的有燒」的種子：在 B 的近地點附近沿速度方向連續
+        推進 (Oberth 效率最高)，每次之間滑行整數個週期回到同一個近地點，最後一棒用
+        Lambert 收尾。這個構造在 hard_mode 的離線驗證裡找到 382 組合法解，證明它涵蓋
+        得到正確答案所在的區域。
+
+        成本控制：只有 energy_floor_dv() 超過每棒上限時才會跑 (封閉解判斷，微秒等級)，
+        所以單棒就搆得到的一般情境完全不受影響。真的要跑時也不做暴力掃描——燃燒大小
+        直接從能量下限反推 (只試幾種分配策略)，滑行時間只試整數倍週期，真正需要掃的
+        只有最後一段 Lambert 飛行時間。
+        """
+        if num_burns < 2 or n_seeds <= 0:
+            return []
+        floor = self.energy_floor_dv()
+        if floor <= self.MAX_DV_SOFT:
+            return []  # 單棒在能量上就搆得到，不需要階梯種子
+
+        mu, dt = self.MU, 60.0
+        j2, j3, j4, re = self.J2_VAL, self.J3_VAL, self.J4_VAL, self.RE_VAL
+        cap = self.MAX_DV_SOFT
+        n_climb = num_burns - 1  # 中間棒全部拿來爬升，最後一棒留給 Lambert
+        lb, ub = self._generate_bounds(num_burns)
+        lb_arr, ub_arr = np.array(lb), np.array(ub)
+
+        rp_b, ra_b = self._orbit_radius_range(self.B_r0, self.B_v0)
+        a_b = (rp_b + ra_b) / 2.0
+        b_period = 2.0 * math.pi * math.sqrt(a_b ** 3 / mu)
+
+        # 燃燒大小策略：不暴力掃，只試幾種「怎麼把 floor 分配給爬升棒」的分法。
+        # 種子不需要最優，只要落在正確的區域，後面的 L-SHADE + NLP 會把它磨細。
+        mag_plans = []
+        even = min(cap, floor / n_climb)
+        mag_plans.append([even] * n_climb)                    # 平均分配
+        mag_plans.append([cap] * n_climb)                     # 每棒燒到上限 (爬最快)
+        if n_climb >= 2:
+            mag_plans.append([cap] + [max(0.2, floor - cap) / (n_climb - 1)] * (n_climb - 1))
+
+        seeds = []
+        # 起燒時機：掃 B 前一個週期內的幾個點 (圓軌道沒有特定近地點，掃幾個就夠；
+        # 橢圓軌道則會掃到近地點附近，Oberth 效率最高的位置自然勝出)
+        for t_wait in np.linspace(0.0, b_period, 5, endpoint=False):
+            for mags in mag_plans:
+                r_cur, v_cur = propagate_dop853(self.B_r0, self.B_v0, float(t_wait),
+                                                 dt, mu, j2, j3, j4, re)
+                cur_t = float(t_wait)
+                legs = []      # 每棒的 (r, theta, phi, coast_frac)
+                ok = True
+                for k, mag in enumerate(mags):
+                    v_hat = v_cur / fast_norm(v_cur)
+                    theta, phi = self._direction_to_spherical(v_hat)
+                    v_new = v_cur + v_hat * mag
+                    if not check_constraints(r_cur, v_new, mu, self.MIN_PERIAPSIS):
+                        ok = False
+                        break
+                    sp = fast_norm(v_new) ** 2 / 2.0 - mu / fast_norm(r_cur)
+                    if sp >= 0.0:
+                        ok = False   # 逃逸了，對攔截沒意義
+                        break
+                    a_new = -mu / (2.0 * sp)
+                    # 滑行整整一圈回到同一個近地點，下一棒才吃得到一樣的 Oberth 效率
+                    t_coast = 2.0 * math.pi * math.sqrt(a_new ** 3 / mu)
+                    max_coast = self.T_max - cur_t - self.MIN_COAST_TIME
+                    if max_coast <= self.MIN_COAST_TIME or t_coast >= max_coast:
+                        ok = False
+                        break
+                    coast_frac = (t_coast - self.MIN_COAST_TIME) / (max_coast - self.MIN_COAST_TIME)
+                    legs.append((mag, theta, phi, float(np.clip(coast_frac, 0.0, 1.0))))
+                    r_cur, v_cur = propagate_dop853(r_cur, v_new, t_coast, dt, mu, j2, j3, j4, re)
+                    cur_t += t_coast
+                if not ok or len(legs) != n_climb:
+                    continue
+
+                # 最後一棒：掃飛行時間，找 Lambert 需求最小且合法的那個
+                max_final = self.T_max - cur_t
+                if max_final <= self.MIN_COAST_TIME:
+                    continue
+                best = None
+                for ft in np.linspace(self.MIN_COAST_TIME, max_final, 40):
+                    r_a, _ = propagate_dop853(self.A_r0, self.A_v0, cur_t + float(ft),
+                                               dt, mu, j2, j3, j4, re)
+                    for prograde in (True, False):
+                        try:
+                            v1, _ = izzo(mu, r_cur, r_a, float(ft), M=0, prograde=prograde,
+                                          lowpath=True, numiter=35, rtol=1e-8)
+                        except Exception:
+                            continue
+                        dv = fast_norm(v1 - v_cur)
+                        if dv <= cap and (best is None or dv < best[0]):
+                            best = (dv, float(ft))
+                if best is None:
+                    continue
+                final_leg_frac = (best[1] - self.MIN_COAST_TIME) / (max_final - self.MIN_COAST_TIME)
+
+                x = [float(t_wait)]
+                for (mag, theta, phi, cf) in legs:
+                    x.extend([mag, theta, phi, cf])
+                x.extend([float(np.clip(final_leg_frac, 0.0, 1.0)), 0.0, 0.0, 0.0])
+                seeds.append((best[0], np.clip(np.array(x, dtype=np.float64), lb_arr, ub_arr)))
+
+        # 最後一棒需求最小的優先 (代表這個階梯把 B 送到最有利的位置)
+        seeds.sort(key=lambda s: s[0])
+        return [x for _, x in seeds[:n_seeds]]
+
     def _maxiter_for(self, num_burns: int) -> int:
         """
         self.maxiter 通常是一個整數 (所有燃燒次數案例共用同一個世代預算)，但也可以是
@@ -795,8 +998,36 @@ class MissionOptimizer:
         # note 回傳給主行程印，不在這裡印 (見函式開頭的說明)
         return current_burns, current_best_x, current_best_score, epochs_run, note
     
+    def preflight_report(self) -> None:
+        """
+        開跑前的免費健檢 (2026-08-15)：能量下限是封閉解、微秒等級，所以無條件算。
+
+        會攔到一種很浪費的設定錯誤：MAX_BURNS 裡放了「在物理上不可能合法」的棒數。
+        B 要讓軌道半徑範圍碰到 A 至少要花 energy_floor_dv()，如果連這個下限都超過
+        「棒數 × 每棒上限」，那個案例注定只能產生違規解 (每次違規扣 10 分)，跑再多代
+        也不會變合法——與其讓使用者事後看報表才發現，不如開跑前就講。
+
+        詳細的可行性分析 (合法解有多稀有、多棒構造存不存在) 在 feasibility.py，
+        這裡只做這個零成本的必要條件檢查。
+        """
+        floor_mps = self.energy_floor_dv() * 1000.0
+        if floor_mps <= 0.0:
+            return
+        cap_mps = self.MAX_DV * 1000.0
+        min_burns = math.ceil(floor_mps / cap_mps)
+        impossible = sorted(b for b in self.burns if b < min_burns)
+        if not impossible:
+            return
+        print(f"⚠️ 能量下限 {floor_mps:,.0f} m/s（每棒上限 {cap_mps:,.0f} m/s）"
+              f"→ 至少需要 {min_burns} 棒才可能合法。")
+        print(f"   MAX_BURNS 裡的 {impossible} 注定只能找到違規解，浪費搜尋時間；"
+              f"建議拿掉，或用 feasibility.py 先確認可行範圍。")
+
     def run_study(self):
-        print(f"🚀 啟動 JIT 極速版 L-SHADE 軌道最佳化 (多核心巨觀平行化)...")
+        cases = sorted(self.burns, reverse=True)
+        print(f"🚀 L-SHADE 軌道最佳化：推進次數 {sorted(self.burns)}，"
+              f"各 {self._maxiter_for(cases[0])} 代上限，{len(self.burns)} 個案例平行跑")
+        self.preflight_report()
 
         scalar_params = np.array([
             self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL,
@@ -818,7 +1049,6 @@ class MissionOptimizer:
         # 印 (主行程)，不是在 _optimize_burn_case 裡 (子行程) 印——子行程不知道下面的
         # tqdm 進度條長什麼樣，兩邊搶著寫同一個終端機會讓進度條沒辦法原地覆寫，越跑
         # 越長 (見 _optimize_burn_case 開頭的說明)。
-        print(f"⏳ 開始計算推進次數 {sorted(self.burns, reverse=True)} ...")
 
         # 進度條的粒度：舊版用「完成的案例數」當總量 (total=num_cases)，代表整個案例
         # (可能要跑幾秒到幾分鐘，燃燒次數越多、決策變數維度越高、族群越大就越貴) 全部
@@ -986,15 +1216,15 @@ class MissionOptimizer:
 
     def _replay_mission(self, x, num_burns):
         """純 Python 的日誌重建器，只在最後跑一次，並用含 J2 的高精度模型算出真實成績"""
-        print("\n📝 --- 任務執行清單 (Mission Plan) ---")
         burn_logs, times, miss_km, dc_converged, r_aim, used_retrograde = reconstruct_mission_logs(
             x, num_burns, self.MIN_COAST_TIME, self.T_max,
             self.A_r0, self.A_v0, self.B_r0, self.B_v0,
             self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL, self.RE_VAL
         )
 
-        print(f"任務開始後等待: {x[0]:.1f} 秒")
-        print(f"  最後一棒 Lambert 轉移方向: {'🔄 逆向 (retrograde)' if used_retrograde else '➡️ 順向 (prograde)'}")
+        print(f"\n── 任務規劃 {'─' * 46}")
+        print(f"  等待 {x[0]:,.1f}s 後開始"
+              f"，最後一棒 Lambert 走{'逆向 (retrograde)' if used_retrograde else '順向 (prograde)'}")
         total_dv = 0.0
         penalty_count = 0
         for log in burn_logs:
@@ -1002,8 +1232,15 @@ class MissionOptimizer:
             total_dv += log['dv_mag']
             if over_limit:
                 penalty_count += 1
-            flag = "  ⚠️ 超過 1500 m/s 限制！" if over_limit else ""
-            print(f"  [{log['type']}] 時間: {log['time']:.1f}s | 推力: {np.round(log['dv_vnb'], 3)} km/s | 大小: {log['dv_mag']*1000:.1f} m/s{flag}")
+            flag = f"  ⚠️ 超過 {self.MAX_DV*1000:.0f} m/s 上限" if over_limit else ""
+            print(f"  [{log['type']:<10}] t={log['time']:>12,.1f}s   Δv={log['dv_mag']*1000:>8.1f} m/s"
+                  f"   VNB={np.round(log['dv_vnb'], 3)}{flag}")
+        # 實際用到幾棒 (2026-08-15)：多棒解常常退化成「中間棒 Δv=0 的空燒」，光看棒數
+        # 會以為用了多棒策略，其實跟更少棒的方案是同一個解。這裡直接講白，免得誤讀。
+        eff = effective_burns(num_burns, x)
+        if eff < num_burns:
+            print(f"  ⚠️ 這是 {num_burns} 棒的方案，但實際只用到 {eff} 棒"
+                  f"（其餘是 Δv≈0 的空燒）——等價於 {eff} 棒解，多開的棒數沒有貢獻。")
 
         intercept_time = times[-1]
         final_score = calculate_score(
@@ -1014,13 +1251,20 @@ class MissionOptimizer:
             k_t=self.k_t, C_t=self.C_t, k_v=self.k_v, C_v=self.C_v
         )
 
-        print("\n--- ⭐ 高精度 (含 J2) 收斂結果，不需開 GMAT 也能預覽 ---")
-        print(f"  最終燃燒 DC 收斂狀態: {'✅ 已收斂' if dc_converged else '❌ 未收斂 (建議檢查此解或加大 refine_lambert_burn 的 max_iter)'}")
-        print(f"  最小相對距離 Δr_min: {miss_km * 1000:.1f} m  (規則門檻 5000 m)")
-        print(f"  總速度增量 ΔV_team: {total_dv * 1000:.1f} m/s")
-        print(f"  任務完成時間 T_team: {intercept_time:.1f} s")
-        print(f"  違規次數: {penalty_count}")
-        print(f"  預估 Score: {final_score:.2f} / 100")
+        # 標題照實反映實際開的重力階數 (GRAVITY_DEGREE)，不要再寫死「含 J2」——
+        # 2026-08-14 起這是可設定的 (0=點質量 / 2=J2 / 3=+J3 / 4=+J4)，寫死會誤導。
+        grav = {0: "點質量", 2: "J2", 3: "J2+J3", 4: "J2+J3+J4"}.get(self.GRAVITY_DEGREE,
+                                                                       f"degree={self.GRAVITY_DEGREE}")
+        print(f"\n── Python 預測 ({grav}，不用開 GMAT) {'─' * 25}")
+        print(f"  Δr_min     {miss_km * 1000:>12,.1f} m   (門檻 5,000 m)")
+        print(f"  ΔV_team    {total_dv * 1000:>12,.1f} m/s")
+        print(f"  T_team     {intercept_time:>12,.1f} s")
+        print(f"  違規次數   {penalty_count:>12d}"
+              + ("   ⚠️ 依規則第 5 節每次扣 10 分" if penalty_count else ""))
+        print(f"  Score      {final_score:>12.2f} / 100")
+        if not dc_converged:
+            print("  ⚠️ 最後一棒的差分修正未收斂——這個解的命中距離可能不可靠，"
+                  "建議檢查或加大 refine_lambert_burn 的 max_iter。")
 
         burns = [log['dv_vnb'] for log in burn_logs]
         times_diff = np.diff(times).tolist()

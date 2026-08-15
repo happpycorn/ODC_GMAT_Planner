@@ -343,19 +343,24 @@ def main():
         if gmat_result:
             match = "✅" if gmat_result["intercept_success"] else "❌"
             dv_match = "✅" if gmat_result["final_burn_legal"] else "❌"
-            print("\n--- 🛰️  GMAT 獨立驗證結果 (真實高階模型，非 Python 預測) ---")
-            print(f"  InterceptSuccess : {match} {'成功' if gmat_result['intercept_success'] else '失敗'} "
-                  f"(Targeter {'收斂' if gmat_result['targeter_converged'] else '⚠️ 未收斂'})")
-            print(f"  MissDistance     : GMAT {gmat_result['miss_km']*1000:.3f} m   "
-                  f"(Python 預測 {mission_info['miss_km']*1000:.3f} m)")
+            # 三欄對照 (GMAT / Python / 差距)：這份報告最重要的用途就是看兩個模型
+            # 差多遠，差距那一欄直接算好，不要讓使用者自己心算。
+            d_miss = abs(gmat_result['miss_km'] - mission_info['miss_km']) * 1000.0
+            d_dv = abs(gmat_result['final_burn_dv_mps'] - mission_info['final_burn_dv_mps'])
+            print(f"\n── GMAT 驗證：一般版本 (含 DC 求解器) {'─' * 22}")
+            print(f"  {'':<12}{'GMAT':>14}{'Python':>14}{'差距':>12}")
+            print(f"  {'Δr_min':<12}{gmat_result['miss_km']*1000:>13,.3f}m"
+                  f"{mission_info['miss_km']*1000:>13,.3f}m{d_miss:>11,.3f}m")
             # GMAT 自己的 DC 可以自由調整最後一棒去命中瞄準點，這是它實際收斂後的
             # 真實大小，跟 InterceptSuccess 是分開的兩件事，兩個都要看。
-            print(f"  最後一棒實際 Δv  : GMAT {gmat_result['final_burn_dv_mps']:.1f} m/s   "
-                  f"(Python 預測 {mission_info['final_burn_dv_mps']:.1f} m/s)  "
-                  f"{dv_match} {'合規 (≤1500 m/s)' if gmat_result['final_burn_legal'] else '⚠️ 超過 1500 m/s 限制！'}")
-            print(f"  T_team           : GMAT {gmat_result['t_team_sec']:.2f} s   "
-                  f"(Python 預測 {mission_info['T_team']:.2f} s)")
-            print(f"  報表原始檔案     : {gmat_result['report_path']}")
+            print(f"  {'最後一棒 Δv':<10}{gmat_result['final_burn_dv_mps']:>13,.1f}m/s"
+                  f"{mission_info['final_burn_dv_mps']:>11,.1f}m/s{d_dv:>9,.1f}m/s")
+            print(f"  {'T_team':<12}{gmat_result['t_team_sec']:>13,.2f}s"
+                  f"{mission_info['T_team']:>13,.2f}s")
+            print(f"  命中 {match} {'成功' if gmat_result['intercept_success'] else '失敗'}"
+                  f"   Targeter {'✅ 收斂' if gmat_result['targeter_converged'] else '⚠️ 未收斂'}"
+                  f"   最後一棒 {dv_match} {'合規' if gmat_result['final_burn_legal'] else '超過上限'}")
+            print(f"  報表：{gmat_result['report_path']}")
 
     # 3.5 產生「固定燃燒版本」(不含任何求解器，單純傳播+施加燃燒)。
     #
@@ -421,24 +426,22 @@ def main():
                 fdv_match = "✅" if fixed_script_result["final_burn_legal"] else "⚠️"
                 src_label = "GMAT DC 收斂後的值" if fixed_script_source == "gmat_dc" \
                     else "Python 自己算的值 (DC 沒有乾淨通過的 fallback)"
-                print("\n--- 🔒 固定燃燒版本驗證結果 (outputs/output_submit.txt，沒有求解器) ---")
-                print(f"  燃燒值來源       : {src_label}")
-                print(f"  InterceptSuccess : {fmatch} {'成功' if fixed_script_result['intercept_success'] else '失敗'}")
-                print(f"  MissDistance     : {fixed_script_result['miss_km']*1000:.3f} m")
-                print(f"  最後一棒實際 Δv  : {fixed_script_result['final_burn_dv_mps']:.1f} m/s   "
-                      f"{fdv_match} {'合規 (≤1500 m/s)' if fixed_script_result['final_burn_legal'] else '超過 1500 m/s 限制'}")
+                print(f"\n── GMAT 驗證：固定燃燒版本 (無求解器，建議繳交這份) {'─' * 8}")
+                print(f"  檔案：outputs/output_submit.txt　燃燒值來源：{src_label}")
+                print(f"  Δr_min {fixed_script_result['miss_km']*1000:>12,.3f} m"
+                      f"   最後一棒 Δv {fixed_script_result['final_burn_dv_mps']:>9,.1f} m/s {fdv_match}")
+                print(f"  命中 {fmatch} {'成功' if fixed_script_result['intercept_success'] else '失敗'}"
+                      f"   {'合規' if fixed_script_result['final_burn_legal'] else '⚠️ 超過每棒上限'}")
                 if fixed_script_result["intercept_success"] and fixed_script_result["final_burn_legal"]:
-                    print("  👉 命中成功且合規，這份可以拿去正式繳交。")
+                    print("  👉 命中且合規，可以直接繳交。")
                 elif fixed_script_result["intercept_success"]:
-                    print("  👉 命中成功但這棒超標：依規則第 5 節，超標的燃燒每次扣 10 分（扣到 0 分為止），"
-                          "不是直接取消資格，這份仍然是一個能重現、可以評估的方案——但先確認這是不是目前")
-                    print("     找得到分數最高的解（例如用 sweep_burns.py 或加大搜尋預算/棒數，看看有沒有")
-                    print("     同樣能命中、Δv 壓在合法範圍內的更好方案），不要一找到能命中的就直接採用。")
+                    print("  👉 命中但超標：依規則第 5 節每次違規扣 10 分（不是取消資格），這份仍可繳交。")
+                    print("     但先確認沒有更好的合法解——用 feasibility.py 看合法解存不存在，")
+                    print("     再用 sweep_burns.py 或加大棒數/預算找找看。")
                 else:
-                    print("  ⚠️ 固定版本仍然沒有命中——如果來源是 GMAT DC 收斂後的值，理論上應該跟一般版本")
-                    print("     幾乎一樣，這不應該發生，值得回報排查；如果來源是 Python fallback，代表這組解")
-                    print("     本身站不住腳（例如 Python 的簡化模型跟 GMAT 在這個轉移時間尺度上有落差），")
-                    print("     不建議採用，回頭檢查搜尋設定或考慮換一組解。")
+                    print("  ⚠️ 沒有命中。來源若是 GMAT DC 的值，理論上該跟一般版本一致，這不該發生；")
+                    print("     若是 Python fallback，代表這組解本身站不住腳（模型在這個時間尺度上有落差），")
+                    print("     不建議採用。")
             else:
                 print("  ⚠️ 固定版本沒有跑成功 (GMAT 呼叫失敗)。")
 

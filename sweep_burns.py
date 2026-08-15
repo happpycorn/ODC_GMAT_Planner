@@ -43,12 +43,13 @@ import os
 import sys
 import copy
 import json
+import math
 import time
 import argparse
 import warnings
 import multiprocessing
 
-from src.optimizer import MissionOptimizer, decision_variable_dims
+from src.optimizer import MissionOptimizer, decision_variable_dims, effective_burns
 from src.config_validator import validate_config, ConfigValidationError
 
 # main.py 已經有讀取+驗證 config 的邏輯，這裡直接借用，不要重複寫一份容易兩邊不同步。
@@ -155,31 +156,6 @@ def run_stage(config: dict, burns: list, maxiter: int, popsize=None, label: str 
     return optimizer.burn_case_results
 
 
-def effective_burns(num_burns: int, best_x, dv_floor_mps: float = 1.0) -> int:
-    """
-    這個解「實際上」用了幾棒——中間棒 Δv 小到可以忽略的不算。
-
-    為什麼需要這個 (2026-08-15)：多棒解很常退化成單棒——決策向量裡中間棒的 Δv
-    欄位恰好是 0，是分段貪婪種子放進去的「空燒」結構，L-SHADE 從頭到尾沒離開過
-    那個起點。實測在三組不同的極限測資上都看到這個現象。這種解的分數跟單棒解的
-    差異只是雜訊 (例如落在窄窗的哪個位置)，不是多棒帶來的優勢，但光看 fitness
-    完全分不出來，得拆開解向量才知道。
-
-    決策向量結構 (見 MissionOptimizer._generate_bounds)：
-      [t_wait, (r,theta,phi,coast_frac)*(num_burns-1), final_leg_frac,
-       offset_r, offset_theta, offset_phi]
-    中間棒 i 的 Δv 大小就是 x[1+4i] (單位 km/s)，不用重新傳播就能讀出來。
-    最後一棒是 Lambert 解出來的，一定是實際燃燒，所以基數從 1 起算。
-    """
-    if best_x is None:
-        return num_burns  # 沒記錄到解向量就不做判斷，回報原本的燃燒次數
-    count = 1
-    for i in range(num_burns - 1):
-        if float(best_x[1 + 4 * i]) * 1000.0 > dv_floor_mps:
-            count += 1
-    return count
-
-
 def print_score_table(results: dict, header: str):
     print(f"\n--- {header} ---")
     print(f"{'燃燒次數':>8} {'分數':>10} {'實際用到':>9} {'代數':>8} {'備註'}")
@@ -220,6 +196,28 @@ def main():
 
     config = load_or_create_config(args.config)
     burns_range = sorted(set(parse_burns_arg(args.burns)))
+
+    # 開掃之前先用能量下限剔掉「物理上不可能合法」的燃燒次數 (2026-08-15 加)。
+    # 這是封閉解、微秒等級，但可以省下實打實的搜尋時間：如果 B 光是把軌道撐到碰得到 A
+    # 就需要超過「棒數 × 每棒上限」的 Δv，那個案例注定只能找到違規解，掃它純粹浪費。
+    # 更完整的可行性分析 (合法解有多稀有、多棒構造存不存在) 用 feasibility.py。
+    probe_cfg = copy.deepcopy(config)
+    probe_cfg["optimization"]["MAX_BURNS"] = [max(burns_range)]
+    floor_mps = MissionOptimizer(probe_cfg).energy_floor_dv() * 1000.0
+    if floor_mps > 0:
+        cap_mps = float(config["rules"]["MAX_DV_MPS"])
+        min_burns = math.ceil(floor_mps / cap_mps)
+        dropped = [b for b in burns_range if b < min_burns]
+        if dropped:
+            kept = [b for b in burns_range if b >= min_burns]
+            if not kept:
+                print(f"❌ 能量下限 {floor_mps:,.0f} m/s 代表至少要 {min_burns} 棒，"
+                      f"但 --burns 給的範圍 {burns_range} 全部低於這個下限——"
+                      f"整個範圍都不可能有合法解，請往上調 (例如 --burns {min_burns}-{min_burns+3})。")
+                sys.exit(1)
+            print(f"ℹ️ 能量下限 {floor_mps:,.0f} m/s（每棒上限 {cap_mps:,.0f}）→ 至少需要 {min_burns} 棒；"
+                  f"已從掃描範圍剔除 {dropped}（注定違規，掃了浪費時間）。")
+            burns_range = kept
 
     # --- 第一階段：粗掃 ---
     # MAXITER 不是整個範圍套同一個數字，而是依決策變數維度分配 (見 scaled_coarse_iters
