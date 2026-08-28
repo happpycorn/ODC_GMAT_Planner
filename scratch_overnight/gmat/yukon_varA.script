@@ -1,0 +1,130 @@
+% ---------------------------------------------------------------------------
+% Independent check of our optimizer, using GMAT's own Yukon NLP solver.
+%
+% Problem: the officially published sample problem (2026-08-28 notice, sec. 8).
+% Question: at the SAME arrival time our tool chose, can GMAT's own optimizer
+% find a cheaper two-burn intercept than we did?
+%
+% Our answer: burn 1 at t=0 (1498.0 m/s), burn 2 at t=1034.2 (743.9 m/s),
+%             arrival 3158.3 s, total 2242.0 m/s, miss 2359 m.
+%
+% Setup here: total flight time pinned to 3158.3 s, first burn at t=0, and
+% Yukon varies the two burn vectors plus the coast between them. Minimise the
+% total dV subject to miss <= 5 km and each burn <= 1.5 km/s.
+%
+% ASCII only -- GMAT's parser fails on non-ASCII characters.
+% ---------------------------------------------------------------------------
+
+Create Spacecraft ShipA;
+ShipA.DateFormat = TAIModJulian;
+ShipA.Epoch = '21545';
+ShipA.CoordinateSystem = EarthMJ2000Eq;
+ShipA.DisplayStateType = Keplerian;
+ShipA.SMA = 6978.0;
+ShipA.ECC = 0.0;
+ShipA.INC = 45.0;
+ShipA.RAAN = 0.0;
+ShipA.AOP = 0.0;
+ShipA.TA = 0.0;
+ShipA.DryMass = 850;
+
+Create Spacecraft ShipB;
+ShipB.DateFormat = TAIModJulian;
+ShipB.Epoch = '21545';
+ShipB.CoordinateSystem = EarthMJ2000Eq;
+ShipB.DisplayStateType = Keplerian;
+ShipB.SMA = 6878.0;
+ShipB.ECC = 0.0;
+ShipB.INC = 135.0;
+ShipB.RAAN = 30.0;
+ShipB.AOP = 0.0;
+ShipB.TA = 60.0;
+ShipB.DryMass = 850;
+
+Create ForceModel FM;
+FM.CentralBody = Earth;
+FM.PrimaryBodies = {Earth};
+FM.Drag = None;
+FM.SRP = Off;
+FM.RelativisticCorrection = Off;
+FM.ErrorControl = RSSStep;
+FM.GravityField.Earth.Degree = 4;
+FM.GravityField.Earth.Order = 0;
+FM.GravityField.Earth.PotentialFile = 'JGM2.cof';
+FM.GravityField.Earth.TideModel = 'None';
+
+Create Propagator Prop;
+Prop.FM = FM;
+Prop.Type = RungeKutta89;
+Prop.InitialStepSize = 60;
+Prop.Accuracy = 1e-11;
+Prop.MinStep = 0.001;
+Prop.MaxStep = 2700;
+Prop.MaxStepAttempts = 50;
+
+Create Yukon NLP;
+
+Create ImpulsiveBurn B1;
+B1.CoordinateSystem = Local;
+B1.Origin = Earth;
+B1.Axes = VNB;
+B1.DecrementMass = false;
+
+Create ImpulsiveBurn B2;
+B2.CoordinateSystem = Local;
+B2.Origin = Earth;
+B2.Axes = VNB;
+B2.DecrementMass = false;
+
+Create Variable dv1 dv2 totalDV missDist tCoast tFinal totalTime;
+Create ReportFile Rep;
+Rep.Filename = 'GMAT_YukonIntercept.txt';
+Rep.WriteHeaders = true;
+Rep.Precision = 12;
+Rep.ColumnWidth = 22;
+
+BeginMissionSequence;
+
+GMAT totalTime = 3158.3;
+
+% Initial guess = our own answer, so this first run asks "is our solution a
+% local optimum?" rather than "can Yukon find it from scratch".
+GMAT B1.Element1 =  0.1350;
+GMAT B1.Element2 = -0.2920;
+GMAT B1.Element3 =  1.4630;
+GMAT B2.Element1 = -0.6130;
+GMAT B2.Element2 = -0.3150;
+GMAT B2.Element3 =  0.2820;
+GMAT tCoast = 1034.2;
+
+Optimize NLP {SolveMode = Solve, ExitMode = SaveAndContinue};
+
+   Vary NLP(B1.Element1 = 0.1350, {Perturbation = 1e-5, Lower = -1.5, Upper = 1.5, MaxStep = 0.05});
+   Vary NLP(B1.Element2 = -0.2920, {Perturbation = 1e-5, Lower = -1.5, Upper = 1.5, MaxStep = 0.05});
+   Vary NLP(B1.Element3 = 1.4630, {Perturbation = 1e-5, Lower = -1.5, Upper = 1.5, MaxStep = 0.05});
+   Vary NLP(B2.Element1 = -0.6130, {Perturbation = 1e-5, Lower = -1.5, Upper = 1.5, MaxStep = 0.05});
+   Vary NLP(B2.Element2 = -0.3150, {Perturbation = 1e-5, Lower = -1.5, Upper = 1.5, MaxStep = 0.05});
+   Vary NLP(B2.Element3 = 0.2820, {Perturbation = 1e-5, Lower = -1.5, Upper = 1.5, MaxStep = 0.05});
+   % tCoast deliberately NOT varied in this variant.
+
+   Maneuver B1(ShipB);
+   Propagate Prop(ShipA, ShipB) {ShipB.ElapsedSecs = tCoast};
+   Maneuver B2(ShipB);
+   GMAT tFinal = totalTime - tCoast;
+   Propagate Prop(ShipA, ShipB) {ShipB.ElapsedSecs = tFinal};
+
+   GMAT dv1 = sqrt(B1.Element1*B1.Element1 + B1.Element2*B1.Element2 + B1.Element3*B1.Element3);
+   GMAT dv2 = sqrt(B2.Element1*B2.Element1 + B2.Element2*B2.Element2 + B2.Element3*B2.Element3);
+   GMAT totalDV = dv1 + dv2;
+   GMAT missDist = sqrt((ShipA.EarthMJ2000Eq.X - ShipB.EarthMJ2000Eq.X)^2 + (ShipA.EarthMJ2000Eq.Y - ShipB.EarthMJ2000Eq.Y)^2 + (ShipA.EarthMJ2000Eq.Z - ShipB.EarthMJ2000Eq.Z)^2);
+
+   NonlinearConstraint NLP(missDist <= 5.0);
+   NonlinearConstraint NLP(dv1 <= 1.5);
+   NonlinearConstraint NLP(dv2 <= 1.5);
+   Minimize NLP(totalDV);
+
+EndOptimize;
+
+Report Rep totalDV dv1 dv2 missDist tCoast totalTime;
+Report Rep B1.Element1 B1.Element2 B1.Element3;
+Report Rep B2.Element1 B2.Element2 B2.Element3;
