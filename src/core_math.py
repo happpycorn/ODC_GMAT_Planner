@@ -64,6 +64,58 @@ def check_constraints(r: np.ndarray, v: np.ndarray, mu: float, min_rp: float) ->
     return rp >= min_rp  
 
 @njit(fastmath=True, inline='always')
+def reaches_perigee(r: np.ndarray, v: np.ndarray, mu: float, dt: float) -> bool:
+    """接下來 dt 秒內，會不會真的飛過近地點。
+
+    為什麼需要這個 (2026-08-28)：`check_constraints` 比的是**密切軌道**的近地點半徑，
+    跟太空船會不會真的飛到那裡完全無關。這太嚴，而且會系統性地漏掉一整個解的家族——
+    把一發超過每棒上限的大燒**拆成兩段幾乎同向的燒**，是繞過 ΔV_lim 的標準手法，而
+    中間那個暫態軌道的近地點常常落在地表以下。太空船只在上面待 100 秒（機動間隔下限），
+    根本到不了近地點，實際飛過的高度完全安全。
+
+    官方 2026-08-28 公布的範例參考解正是這一類：第一棒 1,500 m/s 之後中間軌道的近地點
+    是 5,517 km（地表以下 860 km），100 秒後被第二棒拉回來，總共 2,241 m/s、3,212 秒
+    完成攔截。舊版的判定會把它直接判 0 分。
+
+    有了這個判斷，安檢就可以拆成兩半（兩者都便宜、而且合起來是**精確**的）：
+      * 弧內會經過近地點 -> 用 check_constraints 比近地點半徑；
+      * 弧內不經過近地點 -> 這段弧的最小半徑就是「起點、終點取小的那個」
+        （中間就算越過遠地點也只會更高），檢查兩端即可。
+
+    純二體的 Kepler 關係；J2 在 100 秒尺度上改不動這個判斷。
+    """
+    r_mag = fast_norm(r)
+    v2 = v[0]*v[0] + v[1]*v[1] + v[2]*v[2]
+    energy = v2 / 2.0 - mu / r_mag
+    rv = r[0]*v[0] + r[1]*v[1] + r[2]*v[2]
+
+    if energy >= 0.0:
+        # 雙曲線/拋物線：正在往內掉就當作會通過近地點 (保守)，正在往外飛就不會
+        return rv < 0.0
+
+    a = -mu / (2.0 * energy)
+    h = fast_cross(r, v)
+    h2 = h[0]*h[0] + h[1]*h[1] + h[2]*h[2]
+    e = math.sqrt(max(0.0, 1.0 + (2.0 * energy * h2) / (mu * mu)))
+    if e < 1e-12:
+        return False                      # 正圓：沒有近地點可言，半徑恆定
+
+    # 偏近點角 E：用 r = a(1 - e cosE) 反解，象限由 r·v 決定
+    cos_E = (1.0 - r_mag / a) / e
+    if cos_E > 1.0:
+        cos_E = 1.0
+    elif cos_E < -1.0:
+        cos_E = -1.0
+    E = math.acos(cos_E)
+    if rv < 0.0:
+        E = 2.0 * math.pi - E             # 正在往近地點掉
+    M = E - e * math.sin(E)               # Kepler 方程
+    n = math.sqrt(mu / (a * a * a))
+    t_to_perigee = (2.0 * math.pi - M) / n
+    return t_to_perigee <= dt
+
+
+@njit(fastmath=True, inline='always')
 def compute_dv_mag(v1_req: np.ndarray, v1: np.ndarray):
     dv = v1_req - v1
     return dv, fast_norm(dv)
