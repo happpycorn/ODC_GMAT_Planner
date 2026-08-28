@@ -1,0 +1,569 @@
+[
+  {
+    "cap": 2000.0,
+    "best": null,
+    "all": [
+      {
+        "score": 52.49999938125,
+        "miss_km": 1.6948265800783195,
+        "dv_mps": 54736.4397954401,
+        "t_team": 100.0,
+        "penalty_count": 1,
+        "dc_converged": true,
+        "burns": 1,
+        "eff": 1
+      },
+      {
+        "score": 52.4999986693254,
+        "miss_km": 3.500000001359291,
+        "dv_mps": 55265.00735967524,
+        "t_team": 213.90793594584738,
+        "penalty_count": 1,
+        "dc_converged": true,
+        "burns": 2,
+        "eff": 2
+      },
+      {
+        "score": 52.49999756197869,
+        "miss_km": 3.472946944003805,
+        "dv_mps": 41237.318054517775,
+        "t_team": 391.0834093870768,
+        "penalty_count": 1,
+        "dc_converged": true,
+        "burns": 3,
+        "eff": 3
+      }
+    ]
+  },
+  {
+    "cap": 2500.0,
+    "best": null,
+    "all": [
+      {
+        "score": 52.50168226846921,
+        "miss_km": 3.5013057387601414,
+        "dv_mps": 5798.589260077444,
+        "t_team": 2500.0,
+        "penalty_count": 1,
+        "dc_converged": true,
+        "burns": 1,
+        "eff": 1
+      },
+      {
+        "score": 52.50168226748489,
+        "miss_km": 3.50100921289209,
+        "dv_mps": 5798.589549962734,
+        "t_team": 2500.0,
+        "penalty_count": 1,
+        "dc_converged": true,
+        "burns": 2,
+        "eff": 1
+      },
+      {
+        "score": 52.501682267333,
+        "miss_km": 3.5010122937669754,
+        "dv_mps": 5798.589594694133,
+        "t_team": 2500.0,
+        "penalty_count": 1,
+        "dc_converged": true,
+        "burns": 3,
+        "eff": 1
+      }
+    ]
+  },
+  {
+    "cap": 3000.0,
+    "best": {
+      "score": 63.242798012860014,
+      "miss_km": 3.4997973225488357,
+      "dv_mps": 2743.0093403950596,
+      "t_team": 2999.999999887692,
+      "penalty_count": 0,
+      "dc_converged": true,
+      "burns": 3,
+      "eff": 3
+    },
+    "all": [
+      {
+        "score": 52.89482924899393,
+        "miss_km": 3.500001086980453,
+        "dv_mps": 3066.1051344214106,
+        "t_team": 2999.9999999999995,
+        "penalty_count": 1,
+        "dc_converged": true,
+        "burns": 1,
+        "eff": 1
+      },
+      {
+        "score": 63.21558395565076,
+        "miss_km": 3.5002517108320026,
+        "dv_mps": 2762.232106430086,
+        "t_team": 3000.0,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 2,
+        "eff": 2
+      },
+      {
+        "score": 63.242798012860014,
+        "miss_km": 3.4997973225488357,
+        "dv_mps": 2743.0093403950596,
+        "t_team": 2999.999999887692,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 3,
+        "eff": 3
+      }
+    ]
+  },
+  {
+    "cap": 3211.737,
+    "best": {
+      "score": 64.48707860841478,
+      "miss_km": 3.5007188791656376,
+      "dv_mps": 2224.689726426675,
+      "t_team": 3185.4192406292536,
+      "penalty_count": 0,
+      "dc_converged": true,
+      "burns": 3,
+      "eff": 2
+    },
+    "all": [
+      {
+        "score": 54.58142384094505,
+        "miss_km": 3.5000081503645037,
+        "dv_mps": 2199.442536317202,
+        "t_team": 3205.647386496586,
+        "penalty_count": 1,
+        "dc_converged": true,
+        "burns": 1,
+        "eff": 1
+      },
+      {
+        "score": 64.48707856046073,
+        "miss_km": 3.5007192332438346,
+        "dv_mps": 2224.689739542227,
+        "t_team": 3185.414962809126,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 2,
+        "eff": 2
+      },
+      {
+        "score": 64.48707860841478,
+        "miss_km": 3.5007188791656376,
+        "dv_mps": 2224.689726426675,
+        "t_team": 3185.4192406292536,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 3,
+        "eff": 2
+      }
+    ]
+  },
+  {
+    "cap": 3600.0,
+    "best": {
+      "score": 64.48707843135992,
+      "miss_km": 3.500717919792618,
+      "dv_mps": 2224.689774819575,
+      "t_team": 3185.4222048338247,
+      "penalty_count": 0,
+      "dc_converged": true,
+      "burns": 3,
+      "eff": 2
+    },
+    "all": [
+      {
+        "score": 54.581423842886494,
+        "miss_km": 3.5000081503612575,
+        "dv_mps": 2199.4425358084695,
+        "t_team": 3205.6473909536785,
+        "penalty_count": 1,
+        "dc_converged": true,
+        "burns": 1,
+        "eff": 1
+      },
+      {
+        "score": 64.46014108797213,
+        "miss_km": 3.5000074723749814,
+        "dv_mps": 2232.099090201034,
+        "t_team": 3202.7716842864525,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 2,
+        "eff": 2
+      },
+      {
+        "score": 64.48707843135992,
+        "miss_km": 3.500717919792618,
+        "dv_mps": 2224.689774819575,
+        "t_team": 3185.4222048338247,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 3,
+        "eff": 2
+      }
+    ]
+  },
+  {
+    "cap": 4200.0,
+    "best": {
+      "score": 64.48707858806094,
+      "miss_km": 3.5007191124308603,
+      "dv_mps": 2224.6897319977174,
+      "t_team": 3185.414956971931,
+      "penalty_count": 0,
+      "dc_converged": true,
+      "burns": 2,
+      "eff": 2
+    },
+    "all": [
+      {
+        "score": 54.58142384101706,
+        "miss_km": 3.5000081503581884,
+        "dv_mps": 2199.442536298331,
+        "t_team": 3205.647386442952,
+        "penalty_count": 1,
+        "dc_converged": true,
+        "burns": 1,
+        "eff": 1
+      },
+      {
+        "score": 64.48707858806094,
+        "miss_km": 3.5007191124308603,
+        "dv_mps": 2224.6897319977174,
+        "t_team": 3185.414956971931,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 2,
+        "eff": 2
+      },
+      {
+        "score": 64.48707717844121,
+        "miss_km": 3.500698379098462,
+        "dv_mps": 2224.6901172578437,
+        "t_team": 3185.449898889338,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 3,
+        "eff": 2
+      }
+    ]
+  },
+  {
+    "cap": 5000.0,
+    "best": {
+      "score": 64.48707859858456,
+      "miss_km": 3.5007188467612953,
+      "dv_mps": 2224.689729120811,
+      "t_team": 3185.4151170277655,
+      "penalty_count": 0,
+      "dc_converged": true,
+      "burns": 2,
+      "eff": 2
+    },
+    "all": [
+      {
+        "score": 54.581423840945334,
+        "miss_km": 3.5000081503567206,
+        "dv_mps": 2199.4425363171276,
+        "t_team": 3205.6473863631013,
+        "penalty_count": 1,
+        "dc_converged": true,
+        "burns": 1,
+        "eff": 1
+      },
+      {
+        "score": 64.48707859858456,
+        "miss_km": 3.5007188467612953,
+        "dv_mps": 2224.689729120811,
+        "t_team": 3185.4151170277655,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 2,
+        "eff": 2
+      },
+      {
+        "score": 64.48702332616952,
+        "miss_km": 3.499164764332217,
+        "dv_mps": 2224.704838073298,
+        "t_team": 3185.391550326206,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 3,
+        "eff": 2
+      }
+    ]
+  },
+  {
+    "cap": 5600.0,
+    "best": {
+      "score": 64.48691137395737,
+      "miss_km": 3.5006103780668836,
+      "dv_mps": 2224.735441793076,
+      "t_team": 3185.3881273465017,
+      "penalty_count": 0,
+      "dc_converged": true,
+      "burns": 3,
+      "eff": 2
+    },
+    "all": [
+      {
+        "score": 54.58142384045534,
+        "miss_km": 3.50000815035563,
+        "dv_mps": 2199.442536445524,
+        "t_team": 3205.647385596675,
+        "penalty_count": 1,
+        "dc_converged": true,
+        "burns": 1,
+        "eff": 1
+      },
+      {
+        "score": 64.46014108556051,
+        "miss_km": 3.5000074723700116,
+        "dv_mps": 2232.0990908685244,
+        "t_team": 3202.7716878260794,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 2,
+        "eff": 2
+      },
+      {
+        "score": 64.48691137395737,
+        "miss_km": 3.5006103780668836,
+        "dv_mps": 2224.735441793076,
+        "t_team": 3185.3881273465017,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 3,
+        "eff": 2
+      }
+    ]
+  },
+  {
+    "cap": 6200.0,
+    "best": {
+      "score": 81.67276498280253,
+      "miss_km": 3.499855521382119,
+      "dv_mps": 404.52163718350306,
+      "t_team": 6124.464941541228,
+      "penalty_count": 0,
+      "dc_converged": true,
+      "burns": 1,
+      "eff": 1
+    },
+    "all": [
+      {
+        "score": 81.67276498280253,
+        "miss_km": 3.499855521382119,
+        "dv_mps": 404.52163718350306,
+        "t_team": 6124.464941541228,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 1,
+        "eff": 1
+      },
+      {
+        "score": 81.38775363085381,
+        "miss_km": 3.500020813111874,
+        "dv_mps": 435.88615812370773,
+        "t_team": 6124.556089954544,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 2,
+        "eff": 2
+      },
+      {
+        "score": 81.42630915914552,
+        "miss_km": 3.4892094940091907,
+        "dv_mps": 431.70258482095244,
+        "t_team": 6124.780233296213,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 3,
+        "eff": 2
+      }
+    ]
+  },
+  {
+    "cap": 7000.0,
+    "best": {
+      "score": 81.67276497741537,
+      "miss_km": 3.499855521367547,
+      "dv_mps": 404.52163778623725,
+      "t_team": 6124.464941136749,
+      "penalty_count": 0,
+      "dc_converged": true,
+      "burns": 1,
+      "eff": 1
+    },
+    "all": [
+      {
+        "score": 81.67276497741537,
+        "miss_km": 3.499855521367547,
+        "dv_mps": 404.52163778623725,
+        "t_team": 6124.464941136749,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 1,
+        "eff": 1
+      },
+      {
+        "score": 81.38809058073349,
+        "miss_km": 3.500020363008582,
+        "dv_mps": 435.8496739638789,
+        "t_team": 6124.587726827633,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 2,
+        "eff": 2
+      },
+      {
+        "score": 81.46273636255489,
+        "miss_km": 3.141225793387308,
+        "dv_mps": 427.73335093622705,
+        "t_team": 6124.770301244496,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 3,
+        "eff": 2
+      }
+    ]
+  },
+  {
+    "cap": 9000.0,
+    "best": {
+      "score": 81.67276498409757,
+      "miss_km": 3.499855521361427,
+      "dv_mps": 404.52163703861237,
+      "t_team": 6124.464941553744,
+      "penalty_count": 0,
+      "dc_converged": true,
+      "burns": 1,
+      "eff": 1
+    },
+    "all": [
+      {
+        "score": 81.67276498409757,
+        "miss_km": 3.499855521361427,
+        "dv_mps": 404.52163703861237,
+        "t_team": 6124.464941553744,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 1,
+        "eff": 1
+      },
+      {
+        "score": 81.04159282768899,
+        "miss_km": 3.1748634295392657,
+        "dv_mps": 472.67913101461136,
+        "t_team": 6123.044245786867,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 2,
+        "eff": 2
+      },
+      {
+        "score": 80.86093731821963,
+        "miss_km": 0.5997414112524369,
+        "dv_mps": 491.3687621652525,
+        "t_team": 6110.182641598857,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 3,
+        "eff": 2
+      }
+    ]
+  },
+  {
+    "cap": 12000.0,
+    "best": {
+      "score": 82.92953418408143,
+      "miss_km": 3.506183573301705,
+      "dv_mps": 251.3067912240454,
+      "t_team": 11915.76944051648,
+      "penalty_count": 0,
+      "dc_converged": true,
+      "burns": 1,
+      "eff": 1
+    },
+    "all": [
+      {
+        "score": 82.92953418408143,
+        "miss_km": 3.506183573301705,
+        "dv_mps": 251.3067912240454,
+        "t_team": 11915.76944051648,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 1,
+        "eff": 1
+      },
+      {
+        "score": 82.81769664523299,
+        "miss_km": 3.4955362406331614,
+        "dv_mps": 266.13916356850575,
+        "t_team": 11915.812660394395,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 2,
+        "eff": 2
+      },
+      {
+        "score": 82.71820372850351,
+        "miss_km": 3.5005890644143762,
+        "dv_mps": 279.10681753425234,
+        "t_team": 11915.899337784796,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 3,
+        "eff": 2
+      }
+    ]
+  },
+  {
+    "cap": 23204.2,
+    "best": {
+      "score": 83.21420429560501,
+      "miss_km": 3.5001800758299475,
+      "dv_mps": 212.22770200094786,
+      "t_team": 17706.93692142099,
+      "penalty_count": 0,
+      "dc_converged": true,
+      "burns": 1,
+      "eff": 1
+    },
+    "all": [
+      {
+        "score": 83.21420429560501,
+        "miss_km": 3.5001800758299475,
+        "dv_mps": 212.22770200094786,
+        "t_team": 17706.93692142099,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 1,
+        "eff": 1
+      },
+      {
+        "score": 83.21263566139706,
+        "miss_km": 3.140572203137317,
+        "dv_mps": 212.44854215761748,
+        "t_team": 17706.81981739588,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 2,
+        "eff": 1
+      },
+      {
+        "score": 83.09824230783136,
+        "miss_km": 3.1370833374343814,
+        "dv_mps": 228.3813414719771,
+        "t_team": 20604.36017412228,
+        "penalty_count": 0,
+        "dc_converged": true,
+        "burns": 3,
+        "eff": 2
+      }
+    ]
+  }
+]

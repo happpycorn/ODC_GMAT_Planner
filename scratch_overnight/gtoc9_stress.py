@@ -35,7 +35,10 @@ from src.optimizer import MissionOptimizer, effective_burns
 
 # 官方 2026-08-28 公布的計分參數（已換算成 m/s 制，見 SCENARIOS.md 的單位陷阱說明）
 OFFICIAL = {"k_t": 0.003982, "C_t": 3763.526, "k_v": 0.0011862, "C_v": 2955.723}
-OUT = os.path.join(REPO, "scratch_overnight", "gtoc9_stress_results.json")
+# 結果檔可以用環境變數換名字，方便做「同一批配對、不同設定」的 A/B
+TAG = os.environ.get("STRESS_TAG", "")
+OUT = os.path.join(REPO, "scratch_overnight",
+                   f"gtoc9_stress_results{TAG}.json")
 
 
 def h_hat(d):
@@ -74,7 +77,8 @@ def build_cfg(A, B):
         "orbit_B": {k: B[k] for k in ("SMA", "ECC", "INC", "RAAN", "AOP", "TA")},
         "rules": dict({"MAX_DV_MPS": 1500.0, "MIN_MANEUVER_INTERVAL_SEC": 100.0,
                        "T_MAX_PERIOD_MULTIPLE": 4.0}, **OFFICIAL),
-        "strategy": {"GRAVITY_DEGREE": 4, "MISS_TOLERANCE_KM": 5.0},
+        "strategy": {"GRAVITY_DEGREE": 4, "MISS_TOLERANCE_KM": 5.0,
+                     "LAMBERT_MAX_REVS": int(os.environ.get("STRESS_REVS", "4"))},
         "optimization": {"MAX_BURNS": [1, 2, 3], "MAXITER": 600, "POPSIZE": 20,
                          "NUM_THREADS": 12, "MAX_EARLY_STOP": 60, "TOL": 0.01,
                          "SEED": None},
