@@ -16,6 +16,7 @@ competition」，也就是**當天才知道**。而這題的取捨很大——�
 
 import copy
 import json
+import math
 import os
 import sys
 import time
@@ -43,6 +44,9 @@ def run_cap(cap, maxiter=300, max_revs=0):
     cfg["rules"]["T_MAX_SEC"] = float(cap)
     cfg["rules"].pop("T_MAX_PERIOD_MULTIPLE", None)
     # 時間項全範圍常數（k_t -> 0），只留燃料項有梯度 = 純粹「最省油」
+    # 時間項壓平（只問「這個抵達上限下最省要多少 Δv」），燃料項留梯度。
+    # 官方真實參數的 k_v/C_v 用在這裡會讓燃料項在低 Δv 區太平，量不出差異，
+    # 所以這一步刻意不用官方的 k_v/C_v——曲線量完之後再用官方參數去算每點的總分。
     cfg["rules"].update({"k_t": 1e-9, "C_t": 1.0, "k_v": 0.002, "C_v": 1000.0})
     cfg["strategy"]["LAMBERT_MAX_REVS"] = int(max_revs)
     cfg["optimization"].update({"MAX_BURNS": [1, 2, 3], "MAXITER": maxiter,
@@ -132,6 +136,31 @@ if __name__ == "__main__":
                 dv, pen = by[b]
                 cells += f"{('(%s)' % format(dv, ',.0f')) if pen else format(dv, ',.1f'):>12}"
         print(f"{cap:>12,.0f}{cells}")
+
+    # 用官方公布的真實計分參數，把曲線上每一點換算成總分——當天要看的就是這張表
+    KT, CT, KV, CV = 0.003982, 3763.526, 0.0011862, 2955.723
+    print("\n=== 套官方真實計分參數後，每一點的總分 ===")
+    print(f"{'時間上限(s)':>12}{'最省ΔV':>12}{'實際抵達':>11}"
+          f"{'距離分':>8}{'時間分':>8}{'燃料分':>8}{'總分':>9}")
+    print("-" * 70)
+    best_pt = None
+    for item in results:
+        if item[1] is None:
+            continue
+        cap, b, _rows = item
+        dist = 50.0
+        tt = 25.0 / (1.0 + math.exp(KT * (b["t_team"] - CT)))
+        vv = 25.0 / (1.0 + math.exp(KV * (b["dv_mps"] - CV)))
+        tot = dist + tt + vv
+        if best_pt is None or tot > best_pt[0]:
+            best_pt = (tot, cap, b)
+        print(f"{cap:>12,.0f}{b['dv_mps']:>12,.1f}{b['t_team']:>11,.0f}"
+              f"{dist:>8.1f}{tt:>8.2f}{vv:>8.2f}{tot:>9.2f}")
+    if best_pt:
+        print(f"\n  最高分落在時間上限 {best_pt[1]:,.0f}s："
+              f"{best_pt[2]['dv_mps']:,.1f} m/s @ {best_pt[2]['t_team']:,.0f}s"
+              f" -> {best_pt[0]:.2f} 分")
+        print("  （對照：官方參考解 90.00）")
 
     with open(os.path.join(REPO_ROOT, "scratch_overnight",
                            "sample_pareto_frontier.json"), "w") as f:
