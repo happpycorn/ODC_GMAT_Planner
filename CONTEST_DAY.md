@@ -177,7 +177,7 @@ GMAT 路徑用 `--gmat-console` 指定，或寫進 config 的 `local.gmat_consol
 |---|---|
 | `strategy.LAMBERT_MAX_REVS` | **預設 4，不用動。** 設 `0` 只在想重現 2026-08-28 之前的行為時才用 |
 | `rules.T_MAX_SEC: <秒數>` | 想**強制**找快解時用，會蓋掉 4×T_A。拿來探「限定 N 秒內最省要多少」 |
-| `strategy.MAX_DV_MARGIN_MPS: 2.0` | 最佳解有棒數頂到上限時，把預設 10 m/s 的安全邊界調小，白賺幾 m/s。**調完一定要確認違規次數還是 0** |
+| `strategy.MAX_DV_MARGIN_MPS` | **預設已是 2.0**（2026-08-29 從 10 改過來）。再往下壓實測會讓搜尋落到較差的盆地，不建議 |
 | `strategy.TIEBREAK_SCORE_EPS: 0.005` | 賭官方比分數會四捨五入到小數點後兩位，用幾乎不影響分數的代價換平手判定的優先序 1 |
 | `optimization.MAX_BURNS` | 先 `[1,2,3]`；`feasibility.py` 說單棒不可行就往上加 |
 

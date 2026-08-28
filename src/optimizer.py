@@ -365,11 +365,21 @@ class MissionOptimizer:
         # 邊界)，避免 NLP 微調的數值梯度在邊界上把解推過真正的 ΔV_lim 那一側才被扣分。
         # 最終回報/合規判定 (_replay_mission) 仍然用 self.MAX_DV 這個真實規則上限去算。
         #
-        # 2026-08-28 起可以調 (strategy.MAX_DV_MARGIN_MPS)。為什麼會想調：官方範例題目
-        # 的最佳解是「把一發大燒拆成兩段」，第一棒會**頂到上限**——這種解每有一棒頂到
-        # 上限，就白白少燒 10 m/s。實測那題約值 0.03 分，不多但是免費的。調小之前記得
-        # 確認 _replay_mission 回報的違規次數還是 0。
-        self.MAX_DV_MARGIN_MPS = max(0.0, float(strategy.get("MAX_DV_MARGIN_MPS", 10.0)))
+        # 2026-08-29：預設從 10 改成 2。理由是結構性的——最佳解如果是「把一發大燒拆成
+        # 兩段」（繞過 ΔV_lim 的標準手法），就會有棒數**頂到上限**，那時邊界多少就是
+        # 直接損失多少。官方範例題目實測第一棒 1,490.0 -> 1,498.0，白賺 8 m/s。
+        #
+        # 實測（四組會頂到上限的情境，固定 SEED=777，margin = 10 / 2 / 0.5）：
+        #   official_sample  90.21 / 90.21 / 90.43
+        #   perigee_kick     89.28 / 89.28 / 89.28
+        #   hard_mode        92.30 / 92.44 / 86.43
+        #   lateral_burn     96.26 / 96.32 / 96.17
+        #   -> 三個設定**違規次數全部是 0**，縮小邊界沒有讓 NLP 把解推過真正的 1500。
+        #   -> 分數總和 368.05 / 368.25 / 363.31。但分數差落在重跑變異帶內，
+        #      **不是**改預設的理由；理由是上面那個「頂到上限就直接損失」的結構事實。
+        #   -> 0.5 在 hard_mode 掉 6 分（改邊界會改變搜尋空間的縮放，落到不同盆地），
+        #      所以不要一路壓到 0。2 是有收益又不動到搜尋行為的點。
+        self.MAX_DV_MARGIN_MPS = max(0.0, float(strategy.get("MAX_DV_MARGIN_MPS", 2.0)))
         self.MAX_DV_SOFT = max(0.0, self.MAX_DV - self.MAX_DV_MARGIN_MPS / 1000.0)
         self.MIN_COAST_TIME = float(rules.get("MIN_MANEUVER_INTERVAL_SEC", 100.0))
 
