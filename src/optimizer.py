@@ -15,7 +15,8 @@ from mealpy.evolutionary_based.SHADE import L_SHADE
 
 from src.propagator import get_r0_v0
 from src.scorer import calculate_score
-from src.core_math import propagate_dop853, check_constraints, fast_norm, to_vnb_frame
+from src.core_math import (propagate_dop853, check_constraints, fast_norm,
+                           to_vnb_frame, reaches_perigee)
 import numba as nb
 from tqdm import tqdm
 
@@ -44,6 +45,9 @@ def fast_fitness_evaluator(
     C_t = scalars[10]
     k_v = scalars[11]
     C_v = scalars[12]
+    # 最後一棒 Lambert 要考慮的最大圈數 (0 = 舊行為，只看不繞圈的直接轉移)。
+    # 放在 scalars 最後面是為了讓既有的 13 個索引位置完全不動。
+    lambert_max_revs = int(scalars[13])
 
     A_r0 = vectors[0]
     A_v0 = vectors[1]
@@ -85,19 +89,28 @@ def fast_fitness_evaluator(
 
         v_curr_new = v_curr + dv_vec
 
-        # 安檢：點火後會不會撞地球？
-        if not check_constraints(r_curr, v_curr_new, mu, min_periapsis):
-            return 0.0 # 直接判定 0 分 (極度差的適應度)
-
-        # 計算這次的海岸滑行時間 (Coast Time)
+        # 計算這次的海岸滑行時間 (Coast Time)。要先算出來，下面的安檢才知道這段弧多長。
         max_coast = T_max - current_time - min_coast_time
         t_coast = min_coast_time
         if max_coast > min_coast_time:
             t_coast += coast_frac * (max_coast - min_coast_time)
-            
+
+        # 安檢：這段弧**實際飛過**的高度會不會撞地球。
+        # 舊版 (2026-08-28 之前) 無條件比密切軌道的近地點半徑，跟太空船會不會真的飛到
+        # 那裡無關——這會系統性地漏掉「把一發超過上限的大燒拆成兩段幾乎同向的燒」這整個
+        # 家族，而那正是繞過 ΔV_lim 的標準手法。官方公布的範例參考解就是那一類：第一棒
+        # 之後中間軌道近地點 5,517 km (地表以下)，100 秒後被第二棒拉回來，實際飛過的
+        # 高度完全安全。改成：弧內真的會經過近地點才比近地點半徑，否則檢查弧的兩端
+        # (不經過近地點時，弧上最小半徑就是兩端取小者，見 reaches_perigee)。
+        if reaches_perigee(r_curr, v_curr_new, mu, t_coast):
+            if not check_constraints(r_curr, v_curr_new, mu, min_periapsis):
+                return 0.0 # 直接判定 0 分 (極度差的適應度)
+
         # 傳播太空船 B 經過 Coast Time
         r_curr, v_curr = propagate_dop853(r_curr, v_curr_new, t_coast, dt, mu, j2_val, j3_val, j4_val, re_val)
         current_time += t_coast
+        if fast_norm(r_curr) < min_periapsis:      # 這段弧的終點
+            return 0.0
 
     # 3. 最後一次機動 (Lambert 攔截)
     # 決定最後一段飛行時間
@@ -137,36 +150,46 @@ def fast_fitness_evaluator(
     # 抓到過：測極端大 SMA 的情境時 3 個案例裡有 2 個因為這樣整組報廢)。跟
     # check_constraints 撞地球的處理方式一致：算不出來就當作這組候選解爛掉，
     # 回傳 0 分讓 L-SHADE 自然淘汰它，不要讓一個候選解拖垮整次搜尋。
-    pro_ok = True
-    v1_req_pro = np.zeros(3, dtype=np.float64)
-    try:
-        v1_req_pro, _ = izzo(
-            mu, r_curr, r_aim, t_final_leg,
-            M=0, prograde=True, lowpath=True, numiter=35, rtol=1e-8
-        )
-    except Exception:
-        pro_ok = False
+    # 掃過所有的 Lambert 分支，取需要 Δv 最小的那個：
+    #   * 順向 / 逆向 —— A/B 傾角差大時逆向常常明顯省油，只算順向會漏掉更好的解。
+    #   * 圈數 M（多圈轉移）—— 2026-08-28 加。原本寫死 M=0，等於只看「不繞滿一圈就
+    #     直接過去」的轉移。實測官方範例題目：M=0 最省的合法單棒要 430.1 m/s，
+    #     M=1 只要 267.3 m/s（**省 38%**），代價是抵達時間從 6,145s 拉到 11,928s。
+    #     T_max 是 A 的 4 個週期，多圈轉移本來就在規則允許的範圍內，沒有理由不看。
+    #   * lowpath —— M=0 時只有一組解（lowpath 沒有意義），M>=1 時同一個飛行時間有
+    #     兩組解，而且差很多（上面那組 267.3 就是 lowpath=False 才找得到的）。
+    # 用 lambert_max_revs=0 可以退回舊行為。
+    #
+    # izzo 內部的 Householder/Halley 疊代對某些幾何 (轉移角接近 0°/180°、極端的
+    # SMA 落差、圈數放太多導致飛行時間根本不夠) 會直接丟 RuntimeError，不是回傳一個
+    # 很爛的解——沒接住的話，L-SHADE 族群裡剛好抽到一個這種候選解，會讓整個
+    # model.solve() 當掉，白白浪費掉那個燃燒次數案例已經算好的所有結果 (實測
+    # 抓到過：測極端大 SMA 的情境時 3 個案例裡有 2 個因為這樣整組報廢)。跟
+    # 撞地球的處理方式一致：算不出來就跳過這個分支，全部分支都失敗才回傳 0 分。
+    v1_req = np.zeros(3, dtype=np.float64)
+    best_req_dv = 1.0e18
+    found_any = False
+    for m_rev in range(0, lambert_max_revs + 1):
+        for lp in range(0, 2):
+            if m_rev == 0 and lp == 1:
+                continue                      # M=0 只有一組解，不用算兩次
+            for pg in range(0, 2):
+                try:
+                    v_try, _ = izzo(
+                        mu, r_curr, r_aim, t_final_leg,
+                        M=m_rev, prograde=(pg == 0), lowpath=(lp == 0),
+                        numiter=35, rtol=1e-8
+                    )
+                except Exception:
+                    continue
+                d_try = fast_norm(v_try - v_curr)
+                if d_try < best_req_dv:
+                    best_req_dv = d_try
+                    v1_req = v_try
+                    found_any = True
 
-    retro_ok = True
-    v1_req_retro = np.zeros(3, dtype=np.float64)
-    try:
-        v1_req_retro, _ = izzo(
-            mu, r_curr, r_aim, t_final_leg,
-            M=0, prograde=False, lowpath=True, numiter=35, rtol=1e-8
-        )
-    except Exception:
-        retro_ok = False
-
-    if not pro_ok and not retro_ok:
+    if not found_any:
         return 0.0
-    elif not retro_ok:
-        v1_req = v1_req_pro
-    elif not pro_ok:
-        v1_req = v1_req_retro
-    elif fast_norm(v1_req_retro - v_curr) < fast_norm(v1_req_pro - v_curr):
-        v1_req = v1_req_retro
-    else:
-        v1_req = v1_req_pro
 
     # 計算需要的最後一次推力
     dv_final_vec = v1_req - v_curr
@@ -176,9 +199,11 @@ def fast_fitness_evaluator(
     if dv_final_mag > max_dv:
         penalty_count += 1
 
-    # 最終安檢
-    if not check_constraints(r_curr, v1_req, mu, min_periapsis):
-        return 0.0
+    # 最終安檢：同上，只有最後這段轉移弧真的會經過近地點時才比近地點半徑。
+    # 弧的終點是瞄準點 (在 A 附近，半徑已知安全)，所以不用再檢查終點。
+    if reaches_perigee(r_curr, v1_req, mu, t_final_leg):
+        if not check_constraints(r_curr, v1_req, mu, min_periapsis):
+            return 0.0
 
     # 4. 結算最終分數 (利用我們剛改好的 scorer)
     # min_distance_km 理論上就是 offset_r：Lambert 打的是瞄準點，瞄準點跟 A 的真實
@@ -233,6 +258,69 @@ def effective_burns(num_burns: int, x, dv_floor_mps: float = 1.0) -> int:
     return count
 
 
+# ── 規則第 6 節：平手判定 ─────────────────────────────────────────────────
+# 官方規則 (Regulations_PrelimRound §6 Tie-Breaking Rules) 寫得很明確：
+#   優先序 1  Δr_min (Minimum Relative Distance)   小者排前面
+#   優先序 2  ΔV_team (Total Velocity Increment)   少者排前面
+#   優先序 3  T_team  (Mission Completion Time)    短者排前面
+#   優先序 4  設計理論 —— 同分隊伍上台講 5 分鐘軌道設計方法論 (程式管不到)
+# 也就是說「分數一樣」時決定名次的不是 Score，工具挑方案時就必須照這個順序挑。
+
+# 兩個分數算不算「打平」的門檻。預設取極小 (1e-9)：官方會用自己的驗證程式重算
+# 分數，我們無從得知他們比到第幾位，預設只在浮點數等級真的一模一樣時才動用平手規則。
+#
+# 但這個門檻有實測上的理由可以調大 (strategy.TIEBREAK_SCORE_EPS)：實測 playground
+# 情境，瞄準偏移從 0 拉到 3.5km (規則允許的極限) 對分數的影響只有 **0.001 分**，
+# 遠小於搜尋本身的重跑變異 (~0.02 分)。也就是說工具預設會為了 0.001 分白白讓出
+# 3.5km 的距離優勢——而規則第 6 節的優先序 1 是**硬性**的字典序比較，3.5km 輸給
+# 0km 沒有商量餘地。如果官方的驗證程式把分數四捨五入到小數點後兩位 (我們不知道)，
+# 那 0.001 分根本不存在，這筆交易就是純虧。
+#
+# 所以：想賭「官方比到小數點後兩位」就把它設成 0.005，工具會在分數差 0.005 以內
+# 時改以 Δr 為準；想保守就維持預設。這是個賭注，工具不替你決定，但把數量級講清楚。
+SCORE_TIE_EPS = 1e-9
+
+# 比 Δr_min 時的有效解析度（公尺）。低於這個量級的差距不是優勢，是雜訊：
+#   * GMAT DifferentialCorrector 的 Achieve Tolerance 是每軸 0.01 km = 10 m，
+#     Python 端算出 1 公分的差距根本傳不到交出去的腳本裡；
+#   * 而且本專案實測過 Python 模型與 GMAT 的殘餘落差最大到 863 m（見
+#     MISS_TOLERANCE_SOFT 那段的說明），比 10 m 大兩個數量級。
+# 不做這個量化的話會發生實測看過的荒謬情況：兩個方案的 Δr 差 1 公分，工具就為此
+# 選了棒數比較多、而且多出來那棒是 Δv≈0 空燒的版本——多開的棒數在 GMAT 只會增加
+# 不收斂的風險，換來一個根本不存在的距離優勢。
+# 只量化 Δr、不量化 ΔV_team/T_team：後兩者是計分函式**直接**在最佳化的量，搜尋
+# 交出來的值有意義；Δr 則因為計分被 max(Δr, 5) 地板夾住，在 5km 內對分數毫無梯度，
+# 搜尋會把它留在任意位置——只有這一項會出現「數字有差但差距沒有意義」的狀況。
+TIEBREAK_MISS_RESOLUTION_M = 10.0
+
+
+def tiebreak_rank_key(score: float, miss_km: float, dv_mps: float, t_team: float,
+                      floor_miss: bool = False, eps: float = None) -> tuple:
+    """規則第 6 節的排名鍵，數值越小排越前面 (跟 mealpy 的 min 方向一致)。
+
+    floor_miss 對應規則本身的一個歧義，兩種讀法都說得通，而且會給出不同的贏家：
+
+      floor_miss=False (預設)：優先序 1 比**原始**最近距離。
+          理由是規則第 6 節用的符號是 d_min,team，跟第 4/5 節計分用的 Δr_min 不同，
+          而且官方把它列在優先序 1 —— 如果套第 4 節的 max(Δr, 5) 地板，所有成功
+          攔截的隊伍這一項全都等於 5，優先序 1 對「成功組」就完全失效了。
+
+      floor_miss=True：優先序 1 直接沿用第 4 節定義的 Δr_min = max(Δr(T_team), 5)。
+          這個讀法下優先序 1 只能分出**沒攔截成功**的隊伍 (Δr > 5 但分數都被壓到 0)，
+          成功組會直接落到優先序 2 比 ΔV_team。
+
+    規則沒有講清楚是哪一種，所以工具不替你決定：兩種讀法選出不同贏家時 run_study()
+    會明講，讓人自己看數字定案。這比偷偷選一種然後假裝沒有歧義誠實。
+    """
+    dr = max(miss_km, 5.0) if floor_miss else miss_km
+    # 量化到 GMAT 打靶真的分辨得出來的解析度，見 TIEBREAK_MISS_RESOLUTION_M
+    dr = round(dr * 1000.0 / TIEBREAK_MISS_RESOLUTION_M)
+    # 分數先量化再比，浮點數尾巴的雜訊不該被當成真實差距。eps 可以由設定檔調大
+    # (strategy.TIEBREAK_SCORE_EPS)，見 SCORE_TIE_EPS 的說明。
+    e = SCORE_TIE_EPS if eps is None else max(float(eps), 1e-12)
+    return (-round(score / e), dr, dv_mps, t_team)
+
+
 class MissionOptimizer:
     def __init__(self, config):
         self.config = config
@@ -273,10 +361,16 @@ class MissionOptimizer:
         # 跟 k_t/C_t/k_v/C_v 放一起，不寫死在程式碼裡——如果晉級賽的規則數字不一樣，
         # 改 config 就好，不用回來改這裡。預設值等於目前初賽規則的數字。
         self.MAX_DV = float(rules.get("MAX_DV_MPS", 1500.0)) / 1000.0  # 換算成 km/s，下面全部用 km/s
-        # 搜尋/微調階段用的「內部目標」比規則的真實上限更嚴一點 (留 10 m/s 安全邊界)，
-        # 避免 NLP 微調的數值梯度在邊界上把解推過真正的 ΔV_lim 那一側才被扣分。
+        # 搜尋/微調階段用的「內部目標」比規則的真實上限更嚴一點 (預設留 10 m/s 安全
+        # 邊界)，避免 NLP 微調的數值梯度在邊界上把解推過真正的 ΔV_lim 那一側才被扣分。
         # 最終回報/合規判定 (_replay_mission) 仍然用 self.MAX_DV 這個真實規則上限去算。
-        self.MAX_DV_SOFT = self.MAX_DV - 0.01
+        #
+        # 2026-08-28 起可以調 (strategy.MAX_DV_MARGIN_MPS)。為什麼會想調：官方範例題目
+        # 的最佳解是「把一發大燒拆成兩段」，第一棒會**頂到上限**——這種解每有一棒頂到
+        # 上限，就白白少燒 10 m/s。實測那題約值 0.03 分，不多但是免費的。調小之前記得
+        # 確認 _replay_mission 回報的違規次數還是 0。
+        self.MAX_DV_MARGIN_MPS = max(0.0, float(strategy.get("MAX_DV_MARGIN_MPS", 10.0)))
+        self.MAX_DV_SOFT = max(0.0, self.MAX_DV - self.MAX_DV_MARGIN_MPS / 1000.0)
         self.MIN_COAST_TIME = float(rules.get("MIN_MANEUVER_INTERVAL_SEC", 100.0))
 
         # 攔截容許範圍：規則只要求 Δr ≤ 這個值，超出的精準度不會多加分 (Δr_min 會被
@@ -292,6 +386,22 @@ class MissionOptimizer:
         # 拿到真實軌道參數，最好針對那組實際場景再測一次確認這個邊界仍然夠用。
         self.MISS_TOLERANCE_KM = max(0.0, min(5.0, float(strategy.get("MISS_TOLERANCE_KM", 5.0))))
         self.MISS_TOLERANCE_SOFT = max(0.0, self.MISS_TOLERANCE_KM - 1.5)
+
+        # 規則第 6 節優先序 1 的收尾微調 (見 _tiebreak_polish)：在分數一分都不少的
+        # 前提下把瞄準偏移壓小。預設開啟，代價是精修階段多跑一次 L-BFGS-B (上限 30
+        # 代)；很貴的情境想省這段時間就設 false。
+        self.TIEBREAK_POLISH = bool(strategy.get("TIEBREAK_POLISH", True))
+
+        # 最後一棒 Lambert 要考慮的最大圈數。0 = 只看「不繞滿一圈就直接過去」的轉移
+        # (2026-08-28 以前的唯一行為)。實測官方範例題目 M=1 比 M=0 省 38% 的燃料
+        # (267.3 vs 430.1 m/s)，代價是抵達時間拉長——T_max 是 A 的 4 個週期，多圈
+        # 轉移本來就在規則允許的範圍內。代價是每次評估要多算幾組 Lambert。
+        self.LAMBERT_MAX_REVS = max(0, int(strategy.get("LAMBERT_MAX_REVS", 0)))
+
+        # 「分數算不算打平」的門檻，見 SCORE_TIE_EPS 的說明。預設 1e-9 (只認浮點數
+        # 等級的完全相同)，調大等於賭官方比分數時會四捨五入。
+        self.TIEBREAK_SCORE_EPS = max(1e-12, float(strategy.get("TIEBREAK_SCORE_EPS",
+                                                                SCORE_TIE_EPS)))
 
         # 初始化軌道
         self.A_r0, self.A_v0 = get_r0_v0(
@@ -510,10 +620,19 @@ class MissionOptimizer:
                             dv = fast_norm(v1 - v_b)
                         except Exception:
                             continue
-                        # 真正的評估函式最後還會檢查「整條轉移軌道」的近地點，不是只
-                        # 看起點/終點——Δv 再小，轉移途中擦到地球一樣是廢解，種子挑
-                        # 選要用同一套安檢，不然挑出來的種子有很高機率一開局就是 0 分。
-                        if not check_constraints(r_b, v1, mu, self.MIN_PERIAPSIS):
+                        # 種子的安檢要跟真正的評估函式**用同一套**，不然挑出來的種子
+                        # 有很高機率一開局就是 0 分。2026-08-28 起評估函式改成只在
+                        # 這段弧真的會經過近地點時才比近地點半徑，這裡跟著改。
+                        # ⚠️ 這裡**故意**只用 M=0，不是漏改。
+                        # 這段的職責是「挑哪個 (t_wait, flight_time) 窗口當種子」，是個
+                        # **啟發式排序**；種子真正的價值由 fast_fitness_evaluator 決定，
+                        # 而它會掃過所有 Lambert 分支 (含多圈)。所以種子早就享受得到多圈
+                        # 的好處。2026-08-28 試著把這個排序也換成含多圈的 _best_lambert，
+                        # 實測反而變差 (known_phasing、LAMBERT_MAX_REVS=4：最好的種子從
+                        # 166.1 m/s 合法變成 3,940.7 m/s 違規)——含多圈的 dv 排序會挑到
+                        # 不同的窗口，而那些窗口在完整評估下比較差。已還原。
+                        if reaches_perigee(r_b, v1, mu, ft) and \
+                                not check_constraints(r_b, v1, mu, self.MIN_PERIAPSIS):
                             continue
                         if dv < best_dv:
                             best_dv, best_tw, best_ft = dv, tw, ft
@@ -551,7 +670,8 @@ class MissionOptimizer:
                             dv = fast_norm(v1 - v_b)
                         except Exception:
                             continue
-                        if not check_constraints(r_b, v1, mu, self.MIN_PERIAPSIS):
+                        if reaches_perigee(r_b, v1, mu, ft) and \
+                                not check_constraints(r_b, v1, mu, self.MIN_PERIAPSIS):
                             continue
                         if dv < best_dv:
                             best_dv, best_tw, best_ft = dv, tw, ft
@@ -1056,16 +1176,16 @@ class MissionOptimizer:
 
         scalar_params = np.array([
             self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL,
-            self.RE_VAL, self.MIN_PERIAPSIS, self.MAX_DV_SOFT, self.k_t, self.C_t, self.k_v, self.C_v
+            self.RE_VAL, self.MIN_PERIAPSIS, self.MAX_DV_SOFT, self.k_t, self.C_t, self.k_v, self.C_v,
+            float(self.LAMBERT_MAX_REVS)
         ], dtype=np.float64)
         
         vector_params = np.vstack([
             self.A_r0, self.A_v0, self.B_r0, self.B_v0
         ])  
         
-        best_overall_score = float('inf')  
-        best_overall_params = None
-        best_burns_count = 1
+        # 贏家是所有案例都跑完之後才挑的 (見 pbar.close() 之後那段)，這裡不再
+        # 邊收邊比，所以也不需要預先放一個「目前最好」的暫存值。
 
         # 開啟多行程池，最大核心數設定為你要測試的推進情境總數 (例如 burns = [1, 2, 3] 就是開 3 個)
         num_cases = len(self.burns)
@@ -1156,10 +1276,9 @@ class MissionOptimizer:
                             "best_x": best_x,
                         }
 
-                        if best_score < best_overall_score:
-                            best_overall_score = best_score
-                            best_overall_params = best_x
-                            best_burns_count = b_count
+                        # 這裡**不再**即時挑贏家。挑選整段移到迴圈外面，因為規則第 6 節
+                        # 的平手判定需要 Δr_min/ΔV_team/T_team，那要重建任務才算得出來，
+                        # 不能在 as_completed 的順序裡邊收邊比。見 pbar.close() 之後。
 
                     except Exception as exc:
                         tqdm.write(f"❌ [核心錯誤] 推進 {b} 次案例崩潰: {exc}")
@@ -1175,11 +1294,10 @@ class MissionOptimizer:
 
         pbar.close()
 
-        if best_overall_score >= 0.0 or best_overall_params is None:
-            print("\n❌ 最佳化失敗：所有的嘗試都撞毀或違規了。")
+        picked = self._pick_best_case()
+        if picked is None:
             return None, None, (None, None)
-
-        print(f"\n✅ 最佳化完成！採用推進 {best_burns_count} 次的方案 (目標值 {best_overall_score:.4f})")
+        best_burns_count, best_overall_params, best_overall_score = picked
         return self.refine_trajectory(best_overall_params, best_burns_count, best_overall_score)
 
     def refine_trajectory(self, initial_guess_x, num_burns, initial_fitness=None):
@@ -1192,7 +1310,8 @@ class MissionOptimizer:
 
         scalar_params = np.array([
             self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL,
-            self.RE_VAL, self.MIN_PERIAPSIS, self.MAX_DV_SOFT, self.k_t, self.C_t, self.k_v, self.C_v
+            self.RE_VAL, self.MIN_PERIAPSIS, self.MAX_DV_SOFT, self.k_t, self.C_t, self.k_v, self.C_v,
+            float(self.LAMBERT_MAX_REVS)
         ], dtype=np.float64)
         
         vector_params = np.vstack([
@@ -1237,14 +1356,301 @@ class MissionOptimizer:
             print(f"   ↳ NLP 微調沒有改善 (微調前 {initial_fitness:.4f} / 微調後 {nlp_result.fun:.4f})，"
                   f"保留微調前的解")
 
+        res = self._tiebreak_polish(res, num_burns, fitness_wrapper, narrow_bounds)
         return self._replay_mission(res, num_burns)
+
+    def _best_lambert(self, r0, v0, r_target, tof):
+        """掃過所有 Lambert 分支，回傳需求 Δv 最小的那個 (v1, dv, used_retrograde)。
+
+        分支政策**只在這裡跟 fast_fitness_evaluator 裡各寫一次**（後者是 njit，沒辦法
+        共用 Python 函式）。2026-08-28 加多圈轉移時，只改了適應度函式跟重播，三個種子
+        產生器都還停在 `M=0, lowpath=True`——結果是搜尋能「評估」多圈解，卻沒有任何
+        種子能「提出」多圈解。這個函式就是為了不要再有第四個地方各寫一份。
+
+        算不出來（所有分支都失敗）時回傳 (None, inf, False)。
+
+        ⚠️ **目前沒有人呼叫它。** 2026-08-28 試著讓三個種子產生器改用它，實測反而變差
+        （known_phasing、LAMBERT_MAX_REVS=4：最好的種子從 166.1 m/s 合法變成 3,940.7 m/s
+        違規）。原因查明了：種子產生器裡的 Lambert 只是**挑窗口的啟發式排序**，種子真正的
+        價值由 fast_fitness_evaluator 決定，而它本來就會掃所有分支——所以種子早就吃得到
+        多圈的好處，把排序也換成多圈只會挑到不同、而且更差的窗口。已還原。
+
+        留著這個函式是因為「分支政策散在多個地方各寫一份」本身是風險（今天就差點只改
+        搜尋端沒改重播端）。之後若要統一，從這裡接，但記得排序啟發式跟評估目標**不必**
+        是同一個東西。
+        """
+        best_v, best_dv, retro = None, float("inf"), False
+        for m_rev in range(0, int(self.LAMBERT_MAX_REVS) + 1):
+            for lowpath in (True, False):
+                if m_rev == 0 and not lowpath:
+                    continue                    # M=0 只有一組解
+                for prograde in (True, False):
+                    try:
+                        v1, _ = izzo(self.MU, r0, r_target, float(tof), M=m_rev,
+                                     prograde=prograde, lowpath=lowpath,
+                                     numiter=35, rtol=1e-8)
+                    except Exception:
+                        continue
+                    d = fast_norm(v1 - v0)
+                    if d < best_dv:
+                        best_v, best_dv, retro = v1, d, (not prograde)
+        return best_v, best_dv, retro
+
+    def _fitness_wrapper(self, num_burns):
+        """包一個給定燃燒次數的目標函式 (= -分數)，方便在最佳化流程外面單獨評估。"""
+        scalar_params = np.array([
+            self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL,
+            self.RE_VAL, self.MIN_PERIAPSIS, self.MAX_DV_SOFT,
+            self.k_t, self.C_t, self.k_v, self.C_v, float(self.LAMBERT_MAX_REVS)
+        ], dtype=np.float64)
+        vector_params = np.vstack([self.A_r0, self.A_v0, self.B_r0, self.B_v0])
+
+        def _f(solution):
+            return fast_fitness_evaluator(np.asarray(solution, dtype=np.float64),
+                                          num_burns, scalar_params, vector_params)
+        return _f
+
+    def _tiebreak_polish(self, x, num_burns, fitness_wrapper, bounds):
+        """在**分數一分都不能少**的前提下，把 Δr_min 壓到最小。
+
+        規則第 6 節的優先序 1 是相對距離小者排前面，而計分函式在 Δr ≤ 5km 之內完全
+        平坦 (Δr_min 被 max(Δr, 5) 地板夾住)。也就是說：只要壓小 Δr 不用付出分數的
+        代價，那就是白拿的名次優勢。決策向量的最後三格 (offset_r/theta/phi) 正是最後
+        一棒 Lambert 瞄準點相對 A 真實位置的偏移，offset_r 就是這裡要壓的量。
+
+        重點在「不用付代價」這個條件不是永遠成立的：瞄準點移動會改變 Lambert 需求，
+        Δv 跟著變，燃料項不飽和時 1 m/s 就值 0.03 分左右，遠大於這裡的打平門檻——
+        那種情況下搜尋已經做過最佳權衡了，這一步應該什麼都不做（而且會如實回報）。
+        真正有賺頭的是燃料 sigmoid **飽和**的情境 (k_v 大或 Δv 離 C_v 很遠)，那時
+        Δv 的微小變化對分數毫無影響，Δr 就成了免費的自由度。
+
+        安全性：新解一定要通過「分數沒有變差」的實測才會被採用，沒通過就原封不動
+        退回。分數永遠優先於平手判定 —— 拿分數換名次是方向錯的。
+        """
+        if not self.TIEBREAK_POLISH:
+            return x
+        x = np.asarray(x, dtype=np.float64).copy()
+        baseline = float(fitness_wrapper(x))          # = -score，越小越好
+        offset_idx = len(x) - 3
+        if x[offset_idx] <= 1e-3:                     # 已經幾乎瞄準 A 本體，沒得壓
+            return x
+
+        # 目標：最小化 offset_r，但分數掉超過 TIEBREAK_SCORE_EPS 就用巨大罰項擋回去。
+        # 罰項尺度 1e6 是相對於 offset_r (公里，最多 3.5) 取的——只要分數掉了一點點，
+        # 罰項就會壓過任何可能的 offset_r 收益。
+        def polish_objective(sol):
+            f = float(fitness_wrapper(np.asarray(sol, dtype=np.float64)))
+            over = max(0.0, f - (baseline + self.TIEBREAK_SCORE_EPS))
+            return float(sol[offset_idx]) + 1e6 * over
+
+        # 邊界：其他維度沿用 NLP 微調用的窄邊界 (不讓這一步把解帶跑掉)，但 offset_r
+        # 這一維要放開到規則允許的完整範圍 [0, MISS_TOLERANCE_SOFT]。窄邊界是繞著
+        # 微調前的解切出來的，如果連 offset_r 也照窄邊界切，這一步最多只能在原值附近
+        # 挪一點點——實測 3,000 m 只降到 2,475 m 就卡住，等於白做。
+        polish_bounds = list(bounds)
+        polish_bounds[offset_idx] = (0.0, self.MISS_TOLERANCE_SOFT)
+
+        try:
+            out = minimize(fun=polish_objective, x0=x, method='L-BFGS-B',
+                           bounds=polish_bounds, options={'disp': False, 'maxiter': 30})
+        except Exception as exc:
+            print(f"   ↳ 平手判定微調跳過（{type(exc).__name__}）")
+            return x
+
+        cand = np.asarray(out.x, dtype=np.float64)
+        cand_fit = float(fitness_wrapper(cand))
+        gained = x[offset_idx] - cand[offset_idx]
+        if cand_fit <= baseline + self.TIEBREAK_SCORE_EPS and gained > 1e-4:
+            cost = cand_fit - baseline          # >0 代表分數真的掉了一點
+            tag = ("（分數沒有變差）" if cost <= 1e-9 else
+                   f"（分數掉了 {cost:.6f} 分，在設定的打平門檻 "
+                   f"{self.TIEBREAK_SCORE_EPS:g} 以內——這是拿分數換名次，"
+                   f"只有在官方比分數會四捨五入的前提下才划算）")
+            print(f"   ↳ 平手判定微調（規則 §6 優先序 1）：Δr 瞄準偏移 "
+                  f"{x[offset_idx]*1000:,.1f} m → {cand[offset_idx]*1000:,.1f} m，"
+                  f"分數 {-baseline:.6f} → {-cand_fit:.6f}{tag}")
+            return cand
+        if cand_fit > baseline + self.TIEBREAK_SCORE_EPS:
+            print(f"   ↳ 平手判定微調沒有採用：壓小 Δr 會讓分數從 {-baseline:.4f} 掉到 "
+                  f"{-cand_fit:.4f}。分數優先於平手判定，維持原解。")
+        else:
+            print(f"   ↳ 平手判定微調沒有空間：不掉分的前提下 Δr 壓不下去"
+                  f"（維持 {x[offset_idx]*1000:,.1f} m）——這代表計分函式對瞄準點"
+                  f"還有梯度（燃料項沒飽和），搜尋已經做過權衡了。")
+        return x
+
+    def _pick_best_case(self):
+        """從 burn_case_results 裡照規則第 6 節挑出要送去精修的那個案例。
+
+        回傳 (燃燒次數, 決策向量, fitness)，全軍覆沒時回傳 None。
+        獨立成一個方法是為了可測試——這段的重點是「平手時選誰」，而那條路徑
+        在真實搜尋裡不保證跑得到 (要剛好兩個案例分數一模一樣)，只能餵假資料驗。
+        """
+        # ── 挑贏家：照規則第 6 節的平手判定，不是照 fitness 誰小誰贏 ──────────
+        # 舊版在 as_completed 迴圈裡用 `best_score < best_overall_score` 即時挑，兩個問題：
+        #   (1) 嚴格小於代表平手時留下的是**先跑完**的那個，而完成順序由作業系統的行程
+        #       排程決定 —— 同一份設定重跑兩次可能交出不同方案，這是不該有的隨機性。
+        #   (2) 規則第 6 節根本沒有「誰先跑完」這條，分數相同時名次是看
+        #       Δr_min → ΔV_team → T_team。
+        # 而且分數打平在這個工具裡是常態不是特例：計分函式在 Δr ≤ 5km 內完全平坦、
+        # 燃料/時間 sigmoid 飽和時也平坦、多棒解又常退化成跟少棒解同一個解 (見
+        # effective_burns 的說明)，這三種情況都會產生浮點數等級一模一樣的分數。
+        viable = {b: r for b, r in self.burn_case_results.items()
+                  if r.get("best_x") is not None and r["fitness"] < 0.0}
+        if not viable:
+            print("\n❌ 最佳化失敗：所有的嘗試都撞毀或違規了。")
+            return None
+
+        metrics = {}
+        for b in sorted(viable):
+            try:
+                metrics[b] = self.mission_metrics(viable[b]["best_x"], b)
+            except Exception as exc:
+                # 連成績都重建不出來的候選直接淘汰——那種方案本來就交不出去
+                print(f"  ⚠️ 推進 {b} 次的解沒辦法重建成績（{type(exc).__name__}），不列入挑選")
+        if not metrics:
+            print("\n❌ 最佳化失敗：沒有任何一組解能重建出成績。")
+            return None
+
+        # 打平的候選先各自跑一次收尾微調再比。理由：微調專門在動 Δr (規則第 6 節的
+        # 優先序 1)，動輒好幾公里，比較「微調前」的 Δr 等於拿還沒定案的數字排名次。
+        # 實測過一次 playground：微調前 1 棒 3,499.9m / 2 棒 3,498.3m，用這 1.6 公尺
+        # 的差距選了 2 棒 (而且那多出來的一棒很可能是 Δv≈0 的空燒)；微調後兩邊都會被
+        # 壓到 0.1m 上下，那 1.6 公尺根本不存在。只在真的打平時才做，成本有上限。
+        pre_bucket = {b: round(metrics[b]["score"] / self.TIEBREAK_SCORE_EPS) for b in metrics}
+        if len(set(pre_bucket.values())) < len(pre_bucket) and self.TIEBREAK_POLISH:
+            top = max(pre_bucket.values())
+            tied_pre = [k for k in sorted(metrics) if pre_bucket[k] == top]
+            print(f"\n⚖️  推進 {tied_pre} 次的分數打平，先各自跑一次規則 §6 的收尾微調"
+                  f"再比名次（比較「會交出去的那一版」，不是微調前的中間值）：")
+            for b in tied_pre:
+                try:
+                    f = self._fitness_wrapper(b)
+                    lb, ub = self._generate_bounds(b)
+                    x0 = np.asarray(viable[b]["best_x"], dtype=np.float64)
+                    polished = self._tiebreak_polish(
+                        x0, b, f, self._narrow_tolerance_bounds(x0, lb, ub))
+                    if polished is not x0:
+                        viable[b]["best_x"] = polished
+                        viable[b]["fitness"] = float(f(polished))
+                        metrics[b] = self.mission_metrics(polished, b)
+                except Exception as exc:
+                    print(f"     （推進 {b} 次的收尾微調跳過：{type(exc).__name__}）")
+
+        def _key(b, floor_miss):
+            m = metrics[b]
+            # 最後補上棒數：連平手判定的三項都相同時，選**實際用到**的棒數少的那個
+            # (effective_burns，不是名目棒數——多棒解很常退化成中間棒 Δv=0 的空燒)。
+            # 這一項不在規則裡，純粹是為了讓結果可重現，而且棒數少的 GMAT 腳本比較
+            # 好收斂；只有在規則管不到的地方才會生效。
+            return tiebreak_rank_key(m["score"], m["miss_km"], m["dv_mps"],
+                                     m["t_team"], floor_miss=floor_miss,
+                                     eps=self.TIEBREAK_SCORE_EPS) + (
+                                         effective_burns(b, viable[b]["best_x"]), b)
+
+        best_burns_count = min(metrics, key=lambda b: _key(b, False))
+        best_overall_params = viable[best_burns_count]["best_x"]
+        best_overall_score = viable[best_burns_count]["fitness"]
+
+        # 有沒有真的動用到平手判定？(不只一個候選落在同一個分數桶)
+        bucket = {b: round(metrics[b]["score"] / self.TIEBREAK_SCORE_EPS) for b in metrics}
+        top_bucket = max(bucket.values())
+        tied = sorted(b for b in metrics if bucket[b] == top_bucket)
+        if len(tied) > 1:
+            print(f"\n⚖️  最終名次：推進 {tied} 次打平"
+                  f"（Score 都是 {metrics[tied[0]]['score']:.6f}），"
+                  f"依規則第 6 節比 Δr_min → ΔV_team → T_team：")
+            print(f"     {'棒數':<6}{'Δr_min (m)':>14}{'ΔV_team (m/s)':>16}{'T_team (s)':>14}")
+            for b in tied:
+                m = metrics[b]
+                mark = "  ← 採用" if b == best_burns_count else ""
+                print(f"     {b:<6}{m['miss_km']*1000:>14,.1f}{m['dv_mps']:>16,.1f}"
+                      f"{m['t_team']:>14,.1f}{mark}")
+
+            # 規則第 6 節的歧義：優先序 1 的符號是 d_min,team，跟第 4 節計分用的
+            # Δr_min = max(Δr, 5) 不是同一個符號，官方沒有定義 d_min,team。兩種讀法
+            # 有時候會選出不同的方案 —— 這種時候講白，不要假裝沒有這回事。
+            alt = min(metrics, key=lambda b: _key(b, True))
+            if alt != best_burns_count:
+                print(f"\n     ⚠️ 規則第 6 節優先序 1 的讀法會改變答案："
+                      f"照**原始**最近距離比是推進 {best_burns_count} 次，"
+                      f"照第 4 節的 Δr_min=max(Δr,5) 地板比則是推進 {alt} 次。")
+                print("        規則沒有定義 d_min,team 這個符號，工具不替你決定，"
+                      "上表的數字自己看了定案。")
+                print("        (工具預設用原始距離：套了地板的話，所有攔截成功的隊伍"
+                      "這一項全都是 5，優先序 1 對成功組就完全失效了。)")
+
+        # 代理值最好的案例不見得會被選上——挑贏家是用重播算出來的**真實分數**，
+        # 而搜尋用的目標值只是代理 (最後一棒用純二體 Lambert 的 Δv，不含 J2/J3/J4
+        # 修正)。飛行時間長的時候兩者可以差非常多：實測 hard_mode 診斷變體上，
+        # 3 棒代理 -80.72 但真實只有 72.33，輸給 1 棒真實 74.75 的解 (官方範例題目
+        # 那種 6.4 小時的尺度則幾乎完全一致，中位數只差 0.02 分)。
+        # 不講白的話，日誌上會看到「目標值比較好的案例沒被選」而完全沒有理由。
+        fitness_best = min(viable, key=lambda b: viable[b]["fitness"])
+        if fitness_best != best_burns_count and fitness_best in metrics:
+            print(f"\n📐 注意：目標值最好的是推進 {fitness_best} 次"
+                  f"（{viable[fitness_best]['fitness']:.4f}），但**沒有**採用它。")
+            print(f"     挑贏家看的是重播算出來的真實分數，不是搜尋用的目標值（代理）：")
+            print(f"       推進 {fitness_best} 次：目標值 "
+                  f"{-viable[fitness_best]['fitness']:.4f} vs 真實 "
+                  f"{metrics[fitness_best]['score']:.4f}"
+                  f"（差 {-viable[fitness_best]['fitness'] - metrics[fitness_best]['score']:+.4f}）")
+            print(f"       推進 {best_burns_count} 次：目標值 "
+                  f"{-viable[best_burns_count]['fitness']:.4f} vs 真實 "
+                  f"{metrics[best_burns_count]['score']:.4f}"
+                  f"（差 {-viable[best_burns_count]['fitness'] - metrics[best_burns_count]['score']:+.4f}）")
+            print(f"     代理值的誤差來自「最後一棒用純二體 Lambert 算 Δv」，飛行時間"
+                  f"越長偏越多；官方是用真實成績計分的，所以以真實分數為準。")
+
+        m = metrics[best_burns_count]
+        print(f"\n✅ 最佳化完成！採用推進 {best_burns_count} 次的方案 "
+              f"(目標值 {best_overall_score:.4f}，Δr_min {m['miss_km']*1000:,.1f} m，"
+              f"ΔV_team {m['dv_mps']:,.1f} m/s，T_team {m['t_team']:,.1f} s)")
+        return best_burns_count, best_overall_params, best_overall_score
+
+    def mission_metrics(self, x, num_burns) -> dict:
+        """安靜地把一組決策向量換算成官方成績的三個數字 + 分數，一個字都不印。
+
+        跟 _replay_mission 走的是同一套重建流程 (reconstruct_mission_logs，含設定的
+        重力階數)，差別只在不輸出。run_study() 挑贏家時要對每個燃燒次數的候選各算
+        一次來做規則第 6 節的平手判定，不能用會印一整頁任務規劃的那個版本。
+
+        注意：這裡的 total_dv / penalty_count / 分數算法必須跟 _replay_mission 裡
+        那段保持一致，改一邊要記得改另一邊 (兩邊都只是在讀 burn_logs，沒有第三種
+        算法，但沒有共用同一行程式碼)。
+        """
+        burn_logs, times, miss_km, dc_converged, _r_aim, _retro = reconstruct_mission_logs(
+            x, num_burns, self.MIN_COAST_TIME, self.T_max,
+            self.A_r0, self.A_v0, self.B_r0, self.B_v0,
+            self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL, self.RE_VAL,
+            self.LAMBERT_MAX_REVS
+        )
+        total_dv = sum(log['dv_mag'] for log in burn_logs)
+        penalty_count = sum(1 for log in burn_logs if log['dv_mag'] > self.MAX_DV)
+        t_team = float(times[-1])
+        score = calculate_score(
+            min_distance_km=miss_km,
+            total_time_sec=t_team,
+            total_dv_mps=total_dv * 1000.0,
+            penalty_count=penalty_count,
+            k_t=self.k_t, C_t=self.C_t, k_v=self.k_v, C_v=self.C_v
+        )
+        return {
+            "score": float(score),
+            "miss_km": float(miss_km),
+            "dv_mps": float(total_dv * 1000.0),
+            "t_team": t_team,
+            "penalty_count": int(penalty_count),
+            "dc_converged": bool(dc_converged),
+        }
 
     def _replay_mission(self, x, num_burns):
         """純 Python 的日誌重建器，只在最後跑一次，並用含 J2 的高精度模型算出真實成績"""
         burn_logs, times, miss_km, dc_converged, r_aim, used_retrograde = reconstruct_mission_logs(
             x, num_burns, self.MIN_COAST_TIME, self.T_max,
             self.A_r0, self.A_v0, self.B_r0, self.B_v0,
-            self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL, self.RE_VAL
+            self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL, self.RE_VAL,
+            self.LAMBERT_MAX_REVS
         )
 
         print(f"\n── 任務規劃 {'─' * 46}")
@@ -1371,7 +1777,7 @@ def refine_lambert_burn(
 
 
 def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_r0, B_v0,
-                              mu, j2_val, j3_val, j4_val, re_val):
+                              mu, j2_val, j3_val, j4_val, re_val, lambert_max_revs=0):
     """
     一步一步重播最佳解，並把 VNB 轉換和時間記錄下來。
     因為不用 JIT，可以盡情使用 list 和 dict。
@@ -1434,29 +1840,36 @@ def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_
     # 會崩潰的候選解擋在搜尋階段淘汰掉了，能走到重播這一步的解本來就是搜尋階段判定
     # 「算得出來」的那個)，但還是接住例外，萬一真的撞到給一句看得懂的錯誤，不要噴
     # poliastro 內部的 raw traceback。
-    pro_ok, retro_ok = True, True
-    try:
-        v1_guess_pro, _ = izzo(mu, r_curr, r_aim, t_final_leg, M=0, prograde=True, lowpath=True, numiter=35, rtol=1e-8)
-    except Exception:
-        pro_ok = False
-        v1_guess_pro = np.zeros(3)
-    try:
-        v1_guess_retro, _ = izzo(mu, r_curr, r_aim, t_final_leg, M=0, prograde=False, lowpath=True, numiter=35, rtol=1e-8)
-    except Exception:
-        retro_ok = False
-        v1_guess_retro = np.zeros(3)
+    # 分支的挑法必須跟 fast_fitness_evaluator **完全一致**：圈數 M、lowpath、順/逆向
+    # 全部掃過取 Δv 最小的。2026-08-28 加多圈轉移時差點只改搜尋端沒改這裡——那會讓
+    # 搜尋照多圈解評分、重播跟產生出來的 GMAT 腳本卻是不繞圈的解，回報的數字跟實際
+    # 交出去的東西對不起來。加了 lambert_max_revs 參數就一定要兩邊一起改。
+    v1_guess = None
+    best_guess_dv = float("inf")
+    used_retrograde = False
+    for m_rev in range(0, int(lambert_max_revs) + 1):
+        for lowpath in (True, False):
+            if m_rev == 0 and not lowpath:
+                continue                       # M=0 只有一組解
+            for prograde in (True, False):
+                try:
+                    v_try, _ = izzo(mu, r_curr, r_aim, t_final_leg, M=m_rev,
+                                    prograde=prograde, lowpath=lowpath,
+                                    numiter=35, rtol=1e-8)
+                except Exception:
+                    continue
+                d_try = fast_norm(v_try - v_curr)
+                if d_try < best_guess_dv:
+                    best_guess_dv = d_try
+                    v1_guess = v_try
+                    used_retrograde = not prograde
 
-    if not pro_ok and not retro_ok:
+    if v1_guess is None:
         raise RuntimeError(
-            "重播最佳解時，izzo Lambert 求解器兩個方向都沒收斂 (Failed to converge)——"
+            "重播最佳解時，izzo Lambert 求解器所有分支都沒收斂 (Failed to converge)——"
             "理論上不該發生 (搜尋階段已經會淘汰這種候選解)，如果真的看到這個訊息，"
             "代表這組解的幾何非常邊緣，回報這個狀況並檢查是不是要換一組軌道參數重跑。"
         )
-    used_retrograde = retro_ok and (not pro_ok or fast_norm(v1_guess_retro - v_curr) < fast_norm(v1_guess_pro - v_curr))
-    if used_retrograde:
-        v1_guess = v1_guess_retro
-    else:
-        v1_guess = v1_guess_pro
 
     # 用含 J2 的高精度模型微分修正 Lambert 的理想化猜測值 (等同 GMAT DC1 在做的事)。
     # 注意：這裡修正的目標是瞄準點 r_aim，不是 A 的真實位置，回傳的 miss_km 只代表

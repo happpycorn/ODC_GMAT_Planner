@@ -49,7 +49,8 @@ import argparse
 import warnings
 import multiprocessing
 
-from src.optimizer import MissionOptimizer, decision_variable_dims, effective_burns
+from src.optimizer import (MissionOptimizer, decision_variable_dims, effective_burns,
+                           tiebreak_rank_key)
 from src.config_validator import validate_config, ConfigValidationError
 
 # main.py 已經有讀取+驗證 config 的邏輯，這裡直接借用，不要重複寫一份容易兩邊不同步。
@@ -263,10 +264,51 @@ def main():
                   f"{args.plateau_tol} 分以內)——這個情境的 Δv/時間預算相對寬鬆，多燒不會多加分。")
             print(f"👉 建議 MAX_BURNS 用 [{recommended}]（最少夠用的那個），"
                   f"省下多餘的搜尋時間跟高維度案例不收斂的風險。")
-            print(f"⚠️  但「分數打平」不代表 Δr_min/ΔV_team/T_team 這些原始數字也打平——"
-                  f"規則的平手判定是先比 Δr_min，再比 ΔV_team，再比 T_team，不是比 Score。"
-                  f"正式要交出去的方案，還是回頭看上面各階段印出來的 Mission Plan 細節，"
-                  f"不要只看這個建議就定案；覺得這裡太寬鬆可以用 --plateau-tol 調小。")
+            # 「分數打平」不代表 Δr_min/ΔV_team/T_team 也打平，而規則第 6 節的名次
+            # 正是看這三個數字。舊版只印一句警告叫人自己回頭翻上面的 Mission Plan；
+            # 既然決策向量都在手上，直接把三個數字算出來擺在一起比較有用。
+            print("\n⚠️  「分數打平」不代表原始數字也打平——規則第 6 節的名次是"
+                  "先比 Δr_min，再比 ΔV_team，再比 T_team，不是比 Score。實際數字：")
+            tb_opt = MissionOptimizer(config)
+            tb = {}
+            for k in sorted(saturated_ks):
+                bx = fine_results[k].get("best_x")
+                if bx is None:
+                    continue
+                try:
+                    tb[k] = tb_opt.mission_metrics(bx, k)
+                except Exception as exc:
+                    print(f"     （{k} 棒的解重建失敗：{type(exc).__name__}，略過）")
+            if tb:
+                print(f"     {'棒數':<6}{'Score':>10}{'Δr_min (m)':>14}"
+                      f"{'ΔV_team (m/s)':>16}{'T_team (s)':>14}")
+                rule_best = min(tb, key=lambda k: tiebreak_rank_key(
+                    tb[k]["score"], tb[k]["miss_km"], tb[k]["dv_mps"], tb[k]["t_team"],
+                    eps=tb_opt.TIEBREAK_SCORE_EPS) + (k,))
+                # --plateau-tol 是「值不值得多開棒數」的工程判斷 (預設 0.05 分)，跟
+                # 規則第 6 節說的「同分」不是同一回事：規則要的是分數真的一樣。
+                # 這裡分清楚，不然把 tol 開大就會看到「差 12 分也叫打平」的假象。
+                top2 = sorted((tb[k]["score"] for k in tb), reverse=True)[:2]
+                really_tied = len(top2) > 1 and (top2[0] - top2[1]) < tb_opt.TIEBREAK_SCORE_EPS
+                for k in sorted(tb):
+                    m = tb[k]
+                    mark = ("  ← 規則第 6 節排最前面" if (k == rule_best and really_tied)
+                            else ("  ← 分數最高" if k == rule_best else ""))
+                    print(f"     {k:<6}{m['score']:>10.4f}{m['miss_km']*1000:>14,.1f}"
+                          f"{m['dv_mps']:>16,.1f}{m['t_team']:>14,.1f}{mark}")
+                if not really_tied:
+                    print(f"     （這幾個分數在規則眼裡**沒有**真的打平——最高兩個差 "
+                          f"{top2[0]-top2[1]:.4f} 分，平手判定不會啟動，分數高的直接勝。"
+                          f"上表是給你自己權衡棒數用的。）")
+                if rule_best != recommended:
+                    why = ("規則第 6 節的平手判定" if really_tied else "分數本身（沒有真的打平）")
+                    print(f"\n     注意：建議值 {recommended} 棒跟 {rule_best} 棒不是同一個"
+                          f"——後者是照{why}排最前面的。這兩件事問的問題不一樣：")
+                    print(f"     建議值回答「MAX_BURNS 該設多少」（棒數少 = 搜尋快、"
+                          f"GMAT 腳本好收斂），")
+                    print(f"     排序回答「哪一版該交出去」。要交的那一版以 {rule_best} 棒"
+                          f"為準，設定檔的搜尋範圍還是可以用 {recommended}。")
+            print(f"     （覺得 {args.plateau_tol} 分的打平門檻太寬鬆，用 --plateau-tol 調小。）")
         else:
             print(f"分數隨燃燒次數有明顯差異，最佳是 {best_k} 次 (分數 {best_score:.4f})——"
                   f"這個情境對燃燒次數敏感，值得把預算留給這附近。")

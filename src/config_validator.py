@@ -202,6 +202,35 @@ def _validate_strategy(strategy_cfg, errors: list):
                 f"(0=點質量, 2=J2, 3=J2+J3, 4=J2+J3+J4)，但收到 {v!r}"
             )
 
+    if "MAX_DV_MARGIN_MPS" in strategy_cfg:
+        v = strategy_cfg["MAX_DV_MARGIN_MPS"]
+        if not (_is_number(v) and v >= 0):
+            errors.append(f"strategy.MAX_DV_MARGIN_MPS 必須是 >=0 的數字，但收到 {v!r}")
+
+    if "LAMBERT_MAX_REVS" in strategy_cfg:
+        v = strategy_cfg["LAMBERT_MAX_REVS"]
+        if not (_is_int(v) and v >= 0):
+            errors.append(f"strategy.LAMBERT_MAX_REVS 必須是 >=0 的整數，但收到 {v!r}")
+        elif v > 5:
+            errors.append(
+                f"strategy.LAMBERT_MAX_REVS={v} 太大了。每多一圈就多算 4 組 Lambert，"
+                "而飛行時間根本不夠繞那麼多圈時那些呼叫只會失敗、白花時間。"
+                "T_max 是 A 的 4 個週期，設到 2~3 就涵蓋得差不多了")
+
+    if "TIEBREAK_SCORE_EPS" in strategy_cfg:
+        v = strategy_cfg["TIEBREAK_SCORE_EPS"]
+        if not (_is_number(v) and v >= 0):
+            errors.append(f"strategy.TIEBREAK_SCORE_EPS 必須是 >=0 的數字，但收到 {v!r}")
+        elif v > 1.0:
+            errors.append(
+                f"strategy.TIEBREAK_SCORE_EPS={v} 太大了（分數量表是 0~100）。這個值是"
+                "「分數差多少以內算打平」的門檻，設得太大等於讓平手判定去覆蓋真實的"
+                "分數差距，方向是錯的。想賭官方比到小數點後兩位就設 0.005 左右")
+
+    if "TIEBREAK_POLISH" in strategy_cfg and not isinstance(strategy_cfg["TIEBREAK_POLISH"], bool):
+        errors.append("strategy.TIEBREAK_POLISH 必須是 true/false，但收到 "
+                      f"{strategy_cfg['TIEBREAK_POLISH']!r}")
+
     if "MISS_TOLERANCE_KM" in strategy_cfg:
         v = strategy_cfg["MISS_TOLERANCE_KM"]
         if not _is_number(v) or v < 0:
