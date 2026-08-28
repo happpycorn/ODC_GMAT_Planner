@@ -1708,6 +1708,33 @@ kv = 1.1862 (km/s)^-1    Cv = 2.955723 km/s
 正在測純 2 棒能不能達到同樣分數。
 
 
+## 2026-08-28 深夜：多圈 Lambert 拿 ESA pykep 交叉驗證，完全等價
+
+今天把 `izzo()` 從寫死 `M=0` 改成掃 `M x lowpath x 順/逆行`，是這天最有風險的改動——
+分支挑錯會直接汙染繳交的答案，而且**沒有任何外部檢查**。
+
+拿 [pykep](https://www.esa.int/gsp/ACT/open_source/pykep/)（ESA Advanced Concepts Team
+維護）的 `lambert_problem` 做集合比對，200 組隨機幾何 x 順/逆行，`max_revs=3`：
+
+| | 結果 |
+|---|---|
+| 比對解數 | 1,552 |
+| 最大偏差 | **5.169e-14 km/s**（機器精度）|
+| 假解（我們有、pykep 沒有）| **0** |
+| 漏解（pykep 有、我們沒有）| **0** |
+| pykep 自身解數符合 2N+1 | 全部相符 |
+
+**結論：我們的分支政策跟 ESA 的獨立實作逐點等價。** 多圈的結果可信。
+
+腳本在 `scratch_overnight/xcheck_lambert_pykep.py`。兩個踩到的環境坑記在那裡：
+
+1. **pykep 3.0.1 的 wheel 漏打包 `trajopt/gym/tops/*.json`**，`import pykep` 直接
+   FileNotFoundError。腳本開頭的 `_patch_pykep()` 會補四個空 json（uv 快取目錄，可重建）。
+2. **`uv run --with pykep` 會把 numpy 拉到 2.5，numba 不吃**（需要 <= 2.4）。
+   要加 `--with 'numpy<2.5'`。完整指令：
+   `uv run --with pykep --with 'numpy<2.5' python scratch_overnight/xcheck_lambert_pykep.py`
+
+
 ## 還沒做 / 值得考慮的
 
 優先順序由高到低：
