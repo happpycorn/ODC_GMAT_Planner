@@ -392,11 +392,25 @@ class MissionOptimizer:
         # 代)；很貴的情境想省這段時間就設 false。
         self.TIEBREAK_POLISH = bool(strategy.get("TIEBREAK_POLISH", True))
 
-        # 最後一棒 Lambert 要考慮的最大圈數。0 = 只看「不繞滿一圈就直接過去」的轉移
-        # (2026-08-28 以前的唯一行為)。實測官方範例題目 M=1 比 M=0 省 38% 的燃料
-        # (267.3 vs 430.1 m/s)，代價是抵達時間拉長——T_max 是 A 的 4 個週期，多圈
-        # 轉移本來就在規則允許的範圍內。代價是每次評估要多算幾組 Lambert。
-        self.LAMBERT_MAX_REVS = max(0, int(strategy.get("LAMBERT_MAX_REVS", 0)))
+        # 最後一棒 Lambert 要考慮的最大圈數。規則的 T_max = 4 x A 的週期，所以最多
+        # 也就塞得下約 4 圈，預設就取 4（2026-08-29 從 0 改過來）。
+        #
+        # 為什麼可以放心開：分支選擇是在**固定的 t_final_leg** 下取需求 Δv 最小的那條，
+        # 同一個決策向量的抵達時間不變、時間分不變，只是燃料可能更便宜。也就是說
+        # **開多圈是嚴格更大的搜尋空間，不可能讓解變差**。
+        #
+        # 實測（2026-08-29）：
+        #   官方範例題目（同 SEED=42，只差這個開關）：Score 90.21 -> 90.43
+        #   known_planechange：84.7 -> 62.4 m/s（省 26%，而且正好命中閉合構造解）
+        #   known_phasing（MAX_BURNS=[1]）：1,490.0 -> 70.6 m/s（省 21 倍——那條轉移
+        #     繞了約 4 圈，M=0 根本表達不出來）
+        # 成本：每次評估 REVS=4 對 REVS=0 是 1.01 倍（飛行時間不夠繞圈時 izzo 直接
+        # 失敗、退出得很快），端到端跑完的總時間量不出差異。
+        # 分支本身經 ESA pykep 交叉驗證，1,552 條解最大偏差 5.2e-14 km/s（見
+        # scratch_overnight/xcheck_lambert_pykep.py）。
+        #
+        # 設 0 可以退回 2026-08-28 之前的行為。
+        self.LAMBERT_MAX_REVS = max(0, int(strategy.get("LAMBERT_MAX_REVS", 4)))
 
         # 「分數算不算打平」的門檻，見 SCORE_TIE_EPS 的說明。預設 1e-9 (只認浮點數
         # 等級的完全相同)，調大等於賭官方比分數時會四捨五入。
