@@ -207,7 +207,14 @@ GMAT 路徑用 `--gmat-console` 指定，或寫進 config 的 `local.gmat_consol
 4. **「軌道匹配」的直覺會大幅高估成本** —— 規則只要求位置差 ≤5 km，不要求速度匹配。
    官方範例題目兩軌道面夾角 93.84°，純平面轉向要 11,120 m/s，但實際攔截只要 412 m/s。
    **不要因為看到傾角差很大就以為做不到。**
-5. **快解跟省油解可能是完全不同的兩個方案** —— 官方範例題目：省油解 1 棒 412 m/s 但要
+5. **Targeter 卡住的備援** —— 先看 GMAT stdout 的 `Variance`：如果第一次 nominal pass
+   就已經在容許（0.01 km）內，問題不在 targeter，別亂調。真的要救，在
+   `Create DifferentialCorrector DC_Targeter;` 後面插一行，其餘不動：
+   `GMAT DC_Targeter.Algorithm = 'Broyden';`（擾動傳播少 6 倍）或
+   `GMAT DC_Targeter.DerivativeMethod = 'CentralDifference';`（成本 2 倍，
+   Jacobian 品質有問題時最有機會救）。五種演算法實測在初始猜測歪 35% 時全部收斂，
+   最終 Δr 差異最大 3.1 m。細節見 `scratch_overnight/gmat/DC_ALGORITHMS.md`。
+6. **快解跟省油解可能是完全不同的兩個方案** —— 官方範例題目：省油解 1 棒 412 m/s 但要
    6,121 秒；快解 2 棒 2,225 m/s 只要 3,185 秒。**哪個分數高完全看當天公告的 `k_t/C_t`**，
    兩邊都跑一次再決定。
 

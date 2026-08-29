@@ -45,8 +45,30 @@
 4. **非 ASCII 一樣會炸**（這個坑第四次踩到）：用 `sed` 產生變體腳本時插了中文註解，
    GMAT 直接 `contains characters outside of the ASCII character set`。
 
+## 2026-08-29 追加：另外兩份報告
+
+* `PERIGEE_XCHECK.md` — 拿 GMAT 的 `{Sat.Earth.Periapsis}` 事件定位驗 `reaches_perigee()`。
+  408 組案例 x 兩種力學模型。純二體 405/408 一致、到近地點時間差 1e-4 秒等級；
+  J2 下找到 16 組不安全方向（全在傾角 > 63.4 度），但暴露量最大只有 28 公尺。
+* `DC_ALGORITHMS.md` — DifferentialCorrector 的五種演算法實測。全部收斂，
+  差別在擾動傳播次數（Broyden 3 次 vs NewtonRaphson 18 次 vs 中央差分 36 次）。
+
+## 第五個坑（2026-08-29 新踩）
+
+**`GmatConsole` 的旗標是 `--run <file>`，不能寫成 `--run --exit <file>`。**
+`--exit` 會被吃掉當成檔名，GMAT 印一行 "Script file --exit does not exist"，
+然後**正常結束、exit code 0**。如果只看 returncode 會誤判成跑成功。
+（`--exit` 本來就是預設行為，不用加。）
+
 ## 檔案
 
 - `yukon_intercept.script` — 原始版（3 約束，會炸，保留當證據）
 - `yukon_A3.script` — **可用的版本**
 - 其餘 `yukon_*.script` 是分離測試用的變體
+
+## 產生物
+
+`perigee_xcheck.py` / `dc_stress.py` 產生的 `*.script` 和 `*.report` 都沒有進版控 ——
+它們是機器產生的、跑一次 harness 就重建（各約 1 分鐘）。留下來的是結果資料
+`perigee_xcheck_*.npy`（GMAT 的原始輸出，比對用），以及各自的 `.md` 報告。
+`yukon_*.script` 是手寫的，留著當「哪個設定會炸」的證據，那些有進版控。
