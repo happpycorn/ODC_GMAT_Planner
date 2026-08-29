@@ -12,3 +12,6 @@ wheels/
 configs/*
 
 outputs/*
+
+# porkchop 的原始網格 9.7 MB，跑 porkchop_grid.py 50 秒就重建，不進版控
+scratch_overnight/porkchop_h*.npz
