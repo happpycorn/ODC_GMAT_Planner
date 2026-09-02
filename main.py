@@ -1,5 +1,6 @@
 import os
 import sys
+import math
 import time
 import json
 import warnings
@@ -288,6 +289,71 @@ def append_run_history(config, mission_info, execution_time, gmat_result=None,
     print(f"📒 執行紀錄已附加到 {path}")
 
 
+def print_score_breakdown(mission_info, optimizer):
+    """把最終分數拆成三塊，並印出當前工作點的「交換率」（HAP-38）。
+
+    純加印，完全不改任何計算：三塊的公式跟 src/scorer.calculate_score 逐字一致，
+    輸入直接取 mission_info 裡計分當下用的同一組值（T_team 就是計分用的 intercept_time、
+    total_dv_mps/miss_km/penalty_count 也都是），所以三塊加起來一定等於 mission_info
+    ["score"]——會順手驗一次，對不上就印警告（代表某處算法漂移了，該查）。
+
+    「交換率」= 計分 sigmoid 在當前工作點的斜率。時間/燃料兩項都是 S=25/(1+e^{k(x-C)})，
+    dS/dx = -k·(25-S)·S/25，所以：
+      • 每早到 1 秒的價值   = k_t·(25-score_time)·score_time/25   分/秒
+      • 每省 1 m/s 的價值   = k_v·(25-score_dv)·score_dv/25       分/(m/s)
+    兩者相除就是「省 1 秒 相當於 省多少 m/s」——比賽當天決定「要不要燒油換早到」時，
+    這個數字直接告訴你損益平衡點，不用再自己心算 sigmoid。飽和（斜率≈0）時價值趨近 0，
+    那一項再怎麼推都幾乎不加分，也一眼看得出來。
+    """
+    dr = float(mission_info["miss_km"])            # km
+    T = float(mission_info["T_team"])              # s（= 計分用的 intercept_time）
+    dv = float(mission_info["total_dv_mps"])       # m/s
+    pen = int(mission_info["penalty_count"])
+    k_t, C_t = optimizer.k_t, optimizer.C_t
+    k_v, C_v = optimizer.k_v, optimizer.C_v
+
+    score_dist = 50.0 * math.exp(-(max(dr, 5.0) - 5.0) / 100.0)
+    score_time = 25.0 / (1.0 + math.exp(min(k_t * (T - C_t), 700.0)))
+    score_dv = 25.0 / (1.0 + math.exp(min(k_v * (dv - C_v), 700.0)))
+    penalty = pen * 10.0
+    total = max(score_dist + score_time + score_dv - penalty, 0.0)
+
+    # 每單位的邊際價值（sigmoid 斜率，恆為非負，代表「往好的方向改」能拿回的分數）
+    val_per_sec = k_t * (25.0 - score_time) * score_time / 25.0     # 分 / 秒
+    val_per_mps = k_v * (25.0 - score_dv) * score_dv / 25.0         # 分 / (m/s)
+
+    print(f"\n── 分數拆解與交換率 {'─' * 30}")
+    print(f"  距離   {score_dist:>6.2f} / 50   "
+          f"(Δr_min {dr*1000:,.0f} m；≤5,000 m 時地板滿分 50)")
+    print(f"  時間   {score_time:>6.2f} / 25   "
+          f"(T {T:,.0f} s vs C_t {C_t:,.0f} s；每早到 1 s ≈ +{val_per_sec:.4g} 分)")
+    print(f"  燃料   {score_dv:>6.2f} / 25   "
+          f"(ΔV {dv:,.0f} m/s vs C_v {C_v:,.0f} m/s；每省 1 m/s ≈ +{val_per_mps:.4g} 分)")
+    print(f"  違規   {-penalty:>6.2f}        ({pen} 次 × -10)")
+    print(f"  {'─' * 5}")
+    print(f"  合計   {total:>6.2f} / 100")
+
+    # 交換率：省 1 秒 相當於 省多少 m/s（燃料/時間邊際價值之比）
+    if val_per_mps > 1e-12 and val_per_sec > 1e-12:
+        mps_per_sec = val_per_sec / val_per_mps
+        print(f"  ⇄ 交換率：省 1 秒 ≈ 省 {mps_per_sec:,.2f} m/s"
+              f"（花 ≤{mps_per_sec:,.2f} m/s 換早到 1 秒才划算；反過來省 1 m/s ≈ 早到 "
+              f"{1.0/mps_per_sec:,.2f} 秒）")
+    else:
+        which = []
+        if val_per_sec <= 1e-12:
+            which.append("時間項已飽和（再早到幾乎不加分）")
+        if val_per_mps <= 1e-12:
+            which.append("燃料項已飽和（再省油幾乎不加分）")
+        print(f"  ⇄ 交換率：{'、'.join(which)}——這一側推不動分數了。")
+
+    # 自我驗算：三塊必須加得回 mission_info 記錄的分數（對不上代表算法漂移）
+    recorded = float(mission_info["score"])
+    if abs(total - recorded) > 1e-6:
+        print(f"  ⚠️ 拆解 {total:.6f} 與記錄分數 {recorded:.6f} 不一致"
+              f"（差 {abs(total-recorded):.2e}）——計分算法可能有處漂移了，請查。")
+
+
 def main():
     # 效能分析器設定
     if ENABLE_PROFILING:
@@ -317,6 +383,9 @@ def main():
     if burns is None or times is None:
         print("任務終止。")
         return
+
+    # 分數拆解 + 交換率（純加印，不改計算；見 print_score_breakdown）
+    print_score_breakdown(mission_info, optimizer)
 
     # 2. 產出 GMAT 腳本 (打靶邊界跟著規則的 ΔV_lim 走，避免 GMAT 端偷偷超標)
     script_generator(
