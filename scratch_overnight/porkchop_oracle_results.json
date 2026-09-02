@@ -1,0 +1,1002 @@
+[
+  {
+    "idx": 0,
+    "A": {
+      "SMA": 7660.4,
+      "ECC": 0.0167,
+      "INC": 18.07,
+      "RAAN": 284.88,
+      "AOP": 244.28,
+      "TA": 128.11
+    },
+    "B": {
+      "SMA": 7026.9,
+      "ECC": 0.0051,
+      "INC": 68.15,
+      "RAAN": 147.72,
+      "AOP": 158.32,
+      "TA": 180.68
+    },
+    "opt_score": 73.495,
+    "oracle_score": 82.239,
+    "oracle_dv_mps": 990.5,
+    "has_legal_single": true,
+    "gap": 8.744,
+    "violation": true
+  },
+  {
+    "idx": 1,
+    "A": {
+      "SMA": 7430.8,
+      "ECC": 0.0476,
+      "INC": 52.08,
+      "RAAN": 26.87,
+      "AOP": 246.18,
+      "TA": 186.35
+    },
+    "B": {
+      "SMA": 6832.2,
+      "ECC": 0.0193,
+      "INC": 9.23,
+      "RAAN": 141.99,
+      "AOP": 85.19,
+      "TA": 87.73
+    },
+    "opt_score": 73.515,
+    "oracle_score": 79.813,
+    "oracle_dv_mps": 1046.2,
+    "has_legal_single": true,
+    "gap": 6.298,
+    "violation": true
+  },
+  {
+    "idx": 2,
+    "A": {
+      "SMA": 8970.3,
+      "ECC": 0.0229,
+      "INC": 86.79,
+      "RAAN": 135.31,
+      "AOP": 106.71,
+      "TA": 192.34
+    },
+    "B": {
+      "SMA": 6725.4,
+      "ECC": 0.0151,
+      "INC": 42.07,
+      "RAAN": 151.36,
+      "AOP": 63.53,
+      "TA": 37.81
+    },
+    "opt_score": 88.086,
+    "oracle_score": 88.107,
+    "oracle_dv_mps": 608.4,
+    "has_legal_single": true,
+    "gap": 0.021,
+    "violation": false
+  },
+  {
+    "idx": 3,
+    "A": {
+      "SMA": 8748.2,
+      "ECC": 0.0076,
+      "INC": 83.56,
+      "RAAN": 4.15,
+      "AOP": 3.84,
+      "TA": 51.78
+    },
+    "B": {
+      "SMA": 6634.9,
+      "ECC": 0.0132,
+      "INC": 48.15,
+      "RAAN": 322.03,
+      "AOP": 356.94,
+      "TA": 64.71
+    },
+    "opt_score": 94.33,
+    "oracle_score": 91.913,
+    "oracle_dv_mps": 1071.3,
+    "has_legal_single": true,
+    "gap": -2.417,
+    "violation": false
+  },
+  {
+    "idx": 4,
+    "A": {
+      "SMA": 7230.2,
+      "ECC": 0.0309,
+      "INC": 10.72,
+      "RAAN": 278.22,
+      "AOP": 16.76,
+      "TA": 202.76
+    },
+    "B": {
+      "SMA": 7026.9,
+      "ECC": 0.0084,
+      "INC": 35.33,
+      "RAAN": 302.2,
+      "AOP": 303.87,
+      "TA": 272.03
+    },
+    "opt_score": 96.338,
+    "oracle_score": 96.279,
+    "oracle_dv_mps": 229.2,
+    "has_legal_single": true,
+    "gap": -0.059,
+    "violation": false
+  },
+  {
+    "idx": 5,
+    "A": {
+      "SMA": 8380.0,
+      "ECC": 0.0225,
+      "INC": 80.13,
+      "RAAN": 190.56,
+      "AOP": 297.18,
+      "TA": 69.64
+    },
+    "B": {
+      "SMA": 6910.5,
+      "ECC": 0.0121,
+      "INC": 28.84,
+      "RAAN": 168.56,
+      "AOP": 217.28,
+      "TA": 308.63
+    },
+    "opt_score": 75.396,
+    "oracle_score": 75.983,
+    "oracle_dv_mps": 1258.1,
+    "has_legal_single": true,
+    "gap": 0.587,
+    "violation": false
+  },
+  {
+    "idx": 6,
+    "A": {
+      "SMA": 8293.8,
+      "ECC": 0.0303,
+      "INC": 31.85,
+      "RAAN": 118.84,
+      "AOP": 15.46,
+      "TA": 137.53
+    },
+    "B": {
+      "SMA": 7176.2,
+      "ECC": 0.0069,
+      "INC": 78.19,
+      "RAAN": 300.88,
+      "AOP": 162.56,
+      "TA": 39.01
+    },
+    "opt_score": 82.804,
+    "oracle_score": 82.767,
+    "oracle_dv_mps": 1479.8,
+    "has_legal_single": true,
+    "gap": -0.037,
+    "violation": false
+  },
+  {
+    "idx": 7,
+    "A": {
+      "SMA": 7421.2,
+      "ECC": 0.0174,
+      "INC": 78.15,
+      "RAAN": 47.67,
+      "AOP": 218.37,
+      "TA": 88.28
+    },
+    "B": {
+      "SMA": 6858.1,
+      "ECC": 0.0035,
+      "INC": 16.69,
+      "RAAN": 12.25,
+      "AOP": 114.54,
+      "TA": 322.33
+    },
+    "opt_score": 91.541,
+    "oracle_score": 91.488,
+    "oracle_dv_mps": 782.8,
+    "has_legal_single": true,
+    "gap": -0.053,
+    "violation": false
+  },
+  {
+    "idx": 8,
+    "A": {
+      "SMA": 8201.2,
+      "ECC": 0.0408,
+      "INC": 80.64,
+      "RAAN": 39.77,
+      "AOP": 42.65,
+      "TA": 322.58
+    },
+    "B": {
+      "SMA": 7096.2,
+      "ECC": 0.0064,
+      "INC": 60.53,
+      "RAAN": 208.27,
+      "AOP": 303.85,
+      "TA": 330.4
+    },
+    "opt_score": 92.928,
+    "oracle_score": 92.883,
+    "oracle_dv_mps": 698.5,
+    "has_legal_single": true,
+    "gap": -0.045,
+    "violation": false
+  },
+  {
+    "idx": 9,
+    "A": {
+      "SMA": 7809.8,
+      "ECC": 0.0228,
+      "INC": 17.23,
+      "RAAN": 359.11,
+      "AOP": 180.86,
+      "TA": 28.24
+    },
+    "B": {
+      "SMA": 6675.4,
+      "ECC": 0.0193,
+      "INC": 88.07,
+      "RAAN": 5.39,
+      "AOP": 116.42,
+      "TA": 347.21
+    },
+    "opt_score": 88.72,
+    "oracle_score": 91.145,
+    "oracle_dv_mps": 976.3,
+    "has_legal_single": true,
+    "gap": 2.425,
+    "violation": true
+  },
+  {
+    "idx": 10,
+    "A": {
+      "SMA": 7216.5,
+      "ECC": 0.0475,
+      "INC": 89.76,
+      "RAAN": 25.18,
+      "AOP": 20.01,
+      "TA": 186.07
+    },
+    "B": {
+      "SMA": 6649.1,
+      "ECC": 0.016,
+      "INC": 62.25,
+      "RAAN": 95.93,
+      "AOP": 218.55,
+      "TA": 98.6
+    },
+    "opt_score": 89.97,
+    "oracle_score": 89.847,
+    "oracle_dv_mps": 929.9,
+    "has_legal_single": true,
+    "gap": -0.123,
+    "violation": false
+  },
+  {
+    "idx": 11,
+    "A": {
+      "SMA": 8541.1,
+      "ECC": 0.0227,
+      "INC": 86.88,
+      "RAAN": 46.11,
+      "AOP": 252.53,
+      "TA": 272.9
+    },
+    "B": {
+      "SMA": 6982.3,
+      "ECC": 0.0092,
+      "INC": 49.41,
+      "RAAN": 182.54,
+      "AOP": 116.88,
+      "TA": 273.23
+    },
+    "opt_score": 95.784,
+    "oracle_score": 95.77,
+    "oracle_dv_mps": 623.8,
+    "has_legal_single": true,
+    "gap": -0.014,
+    "violation": false
+  },
+  {
+    "idx": 12,
+    "A": {
+      "SMA": 8216.6,
+      "ECC": 0.0391,
+      "INC": 22.93,
+      "RAAN": 135.21,
+      "AOP": 315.52,
+      "TA": 273.42
+    },
+    "B": {
+      "SMA": 7162.8,
+      "ECC": 0.0168,
+      "INC": 59.51,
+      "RAAN": 217.24,
+      "AOP": 205.02,
+      "TA": 112.49
+    },
+    "opt_score": 76.894,
+    "oracle_score": 76.781,
+    "oracle_dv_mps": 1124.3,
+    "has_legal_single": true,
+    "gap": -0.113,
+    "violation": false
+  },
+  {
+    "idx": 13,
+    "A": {
+      "SMA": 7891.2,
+      "ECC": 0.0168,
+      "INC": 84.28,
+      "RAAN": 41.41,
+      "AOP": 174.75,
+      "TA": 68.0
+    },
+    "B": {
+      "SMA": 6731.5,
+      "ECC": 0.006,
+      "INC": 15.32,
+      "RAAN": 316.51,
+      "AOP": 86.28,
+      "TA": 357.99
+    },
+    "opt_score": 73.243,
+    "oracle_score": 83.858,
+    "oracle_dv_mps": 1109.0,
+    "has_legal_single": true,
+    "gap": 10.615,
+    "violation": true
+  },
+  {
+    "idx": 14,
+    "A": {
+      "SMA": 8576.2,
+      "ECC": 0.0449,
+      "INC": 50.95,
+      "RAAN": 42.88,
+      "AOP": 145.35,
+      "TA": 125.42
+    },
+    "B": {
+      "SMA": 6917.9,
+      "ECC": 0.0064,
+      "INC": 5.42,
+      "RAAN": 308.15,
+      "AOP": 191.27,
+      "TA": 17.92
+    },
+    "opt_score": 87.164,
+    "oracle_score": 86.996,
+    "oracle_dv_mps": 498.4,
+    "has_legal_single": true,
+    "gap": -0.168,
+    "violation": false
+  },
+  {
+    "idx": 15,
+    "A": {
+      "SMA": 8785.9,
+      "ECC": 0.017,
+      "INC": 67.42,
+      "RAAN": 255.97,
+      "AOP": 343.33,
+      "TA": 302.63
+    },
+    "B": {
+      "SMA": 6634.3,
+      "ECC": 0.0097,
+      "INC": 48.97,
+      "RAAN": 92.38,
+      "AOP": 298.95,
+      "TA": 273.72
+    },
+    "opt_score": 84.996,
+    "oracle_score": 84.818,
+    "oracle_dv_mps": 825.3,
+    "has_legal_single": true,
+    "gap": -0.178,
+    "violation": false
+  },
+  {
+    "idx": 16,
+    "A": {
+      "SMA": 8476.8,
+      "ECC": 0.0085,
+      "INC": 23.66,
+      "RAAN": 115.09,
+      "AOP": 205.99,
+      "TA": 16.41
+    },
+    "B": {
+      "SMA": 6638.6,
+      "ECC": 0.0161,
+      "INC": 88.84,
+      "RAAN": 214.82,
+      "AOP": 316.84,
+      "TA": 341.51
+    },
+    "opt_score": 82.569,
+    "oracle_score": 82.429,
+    "oracle_dv_mps": 1378.9,
+    "has_legal_single": true,
+    "gap": -0.14,
+    "violation": false
+  },
+  {
+    "idx": 17,
+    "A": {
+      "SMA": 7331.2,
+      "ECC": 0.0451,
+      "INC": 81.49,
+      "RAAN": 117.37,
+      "AOP": 167.02,
+      "TA": 175.62
+    },
+    "B": {
+      "SMA": 6912.5,
+      "ECC": 0.0158,
+      "INC": 5.21,
+      "RAAN": 54.97,
+      "AOP": 10.52,
+      "TA": 20.03
+    },
+    "opt_score": 98.03,
+    "oracle_score": 97.969,
+    "oracle_dv_mps": 110.6,
+    "has_legal_single": true,
+    "gap": -0.061,
+    "violation": false
+  },
+  {
+    "idx": 18,
+    "A": {
+      "SMA": 8963.7,
+      "ECC": 0.0226,
+      "INC": 39.92,
+      "RAAN": 318.15,
+      "AOP": 61.83,
+      "TA": 194.28
+    },
+    "B": {
+      "SMA": 6847.4,
+      "ECC": 0.0183,
+      "INC": 20.85,
+      "RAAN": 243.26,
+      "AOP": 321.06,
+      "TA": 78.91
+    },
+    "opt_score": 88.204,
+    "oracle_score": 88.229,
+    "oracle_dv_mps": 1146.3,
+    "has_legal_single": true,
+    "gap": 0.025,
+    "violation": false
+  },
+  {
+    "idx": 19,
+    "A": {
+      "SMA": 7440.5,
+      "ECC": 0.0448,
+      "INC": 82.74,
+      "RAAN": 225.83,
+      "AOP": 346.96,
+      "TA": 41.32
+    },
+    "B": {
+      "SMA": 6750.3,
+      "ECC": 0.0101,
+      "INC": 47.8,
+      "RAAN": 98.81,
+      "AOP": 47.57,
+      "TA": 127.93
+    },
+    "opt_score": 93.669,
+    "oracle_score": 93.37,
+    "oracle_dv_mps": 700.5,
+    "has_legal_single": true,
+    "gap": -0.299,
+    "violation": false
+  },
+  {
+    "idx": 20,
+    "A": {
+      "SMA": 7931.3,
+      "ECC": 0.0097,
+      "INC": 41.68,
+      "RAAN": 345.04,
+      "AOP": 178.06,
+      "TA": 91.02
+    },
+    "B": {
+      "SMA": 7186.4,
+      "ECC": 0.0073,
+      "INC": 66.94,
+      "RAAN": 160.74,
+      "AOP": 151.34,
+      "TA": 146.82
+    },
+    "opt_score": 73.299,
+    "oracle_score": 77.083,
+    "oracle_dv_mps": 993.7,
+    "has_legal_single": true,
+    "gap": 3.784,
+    "violation": true
+  },
+  {
+    "idx": 21,
+    "A": {
+      "SMA": 8440.4,
+      "ECC": 0.0392,
+      "INC": 59.02,
+      "RAAN": 39.73,
+      "AOP": 109.05,
+      "TA": 243.82
+    },
+    "B": {
+      "SMA": 6672.7,
+      "ECC": 0.0036,
+      "INC": 59.78,
+      "RAAN": 149.67,
+      "AOP": 228.03,
+      "TA": 39.78
+    },
+    "opt_score": 95.498,
+    "oracle_score": 95.042,
+    "oracle_dv_mps": 751.3,
+    "has_legal_single": true,
+    "gap": -0.456,
+    "violation": false
+  },
+  {
+    "idx": 22,
+    "A": {
+      "SMA": 8138.5,
+      "ECC": 0.0041,
+      "INC": 3.86,
+      "RAAN": 86.76,
+      "AOP": 153.3,
+      "TA": 345.71
+    },
+    "B": {
+      "SMA": 6901.0,
+      "ECC": 0.0152,
+      "INC": 81.27,
+      "RAAN": 16.35,
+      "AOP": 254.69,
+      "TA": 205.69
+    },
+    "opt_score": 87.449,
+    "oracle_score": 88.513,
+    "oracle_dv_mps": 1199.7,
+    "has_legal_single": true,
+    "gap": 1.064,
+    "violation": false
+  },
+  {
+    "idx": 23,
+    "A": {
+      "SMA": 8951.4,
+      "ECC": 0.0362,
+      "INC": 25.28,
+      "RAAN": 232.39,
+      "AOP": 230.19,
+      "TA": 97.2
+    },
+    "B": {
+      "SMA": 6648.1,
+      "ECC": 0.0099,
+      "INC": 59.33,
+      "RAAN": 330.11,
+      "AOP": 258.01,
+      "TA": 236.87
+    },
+    "opt_score": 92.812,
+    "oracle_score": 92.793,
+    "oracle_dv_mps": 577.3,
+    "has_legal_single": true,
+    "gap": -0.019,
+    "violation": false
+  },
+  {
+    "idx": 24,
+    "A": {
+      "SMA": 7563.5,
+      "ECC": 0.03,
+      "INC": 88.61,
+      "RAAN": 314.12,
+      "AOP": 138.25,
+      "TA": 35.55
+    },
+    "B": {
+      "SMA": 6962.8,
+      "ECC": 0.0088,
+      "INC": 48.75,
+      "RAAN": 147.14,
+      "AOP": 260.22,
+      "TA": 334.83
+    },
+    "opt_score": 85.845,
+    "oracle_score": 91.596,
+    "oracle_dv_mps": 873.2,
+    "has_legal_single": true,
+    "gap": 5.751,
+    "violation": true
+  },
+  {
+    "idx": 25,
+    "A": {
+      "SMA": 8294.8,
+      "ECC": 0.0177,
+      "INC": 8.31,
+      "RAAN": 64.73,
+      "AOP": 33.25,
+      "TA": 33.99
+    },
+    "B": {
+      "SMA": 7138.5,
+      "ECC": 0.0119,
+      "INC": 24.95,
+      "RAAN": 73.0,
+      "AOP": 97.86,
+      "TA": 56.39
+    },
+    "opt_score": 83.991,
+    "oracle_score": 84.047,
+    "oracle_dv_mps": 972.4,
+    "has_legal_single": true,
+    "gap": 0.056,
+    "violation": false
+  },
+  {
+    "idx": 26,
+    "A": {
+      "SMA": 8359.8,
+      "ECC": 0.0246,
+      "INC": 58.13,
+      "RAAN": 99.16,
+      "AOP": 6.5,
+      "TA": 38.24
+    },
+    "B": {
+      "SMA": 6627.2,
+      "ECC": 0.0135,
+      "INC": 81.69,
+      "RAAN": 111.87,
+      "AOP": 174.04,
+      "TA": 158.64
+    },
+    "opt_score": 93.617,
+    "oracle_score": 93.56,
+    "oracle_dv_mps": 522.7,
+    "has_legal_single": true,
+    "gap": -0.057,
+    "violation": false
+  },
+  {
+    "idx": 27,
+    "A": {
+      "SMA": 8011.0,
+      "ECC": 0.0259,
+      "INC": 12.32,
+      "RAAN": 158.5,
+      "AOP": 322.27,
+      "TA": 135.79
+    },
+    "B": {
+      "SMA": 7013.1,
+      "ECC": 0.0009,
+      "INC": 79.19,
+      "RAAN": 323.09,
+      "AOP": 164.46,
+      "TA": 134.86
+    },
+    "opt_score": 96.324,
+    "oracle_score": 96.113,
+    "oracle_dv_mps": 453.8,
+    "has_legal_single": true,
+    "gap": -0.211,
+    "violation": false
+  },
+  {
+    "idx": 28,
+    "A": {
+      "SMA": 8359.1,
+      "ECC": 0.0014,
+      "INC": 53.56,
+      "RAAN": 236.61,
+      "AOP": 187.0,
+      "TA": 260.16
+    },
+    "B": {
+      "SMA": 7034.7,
+      "ECC": 0.0039,
+      "INC": 10.26,
+      "RAAN": 251.34,
+      "AOP": 268.44,
+      "TA": 358.59
+    },
+    "opt_score": 78.805,
+    "oracle_score": 78.381,
+    "oracle_dv_mps": 420.1,
+    "has_legal_single": true,
+    "gap": -0.424,
+    "violation": false
+  },
+  {
+    "idx": 29,
+    "A": {
+      "SMA": 8182.1,
+      "ECC": 0.027,
+      "INC": 65.14,
+      "RAAN": 340.43,
+      "AOP": 243.85,
+      "TA": 307.03
+    },
+    "B": {
+      "SMA": 6706.8,
+      "ECC": 0.0125,
+      "INC": 33.59,
+      "RAAN": 235.91,
+      "AOP": 43.65,
+      "TA": 343.62
+    },
+    "opt_score": 87.236,
+    "oracle_score": 87.257,
+    "oracle_dv_mps": 1172.3,
+    "has_legal_single": true,
+    "gap": 0.021,
+    "violation": false
+  },
+  {
+    "idx": 30,
+    "A": {
+      "SMA": 8246.4,
+      "ECC": 0.0482,
+      "INC": 87.76,
+      "RAAN": 290.45,
+      "AOP": 86.64,
+      "TA": 14.8
+    },
+    "B": {
+      "SMA": 7154.7,
+      "ECC": 0.0148,
+      "INC": 16.3,
+      "RAAN": 133.29,
+      "AOP": 96.01,
+      "TA": 30.64
+    },
+    "opt_score": 79.393,
+    "oracle_score": 83.795,
+    "oracle_dv_mps": 1214.9,
+    "has_legal_single": true,
+    "gap": 4.402,
+    "violation": true
+  },
+  {
+    "idx": 31,
+    "A": {
+      "SMA": 7311.3,
+      "ECC": 0.0334,
+      "INC": 3.3,
+      "RAAN": 74.7,
+      "AOP": 100.78,
+      "TA": 113.67
+    },
+    "B": {
+      "SMA": 6987.9,
+      "ECC": 0.019,
+      "INC": 45.12,
+      "RAAN": 268.99,
+      "AOP": 256.55,
+      "TA": 175.61
+    },
+    "opt_score": 95.147,
+    "oracle_score": 95.067,
+    "oracle_dv_mps": 538.6,
+    "has_legal_single": true,
+    "gap": -0.08,
+    "violation": false
+  },
+  {
+    "idx": 32,
+    "A": {
+      "SMA": 7273.1,
+      "ECC": 0.046,
+      "INC": 72.49,
+      "RAAN": 139.84,
+      "AOP": 247.19,
+      "TA": 164.37
+    },
+    "B": {
+      "SMA": 6780.5,
+      "ECC": 0.0093,
+      "INC": 19.61,
+      "RAAN": 289.3,
+      "AOP": 69.12,
+      "TA": 272.15
+    },
+    "opt_score": 90.734,
+    "oracle_score": 90.639,
+    "oracle_dv_mps": 690.2,
+    "has_legal_single": true,
+    "gap": -0.095,
+    "violation": false
+  },
+  {
+    "idx": 33,
+    "A": {
+      "SMA": 8773.1,
+      "ECC": 0.0395,
+      "INC": 42.09,
+      "RAAN": 116.59,
+      "AOP": 175.24,
+      "TA": 354.45
+    },
+    "B": {
+      "SMA": 6680.1,
+      "ECC": 0.0095,
+      "INC": 29.76,
+      "RAAN": 278.86,
+      "AOP": 146.8,
+      "TA": 298.23
+    },
+    "opt_score": 87.473,
+    "oracle_score": 87.358,
+    "oracle_dv_mps": 1102.3,
+    "has_legal_single": true,
+    "gap": -0.115,
+    "violation": false
+  },
+  {
+    "idx": 34,
+    "A": {
+      "SMA": 8843.0,
+      "ECC": 0.0243,
+      "INC": 4.53,
+      "RAAN": 92.4,
+      "AOP": 329.39,
+      "TA": 129.08
+    },
+    "B": {
+      "SMA": 6801.9,
+      "ECC": 0.0103,
+      "INC": 70.35,
+      "RAAN": 210.05,
+      "AOP": 226.25,
+      "TA": 174.82
+    },
+    "opt_score": 86.524,
+    "oracle_score": 86.381,
+    "oracle_dv_mps": 1073.3,
+    "has_legal_single": true,
+    "gap": -0.143,
+    "violation": false
+  },
+  {
+    "idx": 35,
+    "A": {
+      "SMA": 8499.4,
+      "ECC": 0.0081,
+      "INC": 3.14,
+      "RAAN": 298.83,
+      "AOP": 347.36,
+      "TA": 92.55
+    },
+    "B": {
+      "SMA": 6849.9,
+      "ECC": 0.0136,
+      "INC": 59.85,
+      "RAAN": 94.67,
+      "AOP": 198.21,
+      "TA": 234.09
+    },
+    "opt_score": 83.069,
+    "oracle_score": 82.885,
+    "oracle_dv_mps": 1239.1,
+    "has_legal_single": true,
+    "gap": -0.184,
+    "violation": false
+  },
+  {
+    "idx": 36,
+    "A": {
+      "SMA": 7246.0,
+      "ECC": 0.0018,
+      "INC": 41.4,
+      "RAAN": 23.7,
+      "AOP": 281.9,
+      "TA": 157.91
+    },
+    "B": {
+      "SMA": 6774.1,
+      "ECC": 0.0077,
+      "INC": 13.69,
+      "RAAN": 335.14,
+      "AOP": 108.28,
+      "TA": 253.19
+    },
+    "opt_score": 73.718,
+    "oracle_score": 84.982,
+    "oracle_dv_mps": 1309.8,
+    "has_legal_single": true,
+    "gap": 11.264,
+    "violation": true
+  },
+  {
+    "idx": 37,
+    "A": {
+      "SMA": 8196.9,
+      "ECC": 0.0065,
+      "INC": 73.81,
+      "RAAN": 73.87,
+      "AOP": 233.77,
+      "TA": 240.62
+    },
+    "B": {
+      "SMA": 6906.1,
+      "ECC": 0.0051,
+      "INC": 72.54,
+      "RAAN": 182.25,
+      "AOP": 288.67,
+      "TA": 196.39
+    },
+    "opt_score": 91.642,
+    "oracle_score": 91.479,
+    "oracle_dv_mps": 818.7,
+    "has_legal_single": true,
+    "gap": -0.163,
+    "violation": false
+  },
+  {
+    "idx": 38,
+    "A": {
+      "SMA": 7675.3,
+      "ECC": 0.0208,
+      "INC": 28.84,
+      "RAAN": 287.9,
+      "AOP": 47.07,
+      "TA": 324.19
+    },
+    "B": {
+      "SMA": 6948.3,
+      "ECC": 0.0175,
+      "INC": 75.96,
+      "RAAN": 328.84,
+      "AOP": 64.86,
+      "TA": 312.31
+    },
+    "opt_score": 93.373,
+    "oracle_score": 93.325,
+    "oracle_dv_mps": 533.2,
+    "has_legal_single": true,
+    "gap": -0.048,
+    "violation": false
+  },
+  {
+    "idx": 39,
+    "A": {
+      "SMA": 7348.2,
+      "ECC": 0.0293,
+      "INC": 53.62,
+      "RAAN": 185.52,
+      "AOP": 69.49,
+      "TA": 245.93
+    },
+    "B": {
+      "SMA": 6874.8,
+      "ECC": 0.011,
+      "INC": 22.95,
+      "RAAN": 354.43,
+      "AOP": 23.71,
+      "TA": 280.79
+    },
+    "opt_score": 84.526,
+    "oracle_score": 84.28,
+    "oracle_dv_mps": 966.4,
+    "has_legal_single": true,
+    "gap": -0.246,
+    "violation": false
+  }
+]
