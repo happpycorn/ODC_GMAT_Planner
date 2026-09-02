@@ -2,6 +2,30 @@ import os
 import math
 import datetime
 
+
+def _require_ascii(script_content, what="GMAT 腳本"):
+    """比賽當天最不該踩的那種無聲失敗：腳本混進非 ASCII 字元。
+
+    GMAT 的腳本語言是純 ASCII。萬一有非 ASCII 混進來（設定裡的名稱帶了中文、從別處
+    貼進來的智慧引號 “ ” / 全形符號 ／ 長破折號 — 之類），寫成 UTF-8 檔 GMAT 不一定
+    吃得下，而且是 GMAT 實際跑下去才炸——當天在 GMAT 的錯誤訊息裡回頭瞎猜非常慢。
+    這裡在產生階段就擋，直接指出是哪一行、哪個字元。純 ASCII 的正常腳本完全不受影響。
+    """
+    try:
+        script_content.encode("ascii")
+    except UnicodeEncodeError as exc:
+        bad = script_content[exc.start:exc.end]
+        line_no = script_content.count("\n", 0, exc.start) + 1
+        lines = script_content.splitlines()
+        line_txt = lines[line_no - 1] if 1 <= line_no <= len(lines) else ""
+        raise ValueError(
+            f"{what}含非 ASCII 字元，GMAT 可能無法解析——請改成 ASCII。"
+            f"（第 {line_no} 行，字元位置 {exc.start}）：{bad!r}\n"
+            f"  → {line_txt.strip()}"
+        ) from exc
+    return script_content
+
+
 def script_generator(
     a_sma, a_ecc, a_inc, a_raan, a_aop, a_ta,
     b_sma, b_ecc, b_inc, b_raan, b_aop, b_ta,
@@ -466,6 +490,9 @@ Report_Intercept.ColumnWidth = 20;
 
 {mission_sequence}
 """
+
+    # GMAT 的腳本語言是純 ASCII，寫檔前 fail-fast 擋掉非 ASCII（見 _require_ascii）。
+    _require_ascii(script_content)
 
     # outputs/<output_filename> 永遠是「這個變體最新一次」的固定路徑，同時把同樣的
     # 內容備份一份帶時間戳記的版本到 outputs/history/，避免像剛剛那樣一次測試/爛解
