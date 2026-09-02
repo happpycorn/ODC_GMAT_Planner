@@ -1,0 +1,118 @@
+[
+  {
+    "scenario": "official_sample",
+    "seed": 1,
+    "tol": 0.5,
+    "revs_levels": [
+      0,
+      2,
+      4
+    ],
+    "revs_scores": [
+      79.105,
+      79.105,
+      79.105
+    ],
+    "revs_worst_drop": 0.0,
+    "revs_violation": false,
+    "burn_levels": [
+      "[1]",
+      "[1, 2]",
+      "[1, 2, 3]"
+    ],
+    "burn_scores": [
+      79.105,
+      79.105,
+      79.105
+    ],
+    "burn_worst_drop": 0.0,
+    "burn_violation": false
+  },
+  {
+    "scenario": "official_sample",
+    "seed": 2,
+    "tol": 0.5,
+    "revs_levels": [
+      0,
+      2,
+      4
+    ],
+    "revs_scores": [
+      79.105,
+      79.104,
+      79.105
+    ],
+    "revs_worst_drop": 0.001,
+    "revs_violation": false,
+    "burn_levels": [
+      "[1]",
+      "[1, 2]",
+      "[1, 2, 3]"
+    ],
+    "burn_scores": [
+      79.105,
+      79.105,
+      79.105
+    ],
+    "burn_worst_drop": 0.0,
+    "burn_violation": false
+  },
+  {
+    "scenario": "playground",
+    "seed": 1,
+    "tol": 0.5,
+    "revs_levels": [
+      0,
+      2,
+      4
+    ],
+    "revs_scores": [
+      75.374,
+      75.065,
+      74.12
+    ],
+    "revs_worst_drop": 0.944,
+    "revs_violation": true,
+    "burn_levels": [
+      "[1]",
+      "[1, 2]",
+      "[1, 2, 3]"
+    ],
+    "burn_scores": [
+      74.059,
+      74.12,
+      75.642
+    ],
+    "burn_worst_drop": 0.0,
+    "burn_violation": false
+  },
+  {
+    "scenario": "playground",
+    "seed": 2,
+    "tol": 0.5,
+    "revs_levels": [
+      0,
+      2,
+      4
+    ],
+    "revs_scores": [
+      75.641,
+      74.079,
+      74.078
+    ],
+    "revs_worst_drop": 1.561,
+    "revs_violation": true,
+    "burn_levels": [
+      "[1]",
+      "[1, 2]",
+      "[1, 2, 3]"
+    ],
+    "burn_scores": [
+      74.078,
+      74.078,
+      74.078
+    ],
+    "burn_worst_drop": 0.0,
+    "burn_violation": false
+  }
+]
