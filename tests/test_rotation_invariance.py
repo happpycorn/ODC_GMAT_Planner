@@ -44,6 +44,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 from src.optimizer import MissionOptimizer, decision_variable_dims
+from src.propagator import get_r0_v0
 
 FAILS = []
 
@@ -216,6 +217,62 @@ def run_scenario(name, orbit_A, orbit_B, burns_list=(1, 2, 3)):
           biggest > 1e-3)
 
 
+# ── RAAN 平移 ≡ Rz：把 get_r0_v0（六根數→Cartesian）也綁進旋轉不變性（HAP-41）──
+#
+# 上面的測試在 fitness 層直接餵旋轉後的「狀態向量」，繞過了六根數→Cartesian 這一段。
+# 這裡補上：升交點赤經 RAAN 本來就是「繞慣性 Z 軸把整個軌道轉一個角度」，數學上
+# 透視→ECI 是 Rz(RAAN)·Rx(inc)·Rz(argp)，所以 RAAN+Δ 等於在最左邊多乘一個 Rz(Δ)
+# ——整個狀態（r 跟 v）都會是 Rz(Δ)·原狀態，對任何 inc/argp/ta 都成立。
+# 若 get_r0_v0 的 frame 慣例錯了（角度單位、旋轉順序、某個符號），這個等式就會破。
+def _elements_tuple(orb):
+    return (orb["SMA"], orb["ECC"], orb["INC"], orb["RAAN"], orb["AOP"], orb["TA"])
+
+
+def _shift_raan(orb, ddeg):
+    o = dict(orb)
+    o["RAAN"] = orb["RAAN"] + ddeg
+    return o
+
+
+def run_raan_shift_scenario(name, orbit_A, orbit_B):
+    print(f"\n══ RAAN 平移 ≡ Rz（涵蓋 get_r0_v0）：{name} ══")
+    shifts = (17.0, 90.0, -123.0, 180.0)
+
+    # (1) 直接檢查 get_r0_v0 的 frame：RAAN+Δ 必須等於對狀態做 Rz(Δ)（相對誤差）
+    max_direct = 0.0
+    for orb in (orbit_A, orbit_B):
+        r0, v0 = get_r0_v0(*_elements_tuple(orb))
+        n_r, n_v = max(np.linalg.norm(r0), 1e-12), max(np.linalg.norm(v0), 1e-12)
+        for ddeg in shifts:
+            R = rot_z(math.radians(ddeg))
+            r1, v1 = get_r0_v0(*_elements_tuple(_shift_raan(orb, ddeg)))
+            max_direct = max(max_direct,
+                             np.linalg.norm(r1 - R @ r0) / n_r,
+                             np.linalg.norm(v1 - R @ v0) / n_v)
+    check(f"[{name}] get_r0_v0：RAAN+Δ 等於 Rz(Δ)@狀態（max 相對誤差={max_direct:.2e} ≤ 1e-9）",
+          max_direct <= 1e-9)
+
+    # (2) 端到端：RAAN 平移 Δ、解跟著 Rz 轉，開 J 分數不變。
+    # opt 用原始六根數建（T_max 只跟 SMA 有關、不受 RAAN 影響，所以拿同一個 opt 的
+    # scalar_params 去評估平移後的狀態是對的），只把狀態向量換成平移後 get_r0_v0 的輸出。
+    opt = make_opt(orbit_A, orbit_B, gravity_degree=4)
+    max_e2e = 0.0
+    n_solutions = 0
+    for nb in (1, 2, 3):
+        sols = sample_feasible(opt, nb, np.random.default_rng(300 + nb), want=3)
+        n_solutions += len(sols)
+        for x in sols:
+            base_f = eval_with(opt, (opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0), x, nb)
+            for ddeg in (17.0, 90.0, -123.0):
+                R = rot_z(math.radians(ddeg))
+                a_r, a_v = get_r0_v0(*_elements_tuple(_shift_raan(orbit_A, ddeg)))
+                b_r, b_v = get_r0_v0(*_elements_tuple(_shift_raan(orbit_B, ddeg)))
+                rot_f = eval_with(opt, (a_r, a_v, b_r, b_v), rotate_solution(x, nb, R), nb)
+                max_e2e = max(max_e2e, abs(rot_f - base_f))
+    check(f"[{name}] 端到端：RAAN 平移 Δ 後分數不變（{n_solutions} 解，max Δ={max_e2e:.2e} ≤ {RZ_TOL:g}）",
+          max_e2e <= RZ_TOL)
+
+
 def main():
     # 用非退化幾何（有傾角/離心率/RAAN/AOP），旋轉才動得到東西；赤道圓軌道測不出來。
     print("=== 旋轉不變性測試（HAP-30）===")
@@ -235,6 +292,25 @@ def main():
     )
     # 極端傾角差（A 極軌 90°、B 赤道），逼出跨平面的方向處理
     run_scenario(
+        "polar_vs_equatorial",
+        {"SMA": 9375.0, "ECC": 0.2, "INC": 90.0, "RAAN": 0.0, "AOP": 0.0, "TA": 0.0},
+        {"SMA": 6800.0, "ECC": 0.001, "INC": 0.0, "RAAN": 0.0, "AOP": 0.0, "TA": 200.0},
+    )
+
+    # HAP-41：把 get_r0_v0（六根數→Cartesian）也綁進來——RAAN 平移 ≡ 繞 Z 旋轉。
+    print("\n" + "─" * 60)
+    print("RAAN 平移 ≡ Rz：涵蓋 get_r0_v0，補上 fitness 層測不到的那一段")
+    run_raan_shift_scenario(
+        "official_sample",
+        {"SMA": 6978.0, "ECC": 0.0, "INC": 45.0, "RAAN": 0.0, "AOP": 0.0, "TA": 0.0},
+        {"SMA": 6878.0, "ECC": 0.0, "INC": 135.0, "RAAN": 30.0, "AOP": 0.0, "TA": 60.0},
+    )
+    run_raan_shift_scenario(
+        "playground",
+        {"SMA": 13000.0, "ECC": 0.3, "INC": 28.0, "RAAN": 60.0, "AOP": 40.0, "TA": 150.0},
+        {"SMA": 7200.0, "ECC": 0.02, "INC": 0.0, "RAAN": 0.0, "AOP": 0.0, "TA": 0.0},
+    )
+    run_raan_shift_scenario(
         "polar_vs_equatorial",
         {"SMA": 9375.0, "ECC": 0.2, "INC": 90.0, "RAAN": 0.0, "AOP": 0.0, "TA": 0.0},
         {"SMA": 6800.0, "ECC": 0.001, "INC": 0.0, "RAAN": 0.0, "AOP": 0.0, "TA": 200.0},
