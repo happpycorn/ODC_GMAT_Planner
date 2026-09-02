@@ -1,0 +1,98 @@
+[
+  {
+    "geometry": "hyper_fast",
+    "expect": "violating",
+    "T_max_sec": 9101.0,
+    "outcome": "solution",
+    "num_burns": 1,
+    "score": 62.84,
+    "penalty_count": 1,
+    "dc_converged": true,
+    "worst_burn_ratio": 411.92,
+    "flagged_infeasible": true
+  },
+  {
+    "geometry": "official_sample",
+    "expect": "feasible",
+    "T_max_sec": 23204.2,
+    "outcome": "solution",
+    "num_burns": 1,
+    "score": 79.1,
+    "penalty_count": 0,
+    "dc_converged": true,
+    "worst_burn_ratio": 0.28,
+    "flagged_infeasible": false
+  },
+  {
+    "geometry": "hyperbolic_smoke",
+    "expect": "feasible",
+    "T_max_sec": 40000.0,
+    "outcome": "solution",
+    "num_burns": 1,
+    "score": 62.72,
+    "penalty_count": 1,
+    "dc_converged": true,
+    "worst_burn_ratio": 600.34,
+    "flagged_infeasible": true
+  },
+  {
+    "geometry": "hyper_far",
+    "expect": "violating",
+    "T_max_sec": 162570.0,
+    "outcome": "solution",
+    "num_burns": 2,
+    "score": 72.05,
+    "penalty_count": 1,
+    "dc_converged": true,
+    "worst_burn_ratio": 1.31,
+    "flagged_infeasible": true
+  },
+  {
+    "geometry": "antialigned",
+    "expect": "violating",
+    "T_max_sec": 28484.3,
+    "outcome": "solution",
+    "num_burns": 1,
+    "score": 85.13,
+    "penalty_count": 0,
+    "dc_converged": true,
+    "worst_burn_ratio": 0.22,
+    "flagged_infeasible": false
+  },
+  {
+    "geometry": "identical",
+    "expect": "edge",
+    "T_max_sec": 23314.1,
+    "outcome": "solution",
+    "num_burns": 1,
+    "score": 93.65,
+    "penalty_count": 0,
+    "dc_converged": true,
+    "worst_burn_ratio": 0.0,
+    "flagged_infeasible": false
+  },
+  {
+    "geometry": "hard_mode",
+    "expect": "violating",
+    "T_max_sec": 1258841.3,
+    "outcome": "solution",
+    "num_burns": 1,
+    "score": 64.33,
+    "penalty_count": 1,
+    "dc_converged": true,
+    "worst_burn_ratio": 324.85,
+    "flagged_infeasible": true
+  },
+  {
+    "geometry": "weird_test",
+    "expect": "feasible",
+    "T_max_sec": 2312639.1,
+    "outcome": "solution",
+    "num_burns": 2,
+    "score": 62.7,
+    "penalty_count": 0,
+    "dc_converged": true,
+    "worst_burn_ratio": 0.8,
+    "flagged_infeasible": false
+  }
+]
