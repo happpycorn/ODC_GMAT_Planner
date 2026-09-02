@@ -1,0 +1,255 @@
+[
+  {
+    "scenario": "official_sample",
+    "level": "full",
+    "seed": 777,
+    "cores": 16,
+    "T_max_days": 0.27,
+    "search_sec": 120.7,
+    "warmup_sec": 22.8,
+    "wall_incl_jit_sec": 143.5,
+    "score": 79.1,
+    "max_burns": [
+      1,
+      2,
+      3
+    ],
+    "popsize": 20,
+    "maxiter": 600,
+    "lambert_revs": 4,
+    "per_case": {
+      "1": {
+        "epochs_run": 600,
+        "budget": 600,
+        "early_stopped": false
+      },
+      "2": {
+        "epochs_run": 600,
+        "budget": 600,
+        "early_stopped": false
+      },
+      "3": {
+        "epochs_run": 600,
+        "budget": 600,
+        "early_stopped": false
+      }
+    },
+    "ts": "2026-09-03 00:23:42"
+  },
+  {
+    "scenario": "hard_mode",
+    "level": "full",
+    "seed": 777,
+    "cores": 16,
+    "T_max_days": 14.57,
+    "maxiter_ran": 30,
+    "maxiter_target": 600,
+    "search_sec": 254.0,
+    "warmup_sec": 21.8,
+    "wall_incl_jit_sec": 275.7,
+    "score": 60.64,
+    "max_burns": [
+      1,
+      2,
+      3
+    ],
+    "popsize": 20,
+    "maxiter": 30,
+    "lambert_revs": 4,
+    "per_case": {
+      "1": {
+        "epochs_run": 30,
+        "budget": 30,
+        "early_stopped": false
+      },
+      "2": {
+        "epochs_run": 30,
+        "budget": 30,
+        "early_stopped": false
+      },
+      "3": {
+        "epochs_run": 30,
+        "budget": 30,
+        "early_stopped": false
+      }
+    },
+    "ts": "2026-09-03 00:30:41"
+  },
+  {
+    "scenario": "hard_mode",
+    "level": "full",
+    "seed": 777,
+    "cores": 16,
+    "T_max_days": 14.57,
+    "maxiter_ran": 60,
+    "maxiter_target": 600,
+    "search_sec": 415.0,
+    "warmup_sec": 22.3,
+    "wall_incl_jit_sec": 437.3,
+    "score": 60.64,
+    "max_burns": [
+      1,
+      2,
+      3
+    ],
+    "popsize": 20,
+    "maxiter": 60,
+    "lambert_revs": 4,
+    "per_case": {
+      "1": {
+        "epochs_run": 60,
+        "budget": 60,
+        "early_stopped": false
+      },
+      "2": {
+        "epochs_run": 60,
+        "budget": 60,
+        "early_stopped": false
+      },
+      "3": {
+        "epochs_run": 60,
+        "budget": 60,
+        "early_stopped": false
+      }
+    },
+    "ts": "2026-09-03 00:39:30"
+  },
+  {
+    "scenario": "official_sample",
+    "level": "deg_burns2",
+    "seed": 777,
+    "cores": 16,
+    "T_max_days": 0.27,
+    "maxiter_ran": 600,
+    "maxiter_target": null,
+    "search_sec": 61.1,
+    "warmup_sec": 21.3,
+    "wall_incl_jit_sec": 82.5,
+    "score": 79.1,
+    "max_burns": [
+      1,
+      2
+    ],
+    "popsize": 20,
+    "maxiter": 600,
+    "lambert_revs": 4,
+    "per_case": {
+      "1": {
+        "epochs_run": 600,
+        "budget": 600,
+        "early_stopped": false
+      },
+      "2": {
+        "epochs_run": 600,
+        "budget": 600,
+        "early_stopped": false
+      }
+    },
+    "ts": "2026-09-03 00:41:52"
+  },
+  {
+    "scenario": "official_sample",
+    "level": "deg_burns1",
+    "seed": 777,
+    "cores": 16,
+    "T_max_days": 0.27,
+    "maxiter_ran": 600,
+    "maxiter_target": null,
+    "search_sec": 28.0,
+    "warmup_sec": 21.6,
+    "wall_incl_jit_sec": 49.6,
+    "score": 79.1,
+    "max_burns": [
+      1
+    ],
+    "popsize": 20,
+    "maxiter": 600,
+    "lambert_revs": 4,
+    "per_case": {
+      "1": {
+        "epochs_run": 600,
+        "budget": 600,
+        "early_stopped": false
+      }
+    },
+    "ts": "2026-09-03 00:42:50"
+  },
+  {
+    "scenario": "official_sample",
+    "level": "deg_popiter",
+    "seed": 777,
+    "cores": 16,
+    "T_max_days": 0.27,
+    "maxiter_ran": 300,
+    "maxiter_target": null,
+    "search_sec": 29.6,
+    "warmup_sec": 21.6,
+    "wall_incl_jit_sec": 51.2,
+    "score": 79.1,
+    "max_burns": [
+      1,
+      2,
+      3
+    ],
+    "popsize": 10,
+    "maxiter": 300,
+    "lambert_revs": 4,
+    "per_case": {
+      "1": {
+        "epochs_run": 300,
+        "budget": 300,
+        "early_stopped": false
+      },
+      "2": {
+        "epochs_run": 300,
+        "budget": 300,
+        "early_stopped": false
+      },
+      "3": {
+        "epochs_run": 300,
+        "budget": 300,
+        "early_stopped": false
+      }
+    },
+    "ts": "2026-09-03 00:43:47"
+  },
+  {
+    "scenario": "official_sample",
+    "level": "deg_revs0",
+    "seed": 777,
+    "cores": 16,
+    "T_max_days": 0.27,
+    "maxiter_ran": 600,
+    "maxiter_target": null,
+    "search_sec": 103.7,
+    "warmup_sec": 21.3,
+    "wall_incl_jit_sec": 124.9,
+    "score": 79.1,
+    "max_burns": [
+      1,
+      2,
+      3
+    ],
+    "popsize": 20,
+    "maxiter": 600,
+    "lambert_revs": 0,
+    "per_case": {
+      "1": {
+        "epochs_run": 600,
+        "budget": 600,
+        "early_stopped": false
+      },
+      "2": {
+        "epochs_run": 600,
+        "budget": 600,
+        "early_stopped": false
+      },
+      "3": {
+        "epochs_run": 600,
+        "budget": 600,
+        "early_stopped": false
+      }
+    },
+    "ts": "2026-09-03 00:46:06"
+  }
+]
