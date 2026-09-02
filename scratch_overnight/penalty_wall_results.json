@@ -1,0 +1,514 @@
+[
+  {
+    "idx": 0,
+    "A": {
+      "SMA": 13322.2,
+      "ECC": 0.032,
+      "INC": 17.29,
+      "RAAN": 86.6,
+      "AOP": 256.34,
+      "TA": 192.3
+    },
+    "B": {
+      "SMA": 6763.7,
+      "ECC": 0.01,
+      "INC": 18.4,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 49.01
+    },
+    "single": {
+      "score": 92.259,
+      "penalty": 0,
+      "max_burn_dv_mps": 1137.2,
+      "num_burns": 1
+    },
+    "two": {
+      "score": 92.259,
+      "penalty": 0,
+      "max_burn_dv_mps": 1137.2,
+      "num_burns": 1
+    },
+    "recovery": 0.0
+  },
+  {
+    "idx": 1,
+    "A": {
+      "SMA": 16742.3,
+      "ECC": 0.097,
+      "INC": 53.81,
+      "RAAN": 207.49,
+      "AOP": 111.18,
+      "TA": 254.53
+    },
+    "B": {
+      "SMA": 7061.2,
+      "ECC": 0.01,
+      "INC": 0.1,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 134.17
+    },
+    "single": {
+      "score": 64.541,
+      "penalty": 1,
+      "max_burn_dv_mps": 162400.4,
+      "num_burns": 1
+    },
+    "two": {
+      "score": 64.541,
+      "penalty": 1,
+      "max_burn_dv_mps": 162400.4,
+      "num_burns": 1
+    },
+    "recovery": 0.0
+  },
+  {
+    "idx": 2,
+    "A": {
+      "SMA": 10374.1,
+      "ECC": 0.065,
+      "INC": 3.83,
+      "RAAN": 8.99,
+      "AOP": 21.35,
+      "TA": 286.72
+    },
+    "B": {
+      "SMA": 6828.9,
+      "ECC": 0.01,
+      "INC": 12.31,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 124.0
+    },
+    "single": {
+      "score": 93.036,
+      "penalty": 0,
+      "max_burn_dv_mps": 854.0,
+      "num_burns": 1
+    },
+    "two": {
+      "score": 93.502,
+      "penalty": 0,
+      "max_burn_dv_mps": 552.2,
+      "num_burns": 2
+    },
+    "recovery": 0.466
+  },
+  {
+    "idx": 3,
+    "A": {
+      "SMA": 10366.0,
+      "ECC": 0.073,
+      "INC": 40.31,
+      "RAAN": 179.13,
+      "AOP": 2.83,
+      "TA": 123.29
+    },
+    "B": {
+      "SMA": 6974.0,
+      "ECC": 0.01,
+      "INC": 11.18,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 1.58
+    },
+    "single": {
+      "score": 91.309,
+      "penalty": 0,
+      "max_burn_dv_mps": 975.5,
+      "num_burns": 1
+    },
+    "two": {
+      "score": 91.309,
+      "penalty": 0,
+      "max_burn_dv_mps": 975.5,
+      "num_burns": 1
+    },
+    "recovery": 0.0
+  },
+  {
+    "idx": 4,
+    "A": {
+      "SMA": 14095.2,
+      "ECC": 0.248,
+      "INC": 3.2,
+      "RAAN": 226.37,
+      "AOP": 268.4,
+      "TA": 285.5
+    },
+    "B": {
+      "SMA": 6809.2,
+      "ECC": 0.01,
+      "INC": 11.73,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 219.35
+    },
+    "single": {
+      "score": 80.193,
+      "penalty": 0,
+      "max_burn_dv_mps": 1197.3,
+      "num_burns": 1
+    },
+    "two": {
+      "score": 80.193,
+      "penalty": 0,
+      "max_burn_dv_mps": 1197.3,
+      "num_burns": 1
+    },
+    "recovery": 0.0
+  },
+  {
+    "idx": 5,
+    "A": {
+      "SMA": 16136.8,
+      "ECC": 0.049,
+      "INC": 56.35,
+      "RAAN": 334.33,
+      "AOP": 52.41,
+      "TA": 84.63
+    },
+    "B": {
+      "SMA": 6907.2,
+      "ECC": 0.01,
+      "INC": 3.09,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 247.06
+    },
+    "single": {
+      "score": 72.096,
+      "penalty": 1,
+      "max_burn_dv_mps": 1520.3,
+      "num_burns": 1
+    },
+    "two": {
+      "score": 80.225,
+      "penalty": 0,
+      "max_burn_dv_mps": 1454.5,
+      "num_burns": 2
+    },
+    "recovery": 8.129
+  },
+  {
+    "idx": 6,
+    "A": {
+      "SMA": 12222.9,
+      "ECC": 0.006,
+      "INC": 51.84,
+      "RAAN": 70.82,
+      "AOP": 308.72,
+      "TA": 152.63
+    },
+    "B": {
+      "SMA": 6861.8,
+      "ECC": 0.01,
+      "INC": 3.05,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 242.64
+    },
+    "single": {
+      "score": 91.687,
+      "penalty": 0,
+      "max_burn_dv_mps": 1073.2,
+      "num_burns": 1
+    },
+    "two": {
+      "score": 91.687,
+      "penalty": 0,
+      "max_burn_dv_mps": 1073.2,
+      "num_burns": 1
+    },
+    "recovery": 0.0
+  },
+  {
+    "idx": 7,
+    "A": {
+      "SMA": 15474.5,
+      "ECC": 0.075,
+      "INC": 21.33,
+      "RAAN": 158.92,
+      "AOP": 317.49,
+      "TA": 181.95
+    },
+    "B": {
+      "SMA": 7023.1,
+      "ECC": 0.01,
+      "INC": 14.34,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 3.92
+    },
+    "single": {
+      "score": 64.541,
+      "penalty": 1,
+      "max_burn_dv_mps": 154426.1,
+      "num_burns": 1
+    },
+    "two": {
+      "score": 88.118,
+      "penalty": 0,
+      "max_burn_dv_mps": 1236.4,
+      "num_burns": 2
+    },
+    "recovery": 23.577
+  },
+  {
+    "idx": 8,
+    "A": {
+      "SMA": 13691.1,
+      "ECC": 0.077,
+      "INC": 58.16,
+      "RAAN": 126.67,
+      "AOP": 242.5,
+      "TA": 105.16
+    },
+    "B": {
+      "SMA": 6826.6,
+      "ECC": 0.01,
+      "INC": 15.01,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 22.82
+    },
+    "single": {
+      "score": 86.978,
+      "penalty": 0,
+      "max_burn_dv_mps": 1374.3,
+      "num_burns": 1
+    },
+    "two": {
+      "score": 86.978,
+      "penalty": 0,
+      "max_burn_dv_mps": 1374.3,
+      "num_burns": 1
+    },
+    "recovery": 0.0
+  },
+  {
+    "idx": 9,
+    "A": {
+      "SMA": 15632.8,
+      "ECC": 0.204,
+      "INC": 8.51,
+      "RAAN": 325.45,
+      "AOP": 79.98,
+      "TA": 63.99
+    },
+    "B": {
+      "SMA": 6995.7,
+      "ECC": 0.01,
+      "INC": 6.53,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 281.65
+    },
+    "single": {
+      "score": 81.797,
+      "penalty": 0,
+      "max_burn_dv_mps": 1262.3,
+      "num_burns": 1
+    },
+    "two": {
+      "score": 83.706,
+      "penalty": 0,
+      "max_burn_dv_mps": 1498.3,
+      "num_burns": 2
+    },
+    "recovery": 1.909
+  },
+  {
+    "idx": 10,
+    "A": {
+      "SMA": 12458.8,
+      "ECC": 0.038,
+      "INC": 1.11,
+      "RAAN": 218.67,
+      "AOP": 35.0,
+      "TA": 204.77
+    },
+    "B": {
+      "SMA": 6747.6,
+      "ECC": 0.01,
+      "INC": 8.56,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 241.64
+    },
+    "single": {
+      "score": 90.857,
+      "penalty": 0,
+      "max_burn_dv_mps": 1130.1,
+      "num_burns": 1
+    },
+    "two": {
+      "score": 90.857,
+      "penalty": 0,
+      "max_burn_dv_mps": 1130.1,
+      "num_burns": 1
+    },
+    "recovery": 0.0
+  },
+  {
+    "idx": 11,
+    "A": {
+      "SMA": 10477.3,
+      "ECC": 0.269,
+      "INC": 12.09,
+      "RAAN": 100.31,
+      "AOP": 49.49,
+      "TA": 240.22
+    },
+    "B": {
+      "SMA": 7110.3,
+      "ECC": 0.01,
+      "INC": 9.67,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 283.2
+    },
+    "single": {
+      "score": 90.795,
+      "penalty": 0,
+      "max_burn_dv_mps": 965.5,
+      "num_burns": 1
+    },
+    "two": {
+      "score": 90.796,
+      "penalty": 0,
+      "max_burn_dv_mps": 965.4,
+      "num_burns": 2
+    },
+    "recovery": 0.001
+  },
+  {
+    "idx": 12,
+    "A": {
+      "SMA": 15117.4,
+      "ECC": 0.206,
+      "INC": 32.83,
+      "RAAN": 5.71,
+      "AOP": 43.83,
+      "TA": 227.35
+    },
+    "B": {
+      "SMA": 6717.9,
+      "ECC": 0.01,
+      "INC": 18.24,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 14.4
+    },
+    "single": {
+      "score": 77.613,
+      "penalty": 0,
+      "max_burn_dv_mps": 1126.5,
+      "num_burns": 1
+    },
+    "two": {
+      "score": 81.631,
+      "penalty": 0,
+      "max_burn_dv_mps": 1327.1,
+      "num_burns": 2
+    },
+    "recovery": 4.018
+  },
+  {
+    "idx": 13,
+    "A": {
+      "SMA": 15511.6,
+      "ECC": 0.29,
+      "INC": 58.41,
+      "RAAN": 290.13,
+      "AOP": 22.12,
+      "TA": 9.9
+    },
+    "B": {
+      "SMA": 6899.3,
+      "ECC": 0.01,
+      "INC": 6.15,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 304.9
+    },
+    "single": {
+      "score": 86.454,
+      "penalty": 0,
+      "max_burn_dv_mps": 881.6,
+      "num_burns": 1
+    },
+    "two": {
+      "score": 86.454,
+      "penalty": 0,
+      "max_burn_dv_mps": 881.6,
+      "num_burns": 1
+    },
+    "recovery": 0.0
+  },
+  {
+    "idx": 14,
+    "A": {
+      "SMA": 14093.6,
+      "ECC": 0.294,
+      "INC": 36.73,
+      "RAAN": 163.34,
+      "AOP": 186.07,
+      "TA": 231.25
+    },
+    "B": {
+      "SMA": 7048.1,
+      "ECC": 0.01,
+      "INC": 6.08,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 241.01
+    },
+    "single": {
+      "score": 83.887,
+      "penalty": 0,
+      "max_burn_dv_mps": 725.2,
+      "num_burns": 1
+    },
+    "two": {
+      "score": 83.887,
+      "penalty": 0,
+      "max_burn_dv_mps": 725.3,
+      "num_burns": 2
+    },
+    "recovery": 0.0
+  },
+  {
+    "idx": 15,
+    "A": {
+      "SMA": 15719.1,
+      "ECC": 0.178,
+      "INC": 20.44,
+      "RAAN": 102.73,
+      "AOP": 68.31,
+      "TA": 57.34
+    },
+    "B": {
+      "SMA": 6770.3,
+      "ECC": 0.01,
+      "INC": 0.87,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 279.76
+    },
+    "single": {
+      "score": 70.423,
+      "penalty": 1,
+      "max_burn_dv_mps": 1536.0,
+      "num_burns": 1
+    },
+    "two": {
+      "score": 70.423,
+      "penalty": 1,
+      "max_burn_dv_mps": 1536.0,
+      "num_burns": 1
+    },
+    "recovery": 0.0
+  }
+]
