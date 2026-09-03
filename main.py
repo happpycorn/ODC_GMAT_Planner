@@ -12,7 +12,7 @@ import cProfile
 import pstats
 
 # 引入重構後的新模組
-from src.optimizer import MissionOptimizer
+from src.optimizer import MissionOptimizer, run_study_over_revs
 from src.script_generator import script_generator
 from src.config_validator import validate_config, ConfigValidationError
 
@@ -75,6 +75,10 @@ DEFAULT_CONFIG = {
         "MISS_TOLERANCE_KM": 5.0,  # 規則只要求 Δr <= 這個值 (預設對齊規則的 5km)，可以
                                     # 彈性調小 (甚至設 0 退回精準瞄準)，讓最後一棒 Lambert
                                     # 在容許範圍內找最省油的落點，而不是死盯著 A 的精確位置
+        "REVS_ENSEMBLE": True,  # 預設在 REVS=0 與 REVS=LAMBERT_MAX_REVS 各跑一次完整搜尋、
+                                # 取規則§6 較好的那趟 (換掉 seed×REVS 相依脆弱性，成本約
+                                # 1.8×)。設 false 只跑一次 (用 LAMBERT_MAX_REVS)——T_max
+                                # 天級跑不完 90 分鐘時的降級第一段，見 CONTEST_DAY §4.1。
     },
     "optimization": {
         "MAX_BURNS": [1, 2, 3], # 範例：讓它依序嘗試不同的推進次數
@@ -376,9 +380,12 @@ def main():
 
     start_time = time.perf_counter()
 
-    # 1. 啟動最佳化器 (內部已經包含 L-SHADE 與 NLP 微調)
-    optimizer = MissionOptimizer(config)
-    burns, times, mission_info = optimizer.run_study()
+    # 1. 啟動最佳化器 (內部已經包含 L-SHADE 與 NLP 微調)。
+    #    預設會在 REVS=0 與 REVS=LAMBERT_MAX_REVS 各跑一次完整搜尋、取規則§6 較好的
+    #    那趟，換掉 seed×REVS 相依的搜尋脆弱性 (決策 3；成本約 1.8×)。想單跑一次就在
+    #    strategy 設 REVS_ENSEMBLE=false——大 SMA/高離心率跑不完 90 分鐘時的降級第一段。
+    #    回傳的 optimizer 是**勝出那趟**的實例，後面產腳本/印拆解都用它。
+    burns, times, mission_info, optimizer = run_study_over_revs(config)
 
     if burns is None or times is None:
         print("任務終止。")

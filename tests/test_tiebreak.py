@@ -16,7 +16,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.optimizer import (MissionOptimizer, tiebreak_rank_key,
-                           decision_variable_dims)
+                           decision_variable_dims, pick_best_across_revs)
 
 FAILS = []
 
@@ -195,6 +195,47 @@ OFF = copy.deepcopy(SAT)
 OFF["strategy"]["TIEBREAK_POLISH"] = False
 r3 = polish_case(OFF)
 check("關掉後偏移原封不動", abs(r3["after_km"] - r3["before_km"]) < 1e-12)
+
+print("\n── pick_best_across_revs：REVS 集成挑哪一趟（決策 3）──")
+# 各跑一趟 REVS 太貴，這裡餵假的 mission_info 驗「兩趟成績誰勝出」。
+# candidate 格式：(revs, burns, times, mission_info)；失敗那趟是 (revs, None, None, (None, None))。
+
+
+def _mi(score, miss_km, dv, t):
+    return {"score": score, "miss_km": miss_km, "total_dv_mps": dv, "T_team": t}
+
+
+def revs_pick(cands):
+    """cands: [(revs, mission_info 或 None)]，回傳 (勝出的 revs, floor 讀法是否翻盤)。"""
+    full = [(r, ([0.0] if m else None), ([0.0] if m else None), (m if m else (None, None)))
+            for r, m in cands]
+    i, fd = pick_best_across_revs(full)
+    return full[i][0], fd
+
+
+check("分數高的那趟勝（REVS=4 高分）",
+      revs_pick([(0, _mi(89.0, 0.1, 100.0, 100.0)),
+                 (4, _mi(90.5, 3.0, 3000.0, 9000.0))])[0] == 4)
+
+check("同分時 Δr_min 小的那趟勝（REVS=0 較近）",
+      revs_pick([(0, _mi(90.0, 0.1, 2000.0, 9000.0)),
+                 (4, _mi(90.0, 3.0, 1500.0, 3000.0))])[0] == 0)
+
+check("一趟全軍覆沒時採用另一趟",
+      revs_pick([(0, _mi(88.0, 0.2, 500.0, 4000.0)), (4, None)])[0] == 0)
+
+check("兩趟都全軍覆沒時回傳最後一趟（讓呼叫端照樣回傳失敗結果）",
+      revs_pick([(0, None), (4, None)])[0] == 4)
+
+# floor_miss 兩種讀法翻盤時要回報 True（呼叫端負責講白，不偷偷選）
+_amb = revs_pick([(0, _mi(90.0, 0.3, 2000.0, 5000.0)),
+                  (4, _mi(90.0, 3.4, 1990.0, 4900.0))])
+check("原始距離讀法選近的（REVS=0）", _amb[0] == 0)
+check("floor 讀法會翻盤時 floor_disagrees=True", _amb[1] is True)
+check("兩種讀法一致時 floor_disagrees=False",
+      revs_pick([(0, _mi(90.0, 0.1, 100.0, 100.0)),
+                 (4, _mi(90.5, 3.0, 3000.0, 9000.0))])[1] is False)
+
 
 print()
 if FAILS:

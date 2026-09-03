@@ -1,4 +1,5 @@
 import os
+import copy
 import math
 import numpy as np
 from numba import njit
@@ -1757,6 +1758,111 @@ class MissionOptimizer:
             "final_burn_dv_mps": burn_logs[-1]["dv_mag"] * 1000.0,
         }
         return burns, times_diff, mission_info
+
+
+def _mission_rank_key(mission_info, floor_miss=False, eps=None):
+    """把 refine_trajectory 交回的 mission_info 轉成規則第 6 節的排名鍵（越小越前面）。
+    欄位對照：score / miss_km(Δr_min) / total_dv_mps(ΔV_team) / T_team。"""
+    return tiebreak_rank_key(
+        float(mission_info["score"]), float(mission_info["miss_km"]),
+        float(mission_info["total_dv_mps"]), float(mission_info["T_team"]),
+        floor_miss=floor_miss, eps=eps)
+
+
+def pick_best_across_revs(candidates, eps=None):
+    """從多趟 run_study() 的結果裡照規則第 6 節挑一趟交出去。
+
+    candidates: 依序 [(revs, burns, times, mission_info), ...]。成功的那趟 burns/times
+      不是 None 且 mission_info 是 dict；run_study() 全軍覆沒時回傳的是
+      (None, None, (None, None))，這裡當失敗略過。
+
+    回傳 (index, floor_disagrees)：index 是選中的候選在 candidates 裡的位置；
+    floor_disagrees 標記規則第 6 節優先序 1 的另一種讀法（floor_miss=True，見
+    tiebreak_rank_key）會不會選出不同的贏家——會的話交給呼叫端講白，不偷偷替
+    使用者決定。全部失敗時 index 指向最後一趟（讓呼叫端照樣回傳那個失敗結果）。
+
+    獨立成純函式是為了可測試：真的各跑一趟 REVS 太貴，這段的重點「兩趟成績誰勝出」
+    餵假 mission_info 就驗得到（見 tests/test_tiebreak.py）。
+    """
+    def ok(c):
+        _, burns, times, mi = c
+        return burns is not None and times is not None and isinstance(mi, dict)
+
+    viable = [i for i, c in enumerate(candidates) if ok(c)]
+    if not viable:
+        return len(candidates) - 1, False
+
+    best = min(viable, key=lambda i: _mission_rank_key(candidates[i][3], eps=eps))
+    alt = min(viable, key=lambda i: _mission_rank_key(candidates[i][3], floor_miss=True, eps=eps))
+    return best, (alt != best)
+
+
+def run_study_over_revs(config):
+    """（決策 3 / 2026-09-03）在多個 LAMBERT_MAX_REVS 值上各跑一次完整 run_study()，
+    照規則第 6 節挑最好的那趟交出去，換掉 seed×REVS 相依的搜尋脆弱性。
+
+    為什麼：多圈 Lambert（REVS>0）對**單點**評估是嚴格更大的搜尋空間、不可能更差，
+    但它把適應度地形變複雜，L-SHADE 這種隨機搜尋偶爾會落到更差的盆地——實測同 SEED
+    下 REVS=4 的最佳解比 REVS=0 少 1.45 分、完整 600 代救不回（scratch_overnight/
+    monotonicity_harness.py），porkchop 對拍又獨立看到 3/8 幾何 REVS=0 贏 REVS=4。
+    同 SEED 各跑 REVS=0 與 REVS=LAMBERT_MAX_REVS 再取兩者較好的，就把這條脆弱性換成
+    約 1.8 倍搜尋時間（REVS=0 那趟約 0.83×，見 CONTEST_DAY §4.1）。
+
+    這是**外層**做法：run_study()／_pick_best_case／mission_metrics 一個字都沒動，
+    每趟內部都自洽用單一 REVS（決策 3 選的低風險方向；把 REVS 摺進平行案例格
+    以壓到 ~1.16× 的版本另開卡追蹤）。
+
+    退回單跑：strategy.REVS_ENSEMBLE=false → 只用 strategy.LAMBERT_MAX_REVS
+    （預設 4）跑一次。這是大 SMA／高離心率（T_max 天級）跑不完 90 分鐘時降級的
+    第一段（§4.1 降級旋鈕）。LAMBERT_MAX_REVS=0 時也自動退成單跑（沒有第二個值可比）。
+
+    回傳 (burns, times, mission_info, optimizer)——最後那個是**勝出那趟**的
+    MissionOptimizer 實例，main.py 產腳本／印拆解都要用它（MAX_DV、GRAVITY_DEGREE
+    等）。全部失敗時回傳最後一趟的 (None, None, (None, None), optimizer)。
+    """
+    strategy = config.get("strategy", {})
+    high_revs = max(0, int(strategy.get("LAMBERT_MAX_REVS", 4)))
+    ensemble = bool(strategy.get("REVS_ENSEMBLE", True))
+
+    revs_values = [high_revs] if (not ensemble or high_revs == 0) else sorted({0, high_revs})
+
+    candidates = []   # [(revs, burns, times, mission_info)]
+    optimizers = []   # 對齊 candidates，保留每趟的 optimizer 實例給呼叫端用
+    for idx, revs in enumerate(revs_values):
+        if len(revs_values) > 1:
+            print(f"\n{'='*70}\n🎲 REVS 集成 第 {idx + 1}/{len(revs_values)} 趟："
+                  f"LAMBERT_MAX_REVS={revs}（同 SEED，只差這個）\n{'=' * 70}")
+        cfg = copy.deepcopy(config)
+        cfg.setdefault("strategy", {})["LAMBERT_MAX_REVS"] = revs
+        opt = MissionOptimizer(cfg)
+        burns, times, mission_info = opt.run_study()
+        candidates.append((revs, burns, times, mission_info))
+        optimizers.append(opt)
+
+    if len(candidates) == 1:
+        _, burns, times, mission_info = candidates[0]
+        return burns, times, mission_info, optimizers[0]
+
+    best_i, floor_disagrees = pick_best_across_revs(
+        candidates, eps=optimizers[0].TIEBREAK_SCORE_EPS)
+
+    # 集成對照表：把每趟的成績並排攤開，選了誰、差多少都講白。
+    print(f"\n{'=' * 70}\n🏁 REVS 集成結果（規則第 6 節：Score → Δr_min → ΔV_team → T_team）")
+    print(f"   {'REVS':>5}{'Score':>10}{'Δr_min(m)':>13}{'ΔV_team(m/s)':>15}{'T_team(s)':>13}")
+    for i, (revs, _b, _t, mi) in enumerate(candidates):
+        if isinstance(mi, dict):
+            mark = "  ← 採用" if i == best_i else ""
+            print(f"   {revs:>5}{mi['score']:>10.4f}{mi['miss_km'] * 1000:>13,.1f}"
+                  f"{mi['total_dv_mps']:>15,.1f}{mi['T_team']:>13,.1f}{mark}")
+        else:
+            print(f"   {revs:>5}   （這趟全軍覆沒，不列入挑選）")
+    if floor_disagrees:
+        print("   ⚠️ 規則第 6 節優先序 1 的另一種讀法（Δr_min 套 max(Δr,5) 地板）"
+              "會選出不同的贏家——上表數字自己看了定案（見 tiebreak_rank_key）。")
+
+    _, burns, times, mission_info = candidates[best_i]
+    return burns, times, mission_info, optimizers[best_i]
+
 
 # --- 放在同一個檔案或 mission_evaluator.py 中的輔助函式 ---
 def refine_lambert_burn(

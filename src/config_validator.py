@@ -217,6 +217,14 @@ def _validate_strategy(strategy_cfg, errors: list):
                 "而飛行時間根本不夠繞那麼多圈時那些呼叫只會失敗、白花時間。"
                 "T_max 是 A 的 4 個週期，設到 2~3 就涵蓋得差不多了")
 
+    if "REVS_ENSEMBLE" in strategy_cfg:
+        v = strategy_cfg["REVS_ENSEMBLE"]
+        if not isinstance(v, bool):
+            errors.append(
+                f"strategy.REVS_ENSEMBLE 必須是 true/false，但收到 {v!r}。"
+                "true (預設) = REVS=0 與 LAMBERT_MAX_REVS 各跑一次取較好的那趟；"
+                "false = 只跑一次 (降級用)")
+
     if "TIEBREAK_SCORE_EPS" in strategy_cfg:
         v = strategy_cfg["TIEBREAK_SCORE_EPS"]
         if not (_is_number(v) and v >= 0):
