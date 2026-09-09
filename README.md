@@ -150,9 +150,9 @@ uv run sweep_burns.py --config configs/x.json --burns 2-8
   （`Δr_min` → `ΔV_team` → `T_team`），不是「誰先跑完誰贏」。打平的候選會先各自跑一次
   收尾微調再比，比的是「會交出去的那一版」。詳見下面的〈平手判定〉。
 
-### 比賽當天
+### 初賽當天（已封存）
 
-**[CONTEST_DAY.md](CONTEST_DAY.md)** —— 9/5 初賽當天照著做的作業手冊（時間地點、90 分鐘怎麼分配、指令、繳交前檢查清單、已知地雷）。
+**[docs/prelim/CONTEST_DAY.md](docs/prelim/CONTEST_DAY.md)** —— 9/5 初賽當天照著做的作業手冊（時間地點、90 分鐘怎麼分配、指令、繳交前檢查清單、已知地雷）。初賽已結束，這份是歷史文件；決賽站別卡見 `docs/prelim/runbooks/`（同樣是初賽版，決賽開始前需要另開一份）。
 
 ### `strategy` 裡幾個值得知道的開關
 
