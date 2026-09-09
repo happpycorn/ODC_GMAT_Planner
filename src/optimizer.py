@@ -566,12 +566,15 @@ class MissionOptimizer:
             # 兩邊都給就好，不用互斥——族群裡多一種起點只會多一個探索方向。
             relay = self._generate_multiburn_seed_candidates(num_burns, n_seeds)
             ladder = self._generate_ladder_seed_candidates(num_burns, n_seeds)
+            # 抬高+換面+平均拆收尾 (2026-09-05)：大傾角差 + 撞地球約束下 relay/ladder 都
+            # 到不了的家族 (初賽最佳合法解正是這一類)，只有平面夾角>30° 才會產東西。
+            pcsplit = self._generate_planechange_split_seed_candidates(num_burns, n_seeds)
             # 不要在這裡截斷！第一版寫成 (relay+ladder)[:max(n_seeds, len(relay))]，
             # 而 relay 本來就會回傳到 n_seeds 個，所以那個切片把階梯種子整批丟掉，
-            # 實測「加了種子但種子數完全沒變 (13 -> 13)」才抓到。兩個家族各自已經
+            # 實測「加了種子但種子數完全沒變 (13 -> 13)」才抓到。三個家族各自已經
             # 在內部限制數量了，這裡直接相加即可；種子總數相對族群 (n_dims*POPSIZE，
-            # 3 棒是 260) 仍然只佔一成上下，不會淹掉隨機探索。
-            return relay + ladder
+            # 5 棒是 420) 仍然只佔一成上下，不會淹掉隨機探索。
+            return relay + ladder + pcsplit
 
         dt = 60.0
         mu, j2, j3, j4, re = self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL, self.RE_VAL
@@ -983,6 +986,180 @@ class MissionOptimizer:
         # 最後一棒需求最小的優先 (代表這個階梯把 B 送到最有利的位置)
         seeds.sort(key=lambda s: s[0])
         return [x for _, x in seeds[:n_seeds]]
+
+    def _generate_planechange_split_seed_candidates(self, num_burns: int, n_seeds: int) -> list:
+        """
+        「抬高+換面 → 平均拆收尾」種子 (2026-09-05 新增)。
+
+        補上 relay / ladder 兩種種子的盲區：大傾角差 + 撞地球約束下，最佳合法解的結構是
+        「第一棒抬高並換面 (往上飛、避開地球)，滑行到遠地點附近，再把昂貴的換面/攔截機動
+        **平均拆成數段合法燒**」。relay 是空燒單棒、ladder 沿速度方向爬升 (不換面)，兩者
+        都到不了這個家族。初賽情境 (A/B 軌道平面夾角 80°、快速直飛會鑽到地表下) 的最佳
+        合法解正是這一類——純隨機 / relay / ladder 都找不到，靠這個構造當種子才進得去
+        (見 outputs/best_98.31_split5_rebalanced/SUMMARY.md、STATUS.md 2026-09-05)。
+
+        只有 A/B 軌道平面夾角夠大 (>30°) 才跑；一般情境回空清單，不動既有行為。整段構造
+        用跟 fast_fitness_evaluator 完全相同的碰撞判定 (reaches_perigee + check_constraints)，
+        所以產出的種子保證是 Earth-safe 的合法起點，不是撞地球的假解。
+        """
+        if num_burns < 2 or n_seeds <= 0:
+            return []
+        mu, dt = self.MU, 60.0
+        j2, j3, j4, re = self.J2_VAL, self.J3_VAL, self.J4_VAL, self.RE_VAL
+        h_B = np.cross(self.B_r0, self.B_v0)
+        h_A = np.cross(self.A_r0, self.A_v0)
+        nB, nA = fast_norm(h_B), fast_norm(h_A)
+        if nB < 1e-9 or nA < 1e-9:
+            return []
+        plane_angle = math.degrees(math.acos(
+            max(-1.0, min(1.0, float(np.dot(h_B, h_A) / (nB * nA))))))
+        if plane_angle < 30.0:
+            return []  # 換面不大，這種種子沒有存在意義，省成本
+
+        cap = self.MAX_DV_SOFT
+        n_final = num_burns - 1  # 第一棒抬高，其餘 (num_burns-1) 段拿來平均拆收尾機動
+        lb, ub = self._generate_bounds(num_burns)
+        lb_arr, ub_arr = np.array(lb), np.array(ub)
+
+        def prop(r, v, tof):
+            return propagate_dop853(r, v, float(tof), dt, mu, j2, j3, j4, re)
+
+        def arc_safe(r, v, dtt):
+            if reaches_perigee(r, v, mu, dtt):
+                return check_constraints(r, v, mu, self.MIN_PERIAPSIS)
+            r_end, _ = prop(r, v, dtt)
+            return (fast_norm(r) >= self.MIN_PERIAPSIS
+                    and fast_norm(r_end) >= self.MIN_PERIAPSIS)
+
+        def lam_best(r0, r1, tof, vref):
+            best, bv = 1e18, None
+            for m in range(self.LAMBERT_MAX_REVS + 1):
+                for lp in range(2):
+                    if m == 0 and lp == 1:
+                        continue
+                    for pg in range(2):
+                        try:
+                            vt, _ = izzo(mu, r0, r1, float(tof), M=m,
+                                         prograde=(pg == 0), lowpath=(lp == 0),
+                                         numiter=35, rtol=1e-8)
+                        except Exception:
+                            continue
+                        d = fast_norm(vt - vref)
+                        if d < best:
+                            best, bv = d, vt
+            return bv, best
+
+        def split_even(r0, v0, t0, target, T, nseg):
+            """從 (r0,v0,t0) 用 nseg 段等量 (間隔 MIN_COAST) 打到 target 於 T。
+            回傳 (kicks, coasts) 或 None。每段都過 arc_safe，末段需 <= cap。"""
+            r, v, t = r0.copy(), v0.copy(), t0
+            kicks, coasts = [], []
+            for s in range(nseg - 1):
+                vd, _ = lam_best(r, target, T - t, v)
+                if vd is None:
+                    return None
+                need = vd - v
+                nn = fast_norm(need)
+                if nn < 1e-12:
+                    return None
+                step = min(cap, nn / (nseg - s))  # 把剩餘需求平均分給剩下的段
+                kk = need / nn * step
+                if not arc_safe(r, v + kk, self.MIN_COAST_TIME):
+                    return None
+                kicks.append(kk)
+                coasts.append(self.MIN_COAST_TIME)
+                r, v = prop(r, v + kk, self.MIN_COAST_TIME)
+                t += self.MIN_COAST_TIME
+                if fast_norm(r) < self.MIN_PERIAPSIS:
+                    return None
+            vd, dvm = lam_best(r, target, T - t, v)
+            if vd is None or dvm > cap or not arc_safe(r, vd, T - t):
+                return None
+            kicks.append(vd - v)
+            return kicks, coasts
+
+        a_period = getattr(self, "Ta_sec", 0.0) or (self.T_max / 4.0)
+        candidates = []  # (neg_score, x) —— 依分數排序，優先高分 (T 早 + 總 Δv 低) 的基底
+
+        for t_wait in (0.0, a_period * 0.05):
+            rb, vb = prop(self.B_r0, self.B_v0, t_wait)
+            Vhat = vb / fast_norm(vb)
+            Nhat = np.cross(rb, vb)
+            Nhat = Nhat / fast_norm(Nhat)
+            Bhat = np.cross(Vhat, Nhat)
+            for cv in (0.5, 1.0):                    # V 分量 (抬高)
+                for cn in (-1.0, -0.5, 0.5, 1.0):    # N 分量 (換面)
+                    for cb in (-1.0, 0.0, 1.0):      # B 分量 (換面)
+                        k = (cv * Vhat + cn * Nhat + cb * Bhat) * cap
+                        km = fast_norm(k)
+                        if km > cap:
+                            k = k / km * cap
+                        vb1 = vb + k
+                        sp = fast_norm(vb1) ** 2 / 2.0 - mu / fast_norm(rb)
+                        if sp >= 0.0:
+                            continue  # 逃逸軌道，對攔截沒意義
+                        a_new = -mu / (2.0 * sp)
+                        new_period = 2.0 * math.pi * math.sqrt(a_new ** 3 / mu)
+                        for coast_mult in (0.5, 0.75):   # 滑行到遠地點附近再連打
+                            tc = coast_mult * new_period
+                            if tc < self.MIN_COAST_TIME:
+                                continue
+                            if not arc_safe(rb, vb1, tc):
+                                continue
+                            rm, vm = prop(rb, vb1, tc)
+                            if fast_norm(rm) < self.MIN_PERIAPSIS:
+                                continue
+                            t_mid = t_wait + tc
+                            hi = min(t_mid + a_period * 1.2, self.T_max)
+                            lo = t_mid + a_period * 0.3
+                            if hi <= lo:
+                                continue
+                            for Tarr in np.linspace(lo, hi, 8):
+                                r_a, _ = prop(self.A_r0, self.A_v0, float(Tarr))
+                                out = split_even(rm, vm, t_mid, r_a, float(Tarr), n_final)
+                                if out is None:
+                                    continue
+                                fkicks, fcoasts = out
+                                mags = [fast_norm(kk) * 1000.0 for kk in ([k] + fkicks)]
+                                mid_kicks = [k] + fkicks[:-1]     # 中途棒 = burn1 + 收尾前段
+                                mid_coasts = [tc] + fcoasts
+                                x = [float(t_wait)]
+                                cur = float(t_wait)
+                                okx = True
+                                for kk, cc in zip(mid_kicks, mid_coasts):
+                                    kmag = fast_norm(kk)
+                                    theta, phi = self._direction_to_spherical(
+                                        kk / kmag if kmag > 1e-12 else np.array([0.0, 0.0, 1.0]))
+                                    maxc = self.T_max - cur - self.MIN_COAST_TIME
+                                    if maxc <= self.MIN_COAST_TIME:
+                                        okx = False
+                                        break
+                                    cf = (cc - self.MIN_COAST_TIME) / (maxc - self.MIN_COAST_TIME)
+                                    x.extend([kmag, theta, phi, float(np.clip(cf, 0.0, 1.0))])
+                                    cur += cc
+                                if not okx:
+                                    continue
+                                maxf = self.T_max - cur
+                                if maxf <= self.MIN_COAST_TIME:
+                                    continue
+                                flf = (Tarr - cur - self.MIN_COAST_TIME) / (maxf - self.MIN_COAST_TIME)
+                                x.extend([float(np.clip(flf, 0.0, 1.0)), 0.0, 0.0, 0.0])
+                                if len(x) != decision_variable_dims(num_burns):
+                                    continue
+                                # 依真實分數排序：這個家族的重點是把 L-SHADE 種到「T 早
+                                # (時間分高) + 總 Δv 不太離譜」那個高分基底，而不是挑總 Δv
+                                # 最小 (那是 T 很晚、時間分幾乎歸零的慢解)。用跟正式計分
+                                # 完全一樣的 calculate_score，瞄準點誤差取 0 (種子瞄 A 精確
+                                # 位置，命中容許範圍的省油留給 L-SHADE/NLP 去挖)。
+                                seed_score = calculate_score(
+                                    min_distance_km=0.0, total_time_sec=float(Tarr),
+                                    total_dv_mps=float(sum(mags)), penalty_count=0,
+                                    k_t=self.k_t, C_t=self.C_t, k_v=self.k_v, C_v=self.C_v)
+                                candidates.append(
+                                    (-seed_score, np.clip(np.array(x, dtype=np.float64), lb_arr, ub_arr)))
+
+        candidates.sort(key=lambda c: c[0])  # 分數高的優先 (neg_score 小)
+        return [x for _, x in candidates[:n_seeds]]
 
     def _maxiter_for(self, num_burns: int) -> int:
         """
