@@ -406,9 +406,10 @@ class MissionOptimizer:
         # 最後一棒 Lambert 要考慮的最大圈數。規則的 T_max = 4 x A 的週期，所以最多
         # 也就塞得下約 4 圈，預設就取 4（2026-08-29 從 0 改過來）。
         #
-        # 為什麼可以放心開：分支選擇是在**固定的 t_final_leg** 下取需求 Δv 最小的那條，
-        # 同一個決策向量的抵達時間不變、時間分不變，只是燃料可能更便宜。也就是說
-        # **開多圈是嚴格更大的搜尋空間，不可能讓解變差**。
+        # 為什麼**單點評估**可以放心開：分支選擇是在**固定的 t_final_leg** 下取需求
+        # Δv 最小的那條，同一個決策向量的抵達時間不變、時間分不變，只是燃料可能更
+        # 便宜。也就是說，對同一個決策向量而言，開多圈是嚴格更大的搜尋空間，不可能
+        # 讓那一點的分數變差。
         #
         # 實測（2026-08-29）：
         #   官方範例題目（同 SEED=42，只差這個開關）：Score 90.21 -> 90.43
@@ -418,9 +419,18 @@ class MissionOptimizer:
         # 成本：每次評估 REVS=4 對 REVS=0 是 1.01 倍（飛行時間不夠繞圈時 izzo 直接
         # 失敗、退出得很快），端到端跑完的總時間量不出差異。
         # 分支本身經 ESA pykep 交叉驗證，1,552 條解最大偏差 5.2e-14 km/s（見
-        # scratch_overnight/xcheck_lambert_pykep.py）。
+        # scratch_overnight/tools/xcheck_lambert_pykep.py）。
         #
-        # 設 0 可以退回 2026-08-28 之前的行為。
+        # ⚠️ 但這個「不可能變差」只在**單點評估**成立，不能推廣到「開多圈的搜尋結果
+        # 不可能變差」（HAP-42，2026-09-03）：L-SHADE 是隨機搜尋，多圈把適應度地形
+        # 變複雜（多出 local optima），族群可能收斂到不同、且最終精修分數更差的
+        # 盆地——同 SEED 下 REVS=4 的最佳解實測比 REVS=0 少 1.45 分，完整 600 代救不
+        # 回（scratch_overnight/tools/monotonicity_harness.py），porkchop 對拍又獨立
+        # 看到 3/8 幾何 REVS=0 贏 REVS=4。**per-point dominance ≠ 搜尋結果 dominance。**
+        # 這個脆弱性的實際因應是 `run_study_over_revs`／`REVS_ENSEMBLE`（預設開）：
+        # 同 SEED 各跑 REVS=0 與這裡設的值，取兩者較好的，見該函式開頭的說明。
+        #
+        # 設 0 可以退回 2026-08-28 之前的行為（也讓 REVS_ENSEMBLE 自動退成單跑）。
         self.LAMBERT_MAX_REVS = max(0, int(strategy.get("LAMBERT_MAX_REVS", 4)))
 
         # 「分數算不算打平」的門檻，見 SCORE_TIE_EPS 的說明。預設 1e-9 (只認浮點數
@@ -2001,7 +2011,7 @@ def run_study_over_revs(config):
     為什麼：多圈 Lambert（REVS>0）對**單點**評估是嚴格更大的搜尋空間、不可能更差，
     但它把適應度地形變複雜，L-SHADE 這種隨機搜尋偶爾會落到更差的盆地——實測同 SEED
     下 REVS=4 的最佳解比 REVS=0 少 1.45 分、完整 600 代救不回（scratch_overnight/
-    monotonicity_harness.py），porkchop 對拍又獨立看到 3/8 幾何 REVS=0 贏 REVS=4。
+    tools/monotonicity_harness.py），porkchop 對拍又獨立看到 3/8 幾何 REVS=0 贏 REVS=4。
     同 SEED 各跑 REVS=0 與 REVS=LAMBERT_MAX_REVS 再取兩者較好的，就把這條脆弱性換成
     約 1.8 倍搜尋時間（REVS=0 那趟約 0.83×，見 CONTEST_DAY §4.1）。
 
