@@ -1821,12 +1821,13 @@ class MissionOptimizer:
         那段保持一致，改一邊要記得改另一邊 (兩邊都只是在讀 burn_logs，沒有第三種
         算法，但沒有共用同一行程式碼)。
         """
-        burn_logs, times, miss_km, dc_converged, _r_aim, _retro = reconstruct_mission_logs(
-            x, num_burns, self.MIN_COAST_TIME, self.T_max,
-            self.A_r0, self.A_v0, self.B_r0, self.B_v0,
-            self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL, self.RE_VAL,
-            self.LAMBERT_MAX_REVS
-        )
+        burn_logs, times, miss_km, dc_converged, _r_aim, _retro, earth_safe, min_arc_radius_km = \
+            reconstruct_mission_logs(
+                x, num_burns, self.MIN_COAST_TIME, self.T_max,
+                self.A_r0, self.A_v0, self.B_r0, self.B_v0,
+                self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL, self.RE_VAL,
+                self.LAMBERT_MAX_REVS, self.MIN_PERIAPSIS
+            )
         total_dv = sum(log['dv_mag'] for log in burn_logs)
         penalty_count = sum(1 for log in burn_logs if log['dv_mag'] > self.MAX_DV)
         t_team = float(times[-1])
@@ -1844,16 +1845,19 @@ class MissionOptimizer:
             "t_team": t_team,
             "penalty_count": int(penalty_count),
             "dc_converged": bool(dc_converged),
+            "earth_safe": bool(earth_safe),
+            "min_arc_radius_km": float(min_arc_radius_km),
         }
 
     def _replay_mission(self, x, num_burns):
         """純 Python 的日誌重建器，只在最後跑一次，並用含 J2 的高精度模型算出真實成績"""
-        burn_logs, times, miss_km, dc_converged, r_aim, used_retrograde = reconstruct_mission_logs(
-            x, num_burns, self.MIN_COAST_TIME, self.T_max,
-            self.A_r0, self.A_v0, self.B_r0, self.B_v0,
-            self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL, self.RE_VAL,
-            self.LAMBERT_MAX_REVS
-        )
+        burn_logs, times, miss_km, dc_converged, r_aim, used_retrograde, earth_safe, min_arc_radius_km = \
+            reconstruct_mission_logs(
+                x, num_burns, self.MIN_COAST_TIME, self.T_max,
+                self.A_r0, self.A_v0, self.B_r0, self.B_v0,
+                self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL, self.RE_VAL,
+                self.LAMBERT_MAX_REVS, self.MIN_PERIAPSIS
+            )
 
         print(f"\n── 任務規劃 {'─' * 46}")
         print(f"  等待 {x[0]:,.1f}s 後開始"
@@ -1896,6 +1900,18 @@ class MissionOptimizer:
               + ("   ⚠️ 依規則第 5 節每次扣 10 分" if penalty_count else ""))
         print(f"  Score      {final_score:>12.2f} / 100")
 
+        # Earth-safe 判定 (2026-09-09, HAP-48)：跟 fast_fitness_evaluator 一致的碰撞
+        # 判定。初賽證實「軌跡穿過地表」是官方失格線,所以這條一定要印清楚、撞到就大聲擋。
+        alt_km = min_arc_radius_km - self.RE_VAL
+        safe_alt_km = self.MIN_PERIAPSIS - self.RE_VAL
+        if earth_safe:
+            print(f"  Earth-safe    ✅   (全程最低高度 {alt_km:>10,.0f} km,門檻 {safe_alt_km:,.0f} km)")
+        else:
+            print(f"  Earth-safe    🔴 撞地球 (最低高度 {alt_km:,.0f} km < 門檻 {safe_alt_km:,.0f} km)")
+            print("     ⚠️ 這條軌跡會鑽進地球——官方會判失格(初賽已證實),絕對不可繳交。")
+            print("     這種通常是「早抵達的便宜解」:分數漂亮但物理不成立。改找 Earth-safe 合法解"
+                  "(feasibility.py 確認存不存在),或加大 T_max/棒數。")
+
         # 「荒謬超標」警告 (2026-08-15)：違規懲罰是固定的每次 -10 分，跟超標幅度無關，
         # 而最後一棒是 Lambert 反算出來的、沒有上界。所以在**根本沒有合法解**的情境裡，
         # 「花 10 分買一次完美命中 + 最快時間」永遠划算 —— 實測 hyper_fast (ECC=5) 交出
@@ -1933,6 +1949,10 @@ class MissionOptimizer:
             # 最後一棒 (GMAT 會自己再修正的那把火) Python 端自己的預測值，方便跟
             # GMAT 實際收斂後的真實大小做對照。
             "final_burn_dv_mps": burn_logs[-1]["dv_mag"] * 1000.0,
+            # Earth-safe 硬性閘門 (HAP-48)：main.py 用這個擋掉撞地球的解，不讓它產生
+            # 繳交腳本。min_arc_radius_km 是全程實際到達過的最低軌道半徑 (km)。
+            "earth_safe": bool(earth_safe),
+            "min_arc_radius_km": float(min_arc_radius_km),
         }
         return burns, times_diff, mission_info
 
@@ -2084,15 +2104,51 @@ def refine_lambert_burn(
 
 
 def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_r0, B_v0,
-                              mu, j2_val, j3_val, j4_val, re_val, lambert_max_revs=0):
+                              mu, j2_val, j3_val, j4_val, re_val, lambert_max_revs=0,
+                              min_periapsis=None):
     """
     一步一步重播最佳解，並把 VNB 轉換和時間記錄下來。
     因為不用 JIT，可以盡情使用 list 和 dict。
+
+    2026-09-09：重播時**一併套用跟 `fast_fitness_evaluator` 完全相同的 Earth-safe
+    判定**（每段燒後的弧用 `reaches_perigee` + `check_constraints`）。動機見
+    HAP-48 / memory `odc-collision-check-verification-gap`：初賽證實「軌跡穿過地表」
+    是官方失格線，但這條重播路徑（算成績、餵 script_generator、產繳交腳本）先前
+    **完全不檢查碰撞**，會讓一個鑽地球的解（例如作廢的 99.996）在重播/GMAT 都亮綠燈。
+    這裡回傳 `earth_safe` / `min_arc_radius_km`，讓上游可以在繳交前擋下。
+    `min_periapsis` 不給時預設 = 地球半徑 + 100 km（跟 optimizer 的 self.MIN_PERIAPSIS 對齊）。
     """
+    if min_periapsis is None:
+        min_periapsis = re_val + 100.0
+
     burn_logs = []
     times = [0.0]
     dt = 60.0  # DOP853 初始步長猜測 (自適應積分器會自己調整實際步長)
-    
+
+    # Earth-safe 追蹤：earth_safe 是硬性閘門 (任何一段弧鑽到 min_periapsis 以下就 False)，
+    # min_arc_radius_km 是所有弧裡實際到達過的最小半徑 (拿來印清楚的診斷數字)。
+    earth_safe = True
+    min_arc_radius_km = float("inf")
+
+    def _check_earth_arc(r_start, v_after, t_arc, r_end):
+        """一段「燒完之後滑行 t_arc」的弧安不安全，判定邏輯跟 fast_fitness_evaluator
+        逐字一致：弧內會經過近地點就比密切近地點半徑，否則比兩端取小的半徑。"""
+        nonlocal earth_safe, min_arc_radius_km
+        if reaches_perigee(r_start, v_after, mu, t_arc):
+            r_mag = fast_norm(r_start)
+            v2 = v_after[0] * v_after[0] + v_after[1] * v_after[1] + v_after[2] * v_after[2]
+            h = np.cross(r_start, v_after)
+            h2 = h[0] * h[0] + h[1] * h[1] + h[2] * h[2]
+            eps = v2 / 2.0 - mu / r_mag
+            e = math.sqrt(max(0.0, 1.0 + 2.0 * eps * h2 / (mu * mu)))
+            arc_min = h2 / (mu * (1.0 + e))          # 密切近地點半徑
+        else:
+            arc_min = min(fast_norm(r_start), fast_norm(r_end))
+        if arc_min < min_arc_radius_km:
+            min_arc_radius_km = arc_min
+        if arc_min < min_periapsis:
+            earth_safe = False
+
     current_time = float(x[0])
     times.append(current_time)
     r_curr, v_curr = propagate_dop853(B_r0, B_v0, current_time, dt, mu, j2_val, j3_val, j4_val, re_val)
@@ -2116,11 +2172,13 @@ def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_
         
         burn_logs.append({"time": current_time, "dv_vec": dv_vec, "dv_vnb": dv_vnb, "dv_mag": dv_mag, "type": f"Burn {i}"})
         v_curr_new = v_curr + dv_vec
-        
+        r_burn = r_curr  # 這段弧的起點 (燒的位置)，propagate 後 r_curr 會被覆寫
+
         max_coast = T_max - current_time - min_coast_time
         t_coast = min_coast_time + coast_frac * (max_coast - min_coast_time) if max_coast > min_coast_time else min_coast_time
-        
+
         r_curr, v_curr = propagate_dop853(r_curr, v_curr_new, t_coast, dt, mu, j2_val, j3_val, j4_val, re_val)
+        _check_earth_arc(r_burn, v_curr_new, t_coast, r_curr)
         current_time += t_coast
         times.append(current_time)
         
@@ -2192,6 +2250,9 @@ def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_
     # 真正跟 A 的距離：用修正後的 v1_req 實際傳播一次，量測最終位置跟 A 真實位置
     # (不是瞄準點) 的距離 —— 這才是規則真正在乎、也是計分公式要用的 Δr。
     r_final_actual, _ = propagate_dop853(r_curr, v1_req, t_final_leg, 10.0, mu, j2_val, j3_val, j4_val, re_val)
+    # 收尾 Lambert 弧的 Earth-safe 判定 —— 這是最容易鑽地球的一段 (作廢的 99.996 兩棒解
+    # 就是這段近地點掉到地表下 2,470 km)，也是這個閘門最關鍵的用途。
+    _check_earth_arc(r_curr, v1_req, t_final_leg, r_final_actual)
     miss_km = fast_norm(r_final_actual - r_A_target)
 
     burn_logs.append({"time": current_time, "dv_vec": dv_final_vec, "dv_vnb": dv_final_vnb, "dv_mag": dv_final_mag, "type": "Final Burn"})
@@ -2199,4 +2260,4 @@ def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_
 
     # r_aim 一併回傳：GMAT script 的打靶目標要瞄準這個點，不能只瞄準 A 的真實位置，
     # 不然 GMAT 自己的 DC 會把我們刻意換來的省油設計修正掉 (詳見 script_generator)。
-    return burn_logs, times, miss_km, dc_converged, r_aim, used_retrograde
+    return burn_logs, times, miss_km, dc_converged, r_aim, used_retrograde, earth_safe, min_arc_radius_km

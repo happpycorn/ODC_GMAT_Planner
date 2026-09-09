@@ -391,6 +391,22 @@ def main():
         print("任務終止。")
         return
 
+    # Earth-safe 硬性閘門 (2026-09-09, HAP-48)：初賽證實「軌跡穿過地表」是官方失格線
+    # (撞地球的隊伍被判 F)。搜尋端 (fast_fitness_evaluator) 本來就會避開撞地球的解，
+    # 但當 T_max 內根本沒有 Earth-safe 合法解時，搜尋只能回報「最不爛」的違規解，那有
+    # 可能是鑽地球的。這裡在繳交路徑上再擋一次：撞地球就不產生繳交腳本、大聲標記，
+    # 避免重演「分數漂亮但物理不成立、送出去被失格」(見作廢的 99.996)。
+    earth_safe = bool(mission_info.get("earth_safe", True))
+    if not earth_safe:
+        alt = mission_info.get("min_arc_radius_km", float("nan")) - 6378.137
+        print("\n" + "🔴" * 30)
+        print("  警告：這個解的軌跡會穿過地球 (全程最低高度 "
+              f"{alt:,.0f} km，低於地表)。")
+        print("  官方會判此類軌跡失格 (初賽已證實)，**不會產生繳交腳本，絕對不可繳交**。")
+        print("  通常代表 T_max 內沒有 Earth-safe 合法解 —— 用 feasibility.py 確認，")
+        print("  或放寬 T_max / 調整棒數再重跑。仍會產出 outputs/output.txt 供診斷。")
+        print("🔴" * 30 + "\n")
+
     # 分數拆解 + 交換率（純加印，不改計算；見 print_score_breakdown）
     print_score_breakdown(mission_info, optimizer)
 
@@ -459,7 +475,10 @@ def main():
     # 就沒有一個自洽的燃燒值可以拿來 fallback，兩條路都走不通。
     fixed_script_result = None
     fixed_script_source = None  # "gmat_dc" | "python_fallback" | None，寫進 run_history 方便回頭查
-    if not args.no_gmat and not args.no_fixed_script:
+    if not earth_safe:
+        # Earth-safe 閘門擋下 (HAP-48)：撞地球的解不產生繳交腳本，避免手滑送出去被失格。
+        print("\n⛔ Earth-safe 閘門：此解撞地球，跳過『固定燃燒版本』繳交腳本的產生。")
+    elif not args.no_gmat and not args.no_fixed_script:
         clean_dc = bool(
             gmat_result and gmat_result["intercept_success"]
             and gmat_result["targeter_converged"] and gmat_result["final_burn_legal"]
