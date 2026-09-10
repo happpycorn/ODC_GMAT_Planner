@@ -2022,8 +2022,45 @@ GTOC-9 是多次發射的碎片清除戰役，計分函數、ΔV 上限、時限
 見 `HAP47_SPLIT_ALGORITHM_RESEARCH.md` §7.1）期間的紀錄，到此封頂，不再往下接。理由：這份
 log 已經 2100+ 行，新舊混在一起會讓決賽視圖分不清哪些還適用；不刪任何歷史內容，只是分區。
 
-**決賽的新進度記在 [`STATUS_FINAL.md`](STATUS_FINAL.md)，不要繼續往這份檔案後面加。** 初賽期間學到、對決賽仍然適用的教訓（見上面「這個 session 的工作方式」那一節、以及散落各處的「新教訓」條目）繼續有效，決賽發現這些教訓不適用或要修正時，去 `STATUS_FINAL.md` 記新的一條，不要回頭改這裡——這份是初賽當下的真實記錄。
+**下一輪的進度記在 [`STATUS.md`](../../STATUS.md)，不要繼續往這份檔案後面加。**（2026-09-11 更新：原本另設的 `STATUS_FINAL.md` 已併回單一 living 的 `STATUS.md`。）初賽期間學到、對下一輪仍然適用的教訓（見上面「這個 session 的工作方式」那一節、以及散落各處的「新教訓」條目）繼續有效，發現不適用或要修正時去 `STATUS.md` 記新的一條，不要回頭改這裡——這份是初賽當下的真實記錄。
 
 初賽專用文件（作業手冊、當天站別卡）已封存到 `docs/prelim/`（見 [`docs/prelim/CONTEST_DAY.md`](docs/prelim/CONTEST_DAY.md)）。`SCENARIOS.md` 是測資/方法論目錄、不是初賽限定，決賽繼續在原地使用，見該檔開頭的說明。
 
 全專案盤點見 [`PROJECT_AUDIT_20260909.md`](PROJECT_AUDIT_20260909.md)（決賽前的現況/待辦總覽）。
+
+---
+
+## 初賽期環境設定（2026-08-15 WSL 那台，從 STATUS.md 移出保存）
+
+> 2026-09-11 STATUS 重置時移來。當時開發機是 WSL2+Ryzen；現在已回到 Mac。
+> 這段 GMAT-on-WSL 的修補若哪天再回 WSL 開發用得上，故保留。
+
+### ⚠️ 換機器了：現在是 WSL / Ryzen 5800X，不是 MacBook Air
+
+8/15 白天起改在 **WSL2 (Ubuntu 24.04) + Ryzen 5800X (16 threads)** 上開發，
+不是先前那台會熱降頻的 MacBook Air。這份文件前面幾節提到「MacBook Air 熱降頻」
+的效能討論（`sweep_burns.py` 那節、「還沒做」清單第 11/12 項）**要用這個前提
+重讀**——那些「先不做，因為在會降頻的機器上不保證是淨賺」的判斷，在這台有塔扇
+散熱的桌機上結論可能不一樣，值得重新評估。
+
+這台機器的環境設定（都是機器本地、不進 git）：
+- GMAT R2026a 裝在 `/home/corn/software/GMAT/GMAT/R2026a`，路徑寫在各個
+  `configs/*.json` 的 `local.gmat_console_path`，不用每次帶 `--gmat-console`。
+- **GMAT GUI 可以在 WSLg 上跑**，但需要兩個修補，包成
+  `~/software/gmat-gui.sh` 啟動器：(a) `libtiff.so.5` 在 Ubuntu 24.04 已經沒有了，
+  從 jammy 抓一份放在 `~/software/gmat-compat-libs/`，只用 `LD_LIBRARY_PATH`
+  掛給 GMAT，不動系統的 libtiff6；(b) OSG 的格式外掛 (`osgdb_jpeg.so` 等) 是
+  `dlopen` 進來的，而 `RUNPATH` 不會傳遞給 dlopen 的模組，所以 GMAT 的 `lib/`
+  也必須進 `LD_LIBRARY_PATH`，否則貼圖/模型/字型全部載入失敗。另外 `arial.ttf`
+  這類微軟字型 Linux 沒有，用 `~/software/gmat-compat-fonts/` 裡指向 DejaVu 的
+  符號連結 + `OSG_FILE_PATH` 補上。`libsm6`/`libpcre2-32-0` 等系統套件要 apt 裝。
+- `configs/` 整個被 gitignore，換機器不會自動帶過來，要自己重建。
+
+**⚠️ `practice_scenario.json` 在這台機器上不存在**。這份文件底下有十幾處寫「用
+`practice_scenario.json` 跑一次回歸測試確認沒壞」——那是 8/13~8/14 在 Mac 上的
+標準做法，但這個檔案沒有進 git，**WSL 這台沒有**，照著做會直接失敗。這台目前有的
+configs：`config.json`、`weird_test.json`、`smoke_test.json`（快速煙霧測試，同平面
+圓軌道、單棒、30 代，約 15 秒含 GMAT 驗證）、`apoapsis_planechange_test.json`、
+`perigee_kick_test.json`。**要做「一般規模」的回歸測試，用 `smoke_test.json` 代替**，
+或是重建一份 practice_scenario（原始參數沒有完整記錄下來，這也是下面第 16 項那個
+教訓的另一個實例）。
