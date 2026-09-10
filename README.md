@@ -4,7 +4,7 @@
 
 為了確保最佳的執行效能與最簡便的安裝體驗，本專案使用新一代極速套件管理工具 `uv`，不需要手動設定虛擬環境。
 
-**這份文件只講怎麼用（安裝/設定/執行/看輸出）。想知道分數/燃燒方案背後是怎麼算出來的（物理模型、Lambert 攔截設計、最佳化演算法、GMAT 驗證流程…），看 [METHODOLOGY.md](METHODOLOGY.md)。**
+**這份文件只講怎麼用（安裝/設定/執行/看輸出）。想知道分數/燃燒方案背後是怎麼算出來的（物理模型、Lambert 攔截設計、最佳化演算法、GMAT 驗證流程…），看 [METHODOLOGY.md](docs/METHODOLOGY.md)。**
 
 ---
 
@@ -230,7 +230,7 @@ uv run python tests/test_arc_safety.py
 ### 現成的測試情境
 
 `configs/` 被 `.gitignore` 排除，所以情境不會跟著 git 走。**所有測試情境的完整參數
-（六根數 + 規則參數 + 實測難度）記錄在 [SCENARIOS.md](SCENARIOS.md)**，照著貼就能重建。
+（六根數 + 規則參數 + 實測難度）記錄在 [SCENARIOS.md](docs/SCENARIOS.md)**，照著貼就能重建。
 換機器、或不小心刪掉時去那裡找。
 
 ---

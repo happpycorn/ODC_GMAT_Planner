@@ -83,14 +83,14 @@ STATUS.md 原本寫「大 SMA 落差的情境可能受益，但還沒驗證投�
 - 實測：新結構的 config 通過驗證；故意拿掉整個 `rules`/`strategy` 區塊、`strategy.USE_J2` 型別錯、`rules.k_t` 是負的（軟性警告）都如預期觸發；設定檔不存在時自動生成的預設範例也是新結構，且能自己通過驗證；用不變的正式 config 跑一次全流程 (含 GMAT)，分數/Δv/T_team 跟改之前完全一致 (100/100, InterceptSuccess ✅)；順便確認 `run_history.jsonl` 記錄的是完整的 `rules`/`strategy` 物件，不是拆散的欄位。
 
 ### 新增 METHODOLOGY.md（拆分文件：怎麼用 vs 怎麼算的）
-使用者反映應該把「怎麼用」跟「怎麼算的」拆成兩份文件。`README.md` 本來就幾乎全是「怎麼用」的內容（安裝/config/執行/輸出/提交前檢查），不用大改；新寫了 [METHODOLOGY.md](METHODOLOGY.md)，把散落在程式碼註解跟這份 STATUS.md 裡的技術知識整理成一份對外可讀的說明：問題設定、整體流程、物理模型 (RK4+J2)、決策變數編碼 (球座標參數化)、Lambert 攔截 + 命中容許範圍利用、安全邊界設計、L-SHADE/L-BFGS-B 最佳化、計分公式、GMAT 驗證流程 (含 aim-point sync 那個 bug 的故事)、已知限制。兩份文件互相加了連結。
+使用者反映應該把「怎麼用」跟「怎麼算的」拆成兩份文件。`README.md` 本來就幾乎全是「怎麼用」的內容（安裝/config/執行/輸出/提交前檢查），不用大改；新寫了 [METHODOLOGY.md](../METHODOLOGY.md)，把散落在程式碼註解跟這份 STATUS.md 裡的技術知識整理成一份對外可讀的說明：問題設定、整體流程、物理模型 (RK4+J2)、決策變數編碼 (球座標參數化)、Lambert 攔截 + 命中容許範圍利用、安全邊界設計、L-SHADE/L-BFGS-B 最佳化、計分公式、GMAT 驗證流程 (含 aim-point sync 那個 bug 的故事)、已知限制。兩份文件互相加了連結。
 - 寫的時候把引用的具體數字都回頭對照過原始碼/STATUS.md 抓錯了一個：族群大小超編寫成「快 200 倍」，實際是「180 倍」(360 個體 / 2 維)，已修正；其他引用數字 (108m 積分誤差、863m 命中容許壓力測試落差、17m 理論最差 Achieve 誤差) 都對照過原文確認無誤才留著。
 - 副作用：這份文件剛好也對得上規則第 6 節「設計理論」平手加賽的要求（同分要上台講 5 分鐘軌道設計方法論），晉級賽如果真的平手用得到。
 
 ### 新增 sweep_burns.py：掃描一個情境需要燒幾次
 起因：用 `configs/practice_scenario.json`（自己編的中等難度練習情境，不是官方測資，用來模擬跑一次比賽的感覺）實測發現「燃燒次數越多、搜尋時間越長」——族群大小是決策變數維度 × POPSIZE，維度隨燃燒次數線性長，但 `MAXITER`（世代數）不會跟著長，導致高燃燒次數案例在同樣代數預算下天生吃虧。實測驗證過這個效應是真的：`MAX_BURNS=[1..6]` 時 6 次燒 (`MAXITER=1000`) 目標值 -99.9863，明顯輸 2 次燒的 -99.9941；把 `MAXITER` 拉到 3000 (3倍)，6 次燒追到 -99.9952，反而小幅超過——證實純粹是預算不夠冤枉了它，不是本質上比較差。
 
-新增 [`sweep_burns.py`](sweep_burns.py)，把這個結論實作成兩階段流程：
+新增 [`sweep_burns.py`](../../sweep_burns.py)，把這個結論實作成兩階段流程：
 1. **粗掃**：`MAX_BURNS` 開一個寬範圍（預設 1-6），`MAXITER` 刻意調低（預設 300），快速找出分數大概從哪個燃燒次數開始不再明顯進步（`find_elbow`）。這階段的數字不能直接當結論，只能抓候選範圍。
 2. **精細驗證**：只針對候選範圍附近（`--window` 控制往上延伸幾格），用 config 原本的 `MAXITER`（使用者已經調過、信任的預算）重新跑一次「公平」比較，這一步的數字才拿來下結論。
 
@@ -181,7 +181,7 @@ STATUS.md 原本寫「大 SMA 落差的情境可能受益，但還沒驗證投�
 （超標 32 倍）的單棒解拿 58.6 分，贏過一個假設的合法解 (2900 m/s，慢很多) 的 51.3 分。
 
 **第二層：GMAT DC 收斂失敗的直接原因——`Vary` 邊界寫死卡在合法 Δv 範圍**
-[script_generator.py:122](src/script_generator.py#L122) 的
+[script_generator.py:122](../../src/script_generator.py#L122) 的
 `Vary DC_Targeter(... {Lower = -max_dv, Upper = max_dv, ...})` 把搜尋空間鎖在
 ±1500 m/s。如果 Python 認為真正需要的燃燒本來就超過這個範圍 (像上面 48,561 m/s 那個
 解)，DC 不管怎樣都碰不到那個值，一定收斂失敗，報表印出的是「卡在邊界上的垃圾值」，不是
@@ -200,8 +200,8 @@ STATUS.md 原本寫「大 SMA 落差的情境可能受益，但還沒驗證投�
 目標) 在 89 萬秒後會在哪裡」的預測，跟 GMAT 用更高精度模型算出來的實際位置，差了 480
 幾公里**。另外測過純步長效應 (`dt=60s` vs `dt=0.1s`，同一個 Python 模型內部比較，不牽
 涉 GMAT)：對同一段 T_max 傳播只造成 **2.1 公里**誤差——遠遠不夠解釋 481 公里的落差。
-主因很可能是 [script_generator.py:193](src/script_generator.py#L193) 裡 GMAT 用
-`Degree=4, Order=4` (J2~J4 都算)，但 [core_math.py:69](src/core_math.py#L69) 的 Python
+主因很可能是 [script_generator.py:193](../../src/script_generator.py#L193) 裡 GMAT 用
+`Degree=4, Order=4` (J2~J4 都算)，但 [core_math.py:69](../../src/core_math.py#L69) 的 Python
 端只實作純 J2——這個落差在短轉移可以忽略，累積 10 天、多次近地點通過 (每次都是相位誤差
 最敏感的地方) 後被放大成公里等級的位置誤差。
 
@@ -218,7 +218,7 @@ STATUS.md 原本寫「大 SMA 落差的情境可能受益，但還沒驗證投�
 一份可以繳交、可以重現的 script，而不是讓它在 DC 收斂失敗時直接消失、什麼都拿不到。
 
 改動：`main.py` 的「固定燃燒版本」現在有兩種燃燒值來源
-([main.py:329](main.py#L329) 附近)：
+([main.py:329](../../main.py#L329) 附近)：
 - `gmat_dc` (原本就有)：一般版本的 DC 乾淨收斂 (命中+收斂+合法) 時，用 GMAT 自己收斂
   出的值，最可信。
 - `python_fallback` (新增)：DC 沒有乾淨通過時 (沒收斂、命中失敗，或理論上的超標——雖然
@@ -885,7 +885,7 @@ A 距地距離找候選窗口 → 中解析度 Lambert 掃描篩選 → 細網�
 兩回事——`AOP=90°` 時種子找到 8684.2 m/s，但真正全域最佳只要 1140.8 m/s，差了
 7543 m/s，種子機制完全找偏。腳本：`scratch_overnight/inc_aop_adversarial.py`。
 
-**修法**：在 [`_generate_seed_candidates`](src/optimizer.py:348) 的第一步粗掃迴圈裡，
+**修法**：在 [`_generate_seed_candidates`](../../src/optimizer.py#L348) 的第一步粗掃迴圈裡，
 同時算兩個指標（共用同一次 `propagate_dop853`，不用多傳播一次）：A 距地距離（既有，
 抓離心率窄窗）、A 到 B 軌道平面的垂直距離 `|r_A(t)·h_B_hat|`（新增，抓傾角窄窗，
 `h_B_hat` 是 B 在 t=0 時刻的軌道平面法向量，只當一個便宜的近似候選來源，不要求
@@ -901,8 +901,8 @@ A 距地距離找候選窗口 → 中解析度 Lambert 掃描篩選 → 細網�
 
 ### 方向三：自動拆分超標單棒——測了三種做法，全部失敗，是有意義的負面結果
 
-規則是**每一棒個別檢查 Δv≤1500**（[src/optimizer.py:83](src/optimizer.py:83)、
-[src/optimizer.py:176](src/optimizer.py:176)，不是團隊總和上限），理論上把超標的
+規則是**每一棒個別檢查 Δv≤1500**（[src/optimizer.py:83](../../src/optimizer.py#L83)、
+[src/optimizer.py:176](../../src/optimizer.py#L176)，不是團隊總和上限），理論上把超標的
 單棒拆成兩棒、間隔剛好 `MIN_MANEUVER_INTERVAL_SEC=100s`，應該能把「單棒違規」變成
 「兩棒都合規」。實際測了三種拆法，全部失敗：
 
@@ -926,7 +926,7 @@ A 距地距離找候選窗口 → 中解析度 Lambert 掃描篩選 → 細網�
 
 ### 方向二：多棒（多維）種子機制——分段貪婪接力，實測有效
 
-**做法**：[`_generate_multiburn_seed_candidates`](src/optimizer.py:521) 不是對
+**做法**：[`_generate_multiburn_seed_candidates`](../../src/optimizer.py#L521) 不是對
 高維度重做網格搜尋（維度詛咒：25點網格在 9 維會爆炸成 25⁹≈4萬億個點），而是
 「分段貪婪接力」——遞迴呼叫單棒種子生成拿到 `(t_wait_final, final_leg_frac)`
 這組已知有效的時機答案，前面 `num_burns-1` 棒全部塞「Δv=0 的空燒、卡最短間隔
@@ -937,7 +937,7 @@ A 距地距離找候選窗口 → 中解析度 Lambert 掃描篩選 → 細網�
 過程中順便修了一個真的 bug：種子的獨立 NLP 精修（stage 4）原本的容忍度規則寫死
 只認識單棒的 5 元素陣列（`i<2` 是嚴格容忍度、其餘寬鬆），多棒的陣列索引對不上，
 精修會用錯規則。把 `refine_trajectory()` 裡本來就正確、通用的規則抽成共用方法
-[`_narrow_tolerance_bounds`](src/optimizer.py:521)，兩處都改用它。
+[`_narrow_tolerance_bounds`](../../src/optimizer.py#L521)，兩處都改用它。
 
 **A/B 測試**（`weird_test.json`，縮減預算 `MAXITER=300,POPSIZE=10` 方便快速迭代，
 正式預算是 `MAXITER=1000,POPSIZE=20`）：
@@ -1283,7 +1283,7 @@ T_max 量的，而這個解只用到 74%），但 12.9 km 攤在 6,800 秒的轉
 | **總計** | | | **27.7 分** | **78.9 分** | **2.85x** |
 
 > ⚠️ 讀這張表前先注意**符號**：腳本印的「分數」是 mealpy 的適應度，
-> [`optimizer.py`](src/optimizer.py:196) 是 `return -score` 且 `minmax="min"`，
+> [`optimizer.py`](../../src/optimizer.py#L196) 是 `return -score` 且 `minmax="min"`，
 > 所以原始 log 裡是負數、**負得越多越好**。上表已經還原成正的實際分數。
 > (我自己在報告過程中把方向講反過一次，特此標明。)
 
@@ -1405,7 +1405,7 @@ sigmoid 飽和時也平坦、多棒解又常退化成跟少棒解同一個解。
 
 賽程也確定了：**9/5（六）13:00 報到、14:00–15:30 正式競賽（固定 90 分鐘）**，
 淡江新工學大樓 E213/E214，**共 57 隊、前 8 名晉級**。當天的作業手冊寫在
-[CONTEST_DAY.md](CONTEST_DAY.md)。官方明文**允許使用生成式 AI**，但禁止用網路搜文獻／
+[CONTEST_DAY.md](../prelim/CONTEST_DAY.md)。官方明文**允許使用生成式 AI**，但禁止用網路搜文獻／
 開源程式碼／找場外隊友——「事先寫好帶進場的自有程式」照字面讀沒問題，但那是我們的命門，
 **報到時要當面問清楚**。
 
@@ -2024,9 +2024,9 @@ log 已經 2100+ 行，新舊混在一起會讓決賽視圖分不清哪些還適
 
 **下一輪的進度記在 [`STATUS.md`](../../STATUS.md)，不要繼續往這份檔案後面加。**（2026-09-11 更新：原本另設的 `STATUS_FINAL.md` 已併回單一 living 的 `STATUS.md`。）初賽期間學到、對下一輪仍然適用的教訓（見上面「這個 session 的工作方式」那一節、以及散落各處的「新教訓」條目）繼續有效，發現不適用或要修正時去 `STATUS.md` 記新的一條，不要回頭改這裡——這份是初賽當下的真實記錄。
 
-初賽專用文件（作業手冊、當天站別卡）已封存到 `docs/prelim/`（見 [`docs/prelim/CONTEST_DAY.md`](docs/prelim/CONTEST_DAY.md)）。`SCENARIOS.md` 是測資/方法論目錄、不是初賽限定，決賽繼續在原地使用，見該檔開頭的說明。
+初賽專用文件（作業手冊、當天站別卡）已封存到 `docs/prelim/`（見 [`docs/prelim/CONTEST_DAY.md`](../prelim/CONTEST_DAY.md)）。`SCENARIOS.md` 是測資/方法論目錄、不是初賽限定，決賽繼續在原地使用，見該檔開頭的說明。
 
-全專案盤點見 [`PROJECT_AUDIT_20260909.md`](PROJECT_AUDIT_20260909.md)（決賽前的現況/待辦總覽）。
+全專案盤點見 [`PROJECT_AUDIT_20260909.md`](../PROJECT_AUDIT_20260909.md)（決賽前的現況/待辦總覽）。
 
 ---
 

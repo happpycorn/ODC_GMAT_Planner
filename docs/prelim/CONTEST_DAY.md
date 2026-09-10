@@ -1,7 +1,7 @@
 # 初賽當天作業手冊（2026-09-05）
 
-**這份是比賽當天照著做的東西。** 怎麼用工具看 [README.md](README.md)，
-原理看 [METHODOLOGY.md](METHODOLOGY.md)，做過什麼看 [STATUS.md](STATUS.md)。
+**這份是比賽當天照著做的東西。** 怎麼用工具看 [README.md](../../README.md)，
+原理看 [METHODOLOGY.md](../METHODOLOGY.md)，做過什麼看 [STATUS.md](../../STATUS.md)。
 
 來源：官方《參賽選手注意事項》(2026-08-28 發布) + 初賽規則 PDF。
 **凡是這份文件裡沒有標「官方」的判斷，都是我們自己的推論，現場以工作人員說的為準。**

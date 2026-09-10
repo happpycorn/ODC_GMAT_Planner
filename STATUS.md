@@ -1,7 +1,7 @@
 # 專案狀態筆記（交接用）
 
 給下一個 session（不管是我自己回來還是你自己看）快速抓回上下文用的：「現在做到哪、還缺什麼、為什麼」。
-**怎麼用這個工具看 [README.md](README.md)；演算法/物理模型原理看 [METHODOLOGY.md](METHODOLOGY.md)**；
+**怎麼用這個工具看 [README.md](README.md)；演算法/物理模型原理看 [METHODOLOGY.md](docs/METHODOLOGY.md)**；
 初賽的逐日開發日誌封存在 [docs/log/DEVLOG_prelim.md](docs/log/DEVLOG_prelim.md)；更細的技術決策看 commit log 跟程式碼註解。
 
 **最後更新：2026-09-11——初賽已結束，正在為下一輪整理環境。**
@@ -25,7 +25,7 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
 
 事後補記（不影響已定結果）：2026-09-09 用 HAP-47 的 joint NLP 拆分器對同一組解重新聯合優化、GMAT 驗證後
 得 98.3177，理論上會以 0.0015 分之差贏過 Team15——但初賽已結束、無法追溯提交，價值在下一輪。
-細節見 [HAP47_SPLIT_ALGORITHM_RESEARCH.md](HAP47_SPLIT_ALGORITHM_RESEARCH.md) §7.1。
+細節見 [HAP47_SPLIT_ALGORITHM_RESEARCH.md](docs/HAP47_SPLIT_ALGORITHM_RESEARCH.md) §7.1。
 
 初賽的解與教訓都封存在 [docs/solutions/](docs/solutions/)（各解 SUMMARY、冠軍繳交件、重力模型 bug 與
 撞地球教訓）。初賽當天手冊／站別卡在 [docs/prelim/](docs/prelim/)。
@@ -39,7 +39,7 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
 - 種子機制四家族：relay／ladder／pcsplit／**joint NLP 精修（HAP-47，預設關閉，下輪備用）**。
 - 回歸：`uv run python run_regression.py`（5 支、~27s，動任何東西前先跑）。
 
-**開始下一輪前要處理的風險**（出自 [PROJECT_AUDIT_20260909.md](PROJECT_AUDIT_20260909.md)）：
+**開始下一輪前要處理的風險**（出自 [PROJECT_AUDIT_20260909.md](docs/PROJECT_AUDIT_20260909.md)）：
 - 🟠 **P2 Earth-safe 判定是點質量解析式**（`reaches_perigee`/`check_constraints`）。下一輪若開攝動，
   長弧近地點會漂、解析判定不再精確——而它是失格線。→ HAP-20（攝動開時切數值密集取樣）。
 - 🟠 **P3 雙曲線 A 從未端到端跑過**。防禦就位但沒有一組雙曲線測資實跑過 `main.py`+GMAT。→ HAP-46/HAP-36。
@@ -50,6 +50,6 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
 
 - **目前開發機：Mac（Darwin）。** GMAT R2026a 在 `/Users/corn/Documents/GMAT R2026a/bin/GmatConsole`
   （已存在，寫進各 `configs/*.json` 的 `local.gmat_console_path`，或帶 `--gmat-console`）。
-- `configs/` 整個被 gitignore、換機器不會帶過來。**設定檔的完整重建參數記在 [SCENARIOS.md](SCENARIOS.md)**
+- `configs/` 整個被 gitignore、換機器不會帶過來。**設定檔的完整重建參數記在 [SCENARIOS.md](docs/SCENARIOS.md)**
   （configs/ 遺失就靠這份重建）。
 - 2026-08-15 曾在 WSL2+Ryzen 上開發，那套 GMAT-on-WSL 修補若日後回 WSL 用得上，記在 DEVLOG_prelim.md 末段。
