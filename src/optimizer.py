@@ -403,6 +403,15 @@ class MissionOptimizer:
         # 代)；很貴的情境想省這段時間就設 false。
         self.TIEBREAK_POLISH = bool(strategy.get("TIEBREAK_POLISH", True))
 
+        # HAP-47：joint NLP 拆分器精修家族的開關 (見 _generate_nlp_refined_seed_candidates)。
+        # 對既有種子 (relay/ladder/pcsplit) 做一次帶顯式不等式約束 (近地點餘裕/命中容許/
+        # Lambert DC 收斂) 的 SLSQP 局部聯合優化——跟後面本來就會跑的 L-BFGS-B 精修不同：
+        # L-BFGS-B 只有 box bounds，近地點違規靠 fitness 裡的懲罰擋 (階梯函數、沒有連續
+        # 梯度)，貼不了邊界；SLSQP 有連續的近地點餘裕當約束，才找得到「幾棒貼滿上限、
+        # 一棒省下來」這種貼邊解 (HAP47_SPLIT_ALGORITHM_RESEARCH.md §7.1 GMAT 驗證過確實
+        # 比 split_even 均分多省一點)。預設開；沒經過大規模場景驗證，留關掉的口子。
+        self.ENABLE_NLP_SPLIT_REFINE = bool(strategy.get("ENABLE_NLP_SPLIT_REFINE", True))
+
         # 最後一棒 Lambert 要考慮的最大圈數。規則的 T_max = 4 x A 的週期，所以最多
         # 也就塞得下約 4 圈，預設就取 4（2026-08-29 從 0 改過來）。
         #
@@ -584,7 +593,14 @@ class MissionOptimizer:
             # 實測「加了種子但種子數完全沒變 (13 -> 13)」才抓到。三個家族各自已經
             # 在內部限制數量了，這裡直接相加即可；種子總數相對族群 (n_dims*POPSIZE，
             # 5 棒是 420) 仍然只佔一成上下，不會淹掉隨機探索。
-            return relay + ladder + pcsplit
+            #
+            # joint NLP 精修 (HAP-47，2026-09-10)：對上面三家族已經產出的種子再做一次
+            # 帶顯式不等式約束的 SLSQP 局部聯合優化，見 _generate_nlp_refined_seed_candidates
+            # docstring。輸入是三家族的合併結果，只有「贏過自己的 warm start」才會被收進來，
+            # 不會讓整體變差。
+            nlp_refined = self._generate_nlp_refined_seed_candidates(
+                num_burns, n_seeds, relay + ladder + pcsplit)
+            return relay + ladder + pcsplit + nlp_refined
 
         dt = 60.0
         mu, j2, j3, j4, re = self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL, self.RE_VAL
@@ -1170,6 +1186,96 @@ class MissionOptimizer:
 
         candidates.sort(key=lambda c: c[0])  # 分數高的優先 (neg_score 小)
         return [x for _, x in candidates[:n_seeds]]
+
+    def _generate_nlp_refined_seed_candidates(self, num_burns: int, n_seeds: int,
+                                               base_candidates: list) -> list:
+        """對 relay/ladder/pcsplit 已經產出的種子，用帶顯式不等式約束的 SLSQP 再做一次
+        局部聯合優化 (HAP-47，2026-09-10；研究過程見 HAP47_SPLIT_ALGORITHM_RESEARCH.md)。
+
+        動機：`_optimize_burn_case` 本來就會對每個種子跑一次 L-BFGS-B 局部精修，但那一步
+        只有 box bounds——近地點違規是靠 fitness/`calculate_score` 裡的懲罰擋，是個階梯
+        函數 (不連續)，L-BFGS-B 拿不到「還差多少才會撞地球」這種連續梯度，只能在懲罰懸崖
+        前面卡住，貼不了邊界。這裡改用 SLSQP + 顯式不等式約束 (近地點餘裕、命中容許、
+        Lambert 差分修正器有沒有收斂)，才挖得到「幾棒貼滿 Δv 上限、其餘棒省下來」這種
+        貼邊解——這正是 PoC 在既有 98.31 案例上找到、GMAT 驗證過的那個改善的來源
+        (HAP47_SPLIT_ALGORITHM_RESEARCH.md §7.1)。
+
+        跟 PoC (`scratch_overnight/hap47_poc_nlp_split.py`) 的差異：PoC 用的是「每棒 ECI
+        Δv 直接當自由變數」的 Cartesian 表示法，但正式系統的最後一棒不是自由變數——是
+        `reconstruct_mission_logs` 用 Lambert 解出來瞄準 `offset` 點的。這裡直接對現有的
+        標準決策向量 (球座標 + coast_frac + final_leg_frac + offset) 做 SLSQP，完整重用
+        `mission_metrics`/`reconstruct_mission_logs` 内建的 Lambert 掃描/`refine_lambert_burn`
+        牛頓修正/近地點判定，不在第二個地方重寫一份物理邏輯。
+
+        只挑 `base_candidates` 裡分數最高的少數幾個當 warm start (效能考量：每次
+        `mission_metrics` 呼叫都要掃 Lambert + 牛頓迭代，比單純傳播貴很多，SLSQP 在
+        4*num_burns+1 維上抓有限差分梯度又要再乘上好幾倍)，而且每個 SLSQP 結果都要贏過
+        自己的 warm start 才會被收進來——精修絕對不會讓種子池變差，找不到更好的解時就
+        大方回傳空/较短的列表。
+        """
+        if not self.ENABLE_NLP_SPLIT_REFINE:
+            return []
+        if num_burns < 2 or n_seeds <= 0 or not base_candidates:
+            return []
+
+        lb, ub = self._generate_bounds(num_burns)
+        lb_arr, ub_arr = np.array(lb), np.array(ub)
+        bounds = list(zip(lb, ub))
+
+        infeasible = {
+            "score": -1e6, "miss_km": 1e6, "dc_converged": False,
+            "earth_safe": False, "min_arc_radius_km": -1e6,
+        }
+
+        def safe_metrics(x):
+            try:
+                return self.mission_metrics(x, num_burns)
+            except Exception:
+                # reconstruct_mission_logs 對徹底無解的 Lambert 組合會丟 RuntimeError
+                # (見該函式 docstring)——SLSQP 有限差分探路時可能踩到，不能讓它炸穿整個
+                # 精修流程，回傳一組明確不可行的假資料讓 SLSQP 自己繞開即可。
+                return infeasible
+
+        def cached_metrics(x, _cache={}):
+            key = np.asarray(x, dtype=np.float64).tobytes()
+            if key not in _cache:
+                _cache.clear()  # 只留最新一筆：SLSQP 同一輪迭代裡 objective/constraint
+                                 # 對同一個 x 各呼叫一次，避免重算一整套 Lambert/牛頓迭代
+                _cache[key] = safe_metrics(x)
+            return _cache[key]
+
+        def objective(x):
+            return -cached_metrics(x)["score"]
+
+        def constraint_fn(x):
+            m = cached_metrics(x)
+            dc_flag = 1.0 if m["dc_converged"] else -1.0
+            return np.array([
+                m["min_arc_radius_km"] - self.MIN_PERIAPSIS,
+                self.MISS_TOLERANCE_SOFT - m["miss_km"],
+                dc_flag,
+            ])
+
+        # 只挑分數最高的少數幾個 warm start，把總成本壓在「這個 num_burns 案例多花數十秒
+        # 到一兩分鐘」的量級 (見上面 docstring 的效能小節)。
+        scored = [(safe_metrics(x)["score"], x) for x in base_candidates]
+        scored.sort(key=lambda t: t[0], reverse=True)
+        warm_starts = scored[:min(len(scored), 3)]
+
+        refined = []
+        for score0, x0 in warm_starts:
+            result = minimize(
+                objective, np.asarray(x0, dtype=np.float64), method="SLSQP",
+                bounds=bounds,
+                constraints=[{"type": "ineq", "fun": constraint_fn}],
+                options={"maxiter": 60, "ftol": 1e-10},
+            )
+            x1 = np.clip(result.x, lb_arr, ub_arr)
+            m1 = safe_metrics(x1)
+            if m1["earth_safe"] and m1["dc_converged"] and m1["score"] >= score0:
+                refined.append(x1)
+
+        return refined[:n_seeds]
 
     def _maxiter_for(self, num_burns: int) -> int:
         """

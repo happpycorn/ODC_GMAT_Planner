@@ -239,6 +239,10 @@ def _validate_strategy(strategy_cfg, errors: list):
         errors.append("strategy.TIEBREAK_POLISH 必須是 true/false，但收到 "
                       f"{strategy_cfg['TIEBREAK_POLISH']!r}")
 
+    if "ENABLE_NLP_SPLIT_REFINE" in strategy_cfg and not isinstance(strategy_cfg["ENABLE_NLP_SPLIT_REFINE"], bool):
+        errors.append("strategy.ENABLE_NLP_SPLIT_REFINE 必須是 true/false，但收到 "
+                      f"{strategy_cfg['ENABLE_NLP_SPLIT_REFINE']!r}")
+
     if "MISS_TOLERANCE_KM" in strategy_cfg:
         v = strategy_cfg["MISS_TOLERANCE_KM"]
         if not _is_number(v) or v < 0:

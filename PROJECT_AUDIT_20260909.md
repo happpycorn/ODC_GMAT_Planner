@@ -57,7 +57,10 @@ load_or_create_config + validate_config
 
 ## 4. 初賽專用 vs 決賽(文件層)
 
-初賽已結束(2026-09-05,實質第一——撞地球兩隊 F 失格、Team15 為主辦內部炸魚隊)。以下是**初賽專用、現在是歷史**:
+初賽已結束(2026-09-05,**第二名**——撞地球兩隊 F 失格,Team15 算正式參賽、以 98.3162 分拿下第一,
+我們官方繳交 98.31。2026-09-09 事後用 HAP-47 的 joint NLP 拆分器重算同一組解,GMAT 驗證後
+得 98.3177——當天若繳這份會以 0.0015 分之差贏過 Team15,細節見 `HAP47_SPLIT_ALGORITHM_RESEARCH.md`
+§7.1,但初賽已經結束、無法追溯提交,純記錄供下一輪參考)。以下是**初賽專用、現在是歷史**:
 - `CONTEST_DAY.md`(504 行,初賽當天手冊)、`runbooks/情境A/B/C`(初賽當天站別卡)、`SCENARIOS.md`(619 行)
 - `STATUS.md`(2104 行**累積式 log**)——歷史價值高但已臃腫,決賽開始前值得**封頂**(標一條「初賽線」,決賽另起新段或新檔)。
 - → 建議:開 `docs/prelim/` 收 CONTEST_DAY / runbooks;`STATUS.md` 加初賽封頂線。
@@ -72,7 +75,7 @@ load_or_create_config + validate_config
 | **P2** | 🟠 高(決賽) | **Earth-safe 判定是點質量解析式**(`reaches_perigee`/`check_constraints`,"J2 在 100s 尺度改不動")。決賽若開攝動,長弧近地點會漂,解析判定不再精確——而它現在是失格線。 | = HAP-46 §5 / HAP-20。攝動開時要切數值密集取樣判定。 |
 | **P3** | 🟠 高(決賽) | **雙曲線 A 路徑從未端到端跑過**。防禦大多已就位(T_max guard、validator、GMAT 相機、radius-range),但沒有一個雙曲線測資實跑過 `main.py`+GMAT。 | = HAP-46 / HAP-36。建雙曲線測資實跑。 |
 | P4 | 🟡 中 | `config_validator` 對雙曲線 A **沒檢查 TA 是否落在漸近線內**(\|TA\|<arccos(−1/e))。給錯會在 poliastro `get_r0_v0` 才炸,不是早攔。 | 小補丁:加一條雙曲線 TA 範圍檢查。 |
-| P5 | 🟡 中 | **拆分/路線只達到 Earth-safe 家族**,但初賽真正贏我們的(炸魚隊)是同一條解精修更緊。2nd→1st 的槓桿是精度,不是新解。 | = HAP-47(取代貪婪 relay)。 |
+| P5 | 🟡 中 | ~~拆分/路線只達到 Earth-safe 家族,但初賽真正贏我們的(Team15)是同一條解精修更緊。2nd→1st 的槓桿是精度,不是新解~~ ——**2026-09-09 HAP-47 PoC 已推翻**:joint NLP 拆分器對同一組解重新聯合優化,GMAT 驗證後多贏 0.008 分(98.3177,超過 Team15 的 98.3162),拆分演算法本身確實有次優空間,不只是精修不夠。 | = HAP-47(取代貪婪 relay),已完成 PoC 驗證,見 `HAP47_SPLIT_ALGORITHM_RESEARCH.md`。 |
 | P6 | 🟢 低 | ~430 行棄用傳播器 + 66 個 scratch 混雜,降低可讀性/新人上手。 | = §3 清理。 |
 
 ---
