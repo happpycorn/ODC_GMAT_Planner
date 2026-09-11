@@ -49,6 +49,11 @@ def fast_fitness_evaluator(
     # 最後一棒 Lambert 要考慮的最大圈數 (0 = 舊行為，只看不繞圈的直接轉移)。
     # 放在 scalars 最後面是為了讓既有的 13 個索引位置完全不動。
     lambert_max_revs = int(scalars[13])
+    # 拆棒感知搜尋 (0 = 關，等同舊行為)。開啟時對超過 max_dv 的「中間棒」預付拆棒的
+    # 最少代價——見下面迴圈裡的用法與 __init__ 的 SPLIT_AWARE_SEARCH 說明。同樣接在
+    # scalars 尾端 (索引 14/15)，既有索引不動。
+    split_aware = scalars[14]
+    dv_overhead = scalars[15]
 
     A_r0 = vectors[0]
     A_v0 = vectors[1]
@@ -85,8 +90,22 @@ def fast_fitness_evaluator(
 
         dv_mag = dv_r  # 球座標半徑本身就是 Δv 大小，不用再算一次 norm
         total_dv += dv_mag
-        if dv_mag > max_dv:  # 理論上不會發生了，留著當防呆
-            penalty_count += 1
+
+        if split_aware > 0.5:
+            # 拆棒感知：這發若超過單棒上限，它會在第二段被拆成 n_seg 段合法燒。拆棒不是
+            # 免費的，這裡預付「最少」代價，讓 DE 看到的分數貼近拆後分數：
+            #   * 時間：被迫多 (n_seg-1) 段 ≥100s 的機動間隔 (時間下界，真實拆法可能更久)。
+            #     必須在算 max_coast (用 current_time) 之前就加進去，後面的滑行才算對。
+            #   * 燃料：拆段重解 Lambert 通常比單發略貴，乘一個保守的 overhead 係數。
+            # max_dv 這裡是傳進來的 MAX_DV_SOFT，用它當每段容量略偏保守 (n_seg 可能多 1)，
+            # 方向安全。關旗標時這段完全不執行，dv_mag 受 bounds 保證已 ≤ max_dv。
+            if dv_mag > max_dv:
+                n_seg = math.ceil(dv_mag / max_dv)
+                current_time += (n_seg - 1.0) * min_coast_time
+                total_dv += dv_mag * (dv_overhead - 1.0)
+        else:
+            if dv_mag > max_dv:  # 關旗標時理論上不會發生 (bounds 已夾)，留著當防呆
+                penalty_count += 1
 
         v_curr_new = v_curr + dv_vec
 
@@ -384,6 +403,20 @@ class MissionOptimizer:
         self.MAX_DV_SOFT = max(0.0, self.MAX_DV - self.MAX_DV_MARGIN_MPS / 1000.0)
         self.MIN_COAST_TIME = float(rules.get("MIN_MANEUVER_INTERVAL_SEC", 100.0))
 
+        # 拆棒感知搜尋 (2026-09-11, HAP-67；預設關，關掉時下面全部等同舊行為)。
+        # 動機：規則只管「每次機動 ΔV ≤ 上限」，不管「軌道節點的總衝量」。一發 2500 m/s
+        # 的中間棒不是 infeasible——它可以拆成 2×1250、間隔 ≥100s，每段合法、零違規
+        # (見 docs 的 burn-split 方法與 HAP-47 joint-NLP 拆分器)。但舊版用 bounds 把中間棒
+        # 的 dv_r 硬夾在 MAX_DV_SOFT，等於把「需要大衝量、靠拆棒實現」的整族解從搜尋空間
+        # 切掉。開這個旗標後：(1) _generate_bounds 把中間棒上界放寬到 MAX_FACTOR×MAX_DV；
+        # (2) fast_fitness_evaluator 對超標中間棒「預付」拆棒的最少代價——被迫的 ≥100s 間隔
+        # 乘上額外段數、外加一個 ΔV overhead——讓 DE 看到的分數貼近拆後真實分數，不會被
+        # 「單發大燒免費」這個幻想目標騙走。總燃料照加、不放水；最後一棒不動 (它是 Lambert
+        # 攔截，拆法不同，另案)。第二段 (HAP-47) 再把這些待拆節點拆成合法多棒 + GMAT 驗證。
+        self.SPLIT_AWARE_SEARCH = bool(strategy.get("SPLIT_AWARE_SEARCH", False))
+        self.SPLIT_AWARE_MAX_FACTOR = max(1, int(strategy.get("SPLIT_AWARE_MAX_FACTOR", 3)))
+        self.SPLIT_AWARE_DV_OVERHEAD = max(1.0, float(strategy.get("SPLIT_AWARE_DV_OVERHEAD", 1.02)))
+
         # 攔截容許範圍：規則只要求 Δr ≤ 這個值，超出的精準度不會多加分 (Δr_min 會被
         # 地板夾住)，開放讓最後一棒 Lambert 瞄準這個球內最省油的點，而不是死盯著 A
         # 的精確位置。設成彈性可調，戰況緊繃時可以縮小 (甚至設 0 退回精準瞄準)。
@@ -508,11 +541,17 @@ class MissionOptimizer:
         偏移量，r 夾在 [0, MISS_TOLERANCE_SOFT] —— 天生保證瞄準點落在規則允許的命中
         容許範圍內，讓優化器自己決定要不要用這個容許範圍去換更省油的轉移。
         """
+        # 中間棒 dv_r 的上界：預設夾在 MAX_DV_SOFT (天生合規)；開拆棒感知搜尋時放寬到
+        # MAX_FACTOR×MAX_DV，讓 DE 能提出「靠拆棒實現」的大衝量節點 (代價由 fitness 的
+        # 拆棒 surrogate 預付，見 SPLIT_AWARE_SEARCH 的說明)。
+        dv_ub = self.MAX_DV_SOFT
+        if self.SPLIT_AWARE_SEARCH:
+            dv_ub = self.SPLIT_AWARE_MAX_FACTOR * self.MAX_DV
         lb = [0.0]
         ub = [self.T_max]
         for _ in range(1, num_burns):
             lb.extend([0.0, 0.0, 0.0, 0.0])
-            ub.extend([self.MAX_DV_SOFT, math.pi, 2.0 * math.pi, 1.0])
+            ub.extend([dv_ub, math.pi, 2.0 * math.pi, 1.0])
         lb.append(0.0)
         ub.append(1.0)
         lb.extend([0.0, 0.0, 0.0])
@@ -1495,7 +1534,8 @@ class MissionOptimizer:
         scalar_params = np.array([
             self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL,
             self.RE_VAL, self.MIN_PERIAPSIS, self.MAX_DV_SOFT, self.k_t, self.C_t, self.k_v, self.C_v,
-            float(self.LAMBERT_MAX_REVS)
+            float(self.LAMBERT_MAX_REVS),
+            float(self.SPLIT_AWARE_SEARCH), self.SPLIT_AWARE_DV_OVERHEAD
         ], dtype=np.float64)
         
         vector_params = np.vstack([
@@ -1629,7 +1669,8 @@ class MissionOptimizer:
         scalar_params = np.array([
             self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL,
             self.RE_VAL, self.MIN_PERIAPSIS, self.MAX_DV_SOFT, self.k_t, self.C_t, self.k_v, self.C_v,
-            float(self.LAMBERT_MAX_REVS)
+            float(self.LAMBERT_MAX_REVS),
+            float(self.SPLIT_AWARE_SEARCH), self.SPLIT_AWARE_DV_OVERHEAD
         ], dtype=np.float64)
         
         vector_params = np.vstack([
@@ -1719,7 +1760,8 @@ class MissionOptimizer:
         scalar_params = np.array([
             self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL,
             self.RE_VAL, self.MIN_PERIAPSIS, self.MAX_DV_SOFT,
-            self.k_t, self.C_t, self.k_v, self.C_v, float(self.LAMBERT_MAX_REVS)
+            self.k_t, self.C_t, self.k_v, self.C_v, float(self.LAMBERT_MAX_REVS),
+            float(self.SPLIT_AWARE_SEARCH), self.SPLIT_AWARE_DV_OVERHEAD
         ], dtype=np.float64)
         vector_params = np.vstack([self.A_r0, self.A_v0, self.B_r0, self.B_v0])
 

@@ -12,9 +12,13 @@ import cProfile
 import pstats
 
 # 引入重構後的新模組
+import numpy as np
 from src.optimizer import MissionOptimizer, run_study_over_revs
 from src.script_generator import script_generator
 from src.config_validator import validate_config, ConfigValidationError
+from src.core_math import propagate_dop853, fast_norm, to_vnb_frame
+from src.scorer import calculate_score
+from src.burn_splitter import legalize_route, _simulate_free
 
 # GmatConsole 路徑的最後備援值 (只在 --gmat-console 沒給、config.json 也沒有
 # local.gmat_console_path 時才用得到)。這個路徑寫死在這裡、被 git 追蹤，換一台機器/
@@ -358,6 +362,93 @@ def print_score_breakdown(mission_info, optimizer):
               f"（差 {abs(total-recorded):.2e}）——計分算法可能有處漂移了，請查。")
 
 
+def legalize_violating_winner(config, burns, times, mission_info, optimizer):
+    """HAP-67 Stage 2 接線：DE 贏家若有「超標但 Earth-safe」的違規棒，自動把它拆成合法
+    多棒版（`burn_splitter.legalize_route`）並回傳新的 (burns_vnb, times, mission_info)；
+    拆不出或沒違規就回 None（呼叫端沿用原解）。
+
+    這是「先給大致路線(允許違規)、再拆分」方法論的正式接線：DE 只管找路線、允許違規，
+    真正把違規合法化交給確定性拆分器 + joint NLP（目標函數=真實 calculate_score）。驗證
+    見 docs/HAP67_SPLIT_PIPELINE_PLAN.md（contest.json：88.32 含 −10 → 98.31 零違規、
+    GMAT 定燒命中、+9.99 分）。
+
+    預設開；strategy.AUTO_SPLIT_LEGALIZE=false 可關（退回舊行為：違規解原樣交出去）。
+    """
+    if not bool(config.get("strategy", {}).get("AUTO_SPLIT_LEGALIZE", True)):
+        return None
+    if int(mission_info.get("penalty_count", 0)) <= 0:
+        return None  # 沒有違規棒，沒東西要拆
+
+    opt = optimizer
+    mu, j2, j3, j4, re = opt.MU, opt.J2_VAL, opt.J3_VAL, opt.J4_VAL, opt.RE_VAL
+    mc, T_max = opt.MIN_COAST_TIME, opt.T_max
+    x = np.asarray(mission_info["x"], dtype=np.float64)
+    N0 = int(mission_info["num_burns"])
+
+    def _p(r, v, tt):
+        return propagate_dop853(r, v, float(tt), 60.0, mu, j2, j3, j4, re)
+
+    def _sph(rr, th, ph):
+        st = math.sin(th)
+        return np.array([rr * st * math.cos(ph), rr * st * math.sin(ph), rr * math.cos(th)])
+
+    # 解碼標準決策向量 → route（球座標慣例跟 reconstruct_mission_logs 逐字一致）
+    t0 = float(x[0]); cur = t0
+    r, v = _p(opt.B_r0, opt.B_v0, t0)
+    leading_dvs, leading_coasts, idx = [], [], 1
+    for _ in range(1, N0):
+        dvv = _sph(x[idx], x[idx + 1], x[idx + 2]); cf = x[idx + 3]; idx += 4
+        mx = T_max - cur - mc
+        tco = mc + cf * (mx - mc) if mx > mc else mc
+        leading_dvs.append(dvv); leading_coasts.append(tco)
+        v = v + dvv; r, v = _p(r, v, tco); cur += tco
+    flf = x[-4]; mxf = T_max - cur
+    tfin = mc + flf * (mxf - mc) if mxf > mc else mc
+    icpt = cur + tfin
+    r_A, _ = _p(opt.A_r0, opt.A_v0, icpt)
+    target = r_A + _sph(x[-3], x[-2], x[-1])
+
+    res = legalize_route(
+        t0=t0, leading_dvs=leading_dvs, leading_coasts=leading_coasts,
+        terminal_coast=tfin, target=target,
+        cap=opt.MAX_DV_SOFT, min_coast=mc, mu=mu, j2=j2, j3=j3, j4=j4, re=re,
+        min_periapsis=opt.MIN_PERIAPSIS, max_revs=opt.LAMBERT_MAX_REVS,
+        A_r0=opt.A_r0, A_v0=opt.A_v0, B_r0=opt.B_r0, B_v0=opt.B_v0,
+        k_t=opt.k_t, C_t=opt.C_t, k_v=opt.k_v, C_v=opt.C_v, T_max=T_max,
+        miss_tol=opt.MISS_TOLERANCE_SOFT, n_span=1, maxiter=80)
+    if res is None or not res["feasible"]:
+        print("\n⚠️ HAP-67 自動拆分：這個違規解在段數上限內拆不出合法版，沿用原解。")
+        return None
+
+    # free-ECI 結果 → 每棒「燒前狀態」→ VNB；組回 script_generator / mission_info 要的格式
+    Nf = int(res["N"]); xf = np.asarray(res["x"], dtype=np.float64)
+    t0f = float(xf[0]); coastsf = xf[1:1 + Nf]; dvsf = xf[1 + Nf:].reshape(Nf, 3)
+    rr, vv = _p(opt.B_r0, opt.B_v0, t0f); states = []
+    for i in range(Nf):
+        states.append((rr.copy(), vv.copy())); vv = vv + dvsf[i]; rr, vv = _p(rr, vv, coastsf[i])
+    m = _simulate_free(xf, Nf, mu, j2, j3, j4, re, opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0)
+    burns_vnb = [tuple(float(c) for c in to_vnb_frame(rp, vp, dvsf[i]))
+                 for i, (rp, vp) in enumerate(states)]
+    times_new = [float(t0f)] + [float(c) for c in coastsf]
+    new_mi = {
+        "x": xf, "num_burns": Nf,
+        "score": float(res["score"]), "miss_km": float(res["miss_km"]),
+        "total_dv_mps": float(res["total_dv_mps"]), "T_team": float(m["T_team"]),
+        "penalty_count": 0,
+        # 拆分解每棒都是直接算好的 ECI 燒、legalize_route 已驗證命中容許球內，沒有「Lambert
+        # 猜測靠 DC 收斂」這回事，本來就自洽——對齊 dc_converged 語意設 True。
+        "dc_converged": True,
+        "aim_point": tuple(float(c) for c in m["r_final"]),
+        "final_burn_dv_mps": float(res["dv_mps"][-1]),
+        "earth_safe": bool(float(np.min(m["arc_minr"])) >= opt.MIN_PERIAPSIS - 1e-3),
+        "min_arc_radius_km": float(np.min(m["arc_minr"])),
+    }
+    print(f"\n🔧 HAP-67 自動拆分：違規解 {mission_info['score']:.4f}（{mission_info['penalty_count']} 次違規）"
+          f" → 合法 {new_mi['score']:.4f}（{Nf} 棒、零違規、總Δv {new_mi['total_dv_mps']:,.0f} m/s）"
+          f"，差 {new_mi['score']-mission_info['score']:+.4f} 分。")
+    return burns_vnb, times_new, new_mi
+
+
 def main():
     # 效能分析器設定
     if ENABLE_PROFILING:
@@ -406,6 +497,15 @@ def main():
         print("  通常代表 T_max 內沒有 Earth-safe 合法解 —— 用 feasibility.py 確認，")
         print("  或放寬 T_max / 調整棒數再重跑。仍會產出 outputs/output.txt 供診斷。")
         print("🔴" * 30 + "\n")
+
+    # HAP-67 Stage 2：違規但 Earth-safe 的解，自動拆成合法多棒版（先給路線允許違規、再拆分
+    # 的方法論正式接線）。成功就換掉 burns/times/mission_info，後面產腳本/驗證/紀錄全用合法版；
+    # 拆不出或關掉旗標 (strategy.AUTO_SPLIT_LEGALIZE=false) 就沿用原解。
+    if earth_safe:
+        _legal = legalize_violating_winner(config, burns, times, mission_info, optimizer)
+        if _legal is not None:
+            burns, times, mission_info = _legal
+            earth_safe = bool(mission_info.get("earth_safe", True))
 
     # 分數拆解 + 交換率（純加印，不改計算；見 print_score_breakdown）
     print_score_breakdown(mission_info, optimizer)

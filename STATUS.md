@@ -4,7 +4,7 @@
 **怎麼用這個工具看 [README.md](README.md)；演算法/物理模型原理看 [METHODOLOGY.md](docs/METHODOLOGY.md)**；
 初賽的逐日開發日誌封存在 [docs/log/DEVLOG_prelim.md](docs/log/DEVLOG_prelim.md)；更細的技術決策看 commit log 跟程式碼註解。
 
-**最後更新：2026-09-11——初賽已結束，正在為下一輪整理環境。**
+**最後更新：2026-09-11——初賽已結束；HAP-67 拆棒管線上線（違規解自動合法化，見下）。**
 
 ## 這是什麼
 
@@ -36,8 +36,16 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
 - 力學引擎：DOP853 積分器（`rtol=1e-12, atol=1e-9`）、可設定重力場 `GRAVITY_DEGREE`(0/2/3/4)。
 - GMAT 整合：`GmatConsole --exit --run` 無頭驗證、自動讀報表對照、雙曲線相機／radius-range 已加。
 - Config 驗證：`config_validator` 已放寬 SMA/ECC、支援雙曲線輸入。
-- 種子機制四家族：relay／ladder／pcsplit／**joint NLP 精修（HAP-47，預設關閉，下輪備用）**。
-- 回歸：`uv run python run_regression.py`（5 支、~27s，動任何東西前先跑）。
+- 種子機制四家族：relay／ladder／pcsplit／joint NLP 精修（HAP-47）。
+- **拆棒管線（HAP-67，2026-09-11 上線，預設開）**：`src/burn_splitter.py` + `main.py` 的
+  `legalize_violating_winner()`。DE 挑完贏家後，若有「超標但 Earth-safe」的違規棒，自動拆成
+  合法多棒版（**段數動態算出、不再被 MAX_BURNS 綁死** → joint NLP 用真實 `calculate_score`
+  壓低總 Δv），後面產腳本/GMAT/紀錄全用合法版。旗標 `strategy.AUTO_SPLIT_LEGALIZE`（設 false
+  退回舊行為）。實證：contest.json **88.32（含 −10 違規）→ 98.31（零違規、GMAT 定燒命中、可交）**，
+  +9.99 分。設計/驗證全記在 [HAP67_SPLIT_PIPELINE_PLAN.md](docs/HAP67_SPLIT_PIPELINE_PLAN.md)。
+  注意：種子端的 pcsplit/split_even-as-seed 現在是死重（拆棒改由後處理），待收尾移除。
+- 回歸：`uv run python run_regression.py`（5 支、~27s，動任何東西前先跑）。拆棒管線目前只有
+  scratchpad 手動驗證，還沒收斂成正式回歸測試。
 
 **開始下一輪前要處理的風險**（出自 [PROJECT_AUDIT_20260909.md](docs/PROJECT_AUDIT_20260909.md)）：
 - 🟠 **P2 Earth-safe 判定是點質量解析式**（`reaches_perigee`/`check_constraints`）。下一輪若開攝動，

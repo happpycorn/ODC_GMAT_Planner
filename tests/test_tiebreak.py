@@ -133,9 +133,14 @@ from src.optimizer import fast_fitness_evaluator
 def polish_case(cfg, forced_offset_km=3.0):
     """把一組解的瞄準偏移硬設成 forced_offset_km，跑收尾微調，回傳前後的偏移與分數。"""
     opt = MissionOptimizer(cfg)
+    # scalars 的索引佈局必須跟 fast_fitness_evaluator 逐格對齊：0-12 是環境/計分常數，
+    # 13=lambert_max_revs，14=split_aware 旗標，15=dv overhead。少放會讓 njit 讀到
+    # 陣列界外的記憶體 (numba 預設不做邊界檢查)，測試會看似通過其實在讀垃圾值。
     sp = np.array([opt.MIN_COAST_TIME, opt.T_max, opt.MU, opt.J2_VAL, opt.J3_VAL,
                    opt.J4_VAL, opt.RE_VAL, opt.MIN_PERIAPSIS, opt.MAX_DV_SOFT,
-                   opt.k_t, opt.C_t, opt.k_v, opt.C_v])
+                   opt.k_t, opt.C_t, opt.k_v, opt.C_v,
+                   float(opt.LAMBERT_MAX_REVS),
+                   float(opt.SPLIT_AWARE_SEARCH), opt.SPLIT_AWARE_DV_OVERHEAD])
     vp = np.vstack([opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0])
 
     def f(v):
