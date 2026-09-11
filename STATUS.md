@@ -43,13 +43,15 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
   壓低總 Δv），後面產腳本/GMAT/紀錄全用合法版。旗標 `strategy.AUTO_SPLIT_LEGALIZE`（設 false
   退回舊行為）。實證：contest.json **88.32（含 −10 違規）→ 98.31（零違規、GMAT 定燒命中、可交）**，
   +9.99 分。設計/驗證全記在 [HAP67_SPLIT_PIPELINE_PLAN.md](docs/HAP67_SPLIT_PIPELINE_PLAN.md)。
-  注意：種子端的 pcsplit/split_even-as-seed 現在是死重（拆棒改由後處理），待收尾移除。
+  注意：種子端的 pcsplit/split_even-as-seed **疑似冗餘但別急著移除**——拆棒雖改由後處理，
+  但那些種子仍可能幫 DE 找到**更好的路線**（PoC 冠軍 98.3177 vs 後處理自動解 98.31，差在路線
+  不在拆法），移除前要先驗證「拿掉後 DE 分數不掉」，不是無腦刪。
   **搜尋端 `SPLIT_AWARE_SEARCH`（放寬中間棒上界）維持預設關**：調查 14 個場景 0/14 需要 >cap
   中間棒（大機動都被節線攔截閃掉、或落終端棒已處理），故「中間棒拆分器」不做、此旗標休眠別刪，
   下一輪雙曲線 A 真題出來再重驗。完整調查見
   [HAP67_SPLIT_AWARE_INVESTIGATION.md](docs/HAP67_SPLIT_AWARE_INVESTIGATION.md)。
-- 回歸：`uv run python run_regression.py`（5 支、~27s，動任何東西前先跑）。拆棒管線目前只有
-  scratchpad 手動驗證，還沒收斂成正式回歸測試。
+- 回歸：`uv run python run_regression.py`（6 支、~38s，動任何東西前先跑）。拆棒管線已有正式
+  回歸 `tests/test_burn_splitter.py`（性質式斷言：合法/命中/Earth-safe/動態段數）。
 
 **開始下一輪前要處理的風險**（出自 [PROJECT_AUDIT_20260909.md](docs/PROJECT_AUDIT_20260909.md)）：
 - 🟠 **P2 Earth-safe 判定是點質量解析式**（`reaches_perigee`/`check_constraints`）。下一輪若開攝動，

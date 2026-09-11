@@ -139,8 +139,13 @@ split_even 的關鍵差別，也是為什麼 Stage 2 能獨立產出「可直接
   （預設 True，設 false 退回舊行為）。
   ✅ **端到端 `main.py --config`（縮減版）實跑**：DE 88.32 → 🔧 自動拆分 98.31（零違規）→ GMAT
   一般版 DC 收斂+命中+合規、定燒版命中+合規 **「👉 可以直接繳交」**、run_history 寫入、regression 5/5。
-  **剩餘（非阻塞收尾）**：移除種子端冗餘 pcsplit/split_even-as-seed、修 doc/code 矛盾（HAP-47 一名
-  三義、ENABLE_NLP_SPLIT_REFINE 預設值）、把 scratchpad 驗證收斂成正式回歸測試。
+  **收尾進度（2026-09-12）**：
+  - ✅ 正式回歸測試 `tests/test_burn_splitter.py`（性質式：合法/命中/Earth-safe/動態段數），
+    `run_regression.py` 6/6 綠。
+  - ✅ doc/code 矛盾：live 文件不再寫「HAP-47 預設關」（ENABLE_NLP_SPLIT_REFINE 實際 default=True）；
+    「HAP-47 一名三義」已在 investigation doc §0 釐清（方法論 / PoC / 正式版種子精修是三個東西）。
+  - ⏳ 種子端 pcsplit/split_even-as-seed：**不是死重、別急著刪**——可能仍幫 DE 找更好路線（冠軍
+    98.3177 vs 後處理 98.31，差在路線）。移除前要先驗證「拿掉後 DE 分數不掉」，列為獨立驗證任務。
 
 ### SPLIT_AWARE_SEARCH / 中間棒拆分器：驗證後「不做」（2026-09-11）
 
