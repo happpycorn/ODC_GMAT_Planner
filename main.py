@@ -19,6 +19,7 @@ from src.config_validator import validate_config, ConfigValidationError
 from src.core_math import propagate_dop853, fast_norm, to_vnb_frame
 from src.scorer import calculate_score
 from src.burn_splitter import legalize_route, _simulate_free
+from src.runlog import log, setup as setup_logging
 
 # GmatConsole 路徑的最後備援值 (只在 --gmat-console 沒給、config.json 也沒有
 # local.gmat_console_path 時才用得到)。這個路徑寫死在這裡、被 git 追蹤，換一台機器/
@@ -106,7 +107,7 @@ def load_or_create_config(filename=os.path.join("configs", "config.json")):
     """
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     if not os.path.exists(filename):
-        print(f"⚠️ 找不到 {filename}，正在自動生成預設設定檔...")
+        log.warning(f"⚠️ 找不到 {filename}，正在自動生成預設設定檔...")
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(DEFAULT_CONFIG, f, indent=4)
         config = DEFAULT_CONFIG
@@ -115,13 +116,13 @@ def load_or_create_config(filename=os.path.join("configs", "config.json")):
             try:
                 config = json.load(f)
             except json.JSONDecodeError as exc:
-                print(f"❌ {filename} 不是合法的 JSON: {exc}")
+                log.error(f"❌ {filename} 不是合法的 JSON: {exc}")
                 sys.exit(1)
 
     try:
         validate_config(config)
     except ConfigValidationError as exc:
-        print(f"❌ {filename} 驗證失敗:\n{exc}")
+        log.error(f"❌ {filename} 驗證失敗:\n{exc}")
         sys.exit(1)
 
     return config
@@ -150,6 +151,16 @@ def parse_args():
              "適合正式繳交——換一台電腦跑也不用擔心求解器行為不一致，因為根本沒有"
              "求解器在跑。開發/迭代時想省這幾秒可以加這個旗標跳過。"
     )
+    # 執行期輸出的詳略（HAP-68）。預設終端機只印事件級摘要，完整 DEBUG 一律寫進
+    # outputs/run.log，事後要追細節去撈那個檔就好。
+    parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="終端機印出完整 DEBUG（每趟完整報告、逐項比對、VNB 向量、scipy 迭代碎念）"
+    )
+    parser.add_argument(
+        "-q", "--quiet", action="store_true",
+        help="終端機只印 WARNING 以上（適合排程/批次跑）；完整細節照樣寫進 outputs/run.log"
+    )
     return parser.parse_args()
 
 
@@ -162,11 +173,11 @@ def run_gmat_verification(console_path: str, script_path: str, timeout_sec: floa
     """
     console_path = os.path.expanduser(console_path)
     if not os.path.exists(console_path):
-        print(f"⚠️ 找不到 GmatConsole ({console_path})，略過自動 GMAT 驗證。"
-              f"每次都要打 --gmat-console 太麻煩的話，可以在 config.json 裡加："
-              f'\n   "local": {{"gmat_console_path": "你的 GmatConsole 完整路徑"}}'
-              f"\n（這個設定只在你自己的 config.json 裡，不會跟著 git 到處跑）。"
-              f"不想跑 GMAT 驗證就用 --no-gmat 關掉這個提示。")
+        log.warning(f"⚠️ 找不到 GmatConsole ({console_path})，略過自動 GMAT 驗證。"
+                    f"每次都要打 --gmat-console 太麻煩的話，可以在 config.json 裡加："
+                    f'\n   "local": {{"gmat_console_path": "你的 GmatConsole 完整路徑"}}'
+                    f"\n（這個設定只在你自己的 config.json 裡，不會跟著 git 到處跑）。"
+                    f"不想跑 GMAT 驗證就用 --no-gmat 關掉這個提示。")
         return None
 
     bin_dir = os.path.dirname(console_path)
@@ -185,19 +196,19 @@ def run_gmat_verification(console_path: str, script_path: str, timeout_sec: floa
         try:
             os.remove(report_path)
         except OSError as exc:
-            print(f"⚠️ 無法清除舊的報表檔 ({report_path}): {exc}，這次驗證結果可能不可靠。")
+            log.warning(f"⚠️ 無法清除舊的報表檔 ({report_path}): {exc}，這次驗證結果可能不可靠。")
 
-    print("\n🛰️  正在呼叫 GmatConsole 做無頭驗證...")
+    log.info("\n🛰️  正在呼叫 GmatConsole 做無頭驗證...")
     try:
         result = subprocess.run(
             [console_path, "--exit", "--run", os.path.abspath(script_path)],
             cwd=bin_dir, capture_output=True, text=True, timeout=timeout_sec
         )
     except subprocess.TimeoutExpired:
-        print(f"⚠️ GmatConsole 超過 {timeout_sec} 秒沒結束，放棄這次驗證。")
+        log.warning(f"⚠️ GmatConsole 超過 {timeout_sec} 秒沒結束，放棄這次驗證。")
         return None
     except Exception as exc:
-        print(f"⚠️ 呼叫 GmatConsole 失敗: {exc}")
+        log.warning(f"⚠️ 呼叫 GmatConsole 失敗: {exc}")
         return None
 
     stdout = result.stdout or ""
@@ -207,19 +218,19 @@ def run_gmat_verification(console_path: str, script_path: str, timeout_sec: floa
     # 檔存不存在——雖然上面已經先清掉舊檔案，這裡多一層檢查讓失敗訊息更明確、
     # 直接把 GMAT 自己回報的錯誤內容印出來，不用使用者自己去猜為什麼沒有報表。
     if result.returncode != 0:
-        print(f"⚠️ GmatConsole 執行失敗 (exit code {result.returncode})，GMAT 輸出末段：")
-        print("\n".join(stdout.strip().splitlines()[-15:]))
+        tail = "\n".join(stdout.strip().splitlines()[-15:])
+        log.warning(f"⚠️ GmatConsole 執行失敗 (exit code {result.returncode})，GMAT 輸出末段：\n{tail}")
         return None
 
     if not os.path.exists(report_path):
-        print(f"⚠️ GMAT 執行完但找不到報表檔 ({report_path})，可能腳本執行有誤，GMAT 輸出末段：")
-        print("\n".join(stdout.strip().splitlines()[-15:]))
+        tail = "\n".join(stdout.strip().splitlines()[-15:])
+        log.warning(f"⚠️ GMAT 執行完但找不到報表檔 ({report_path})，可能腳本執行有誤，GMAT 輸出末段：\n{tail}")
         return None
 
     with open(report_path, "r", encoding="utf-8") as f:
         lines = [ln for ln in f.read().strip().splitlines() if ln.strip()]
     if len(lines) < 2:
-        print(f"⚠️ 報表檔 ({report_path}) 內容看起來不完整: {lines}")
+        log.warning(f"⚠️ 報表檔 ({report_path}) 內容看起來不完整: {lines}")
         return None
 
     try:
@@ -241,7 +252,7 @@ def run_gmat_verification(console_path: str, script_path: str, timeout_sec: floa
             "final_burn_vnb": (float(e1), float(e2), float(e3)),
         }
     except ValueError:
-        print(f"⚠️ 報表檔格式解析失敗: {lines[-1]!r}")
+        log.warning(f"⚠️ 報表檔格式解析失敗: {lines[-1]!r}")
         return None
 
 
@@ -294,7 +305,7 @@ def append_run_history(config, mission_info, execution_time, gmat_result=None,
         }
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
-    print(f"📒 執行紀錄已附加到 {path}")
+    log.info(f"📒 執行紀錄已附加到 {path}")
 
 
 def print_score_breakdown(mission_info, optimizer):
@@ -330,36 +341,34 @@ def print_score_breakdown(mission_info, optimizer):
     val_per_sec = k_t * (25.0 - score_time) * score_time / 25.0     # 分 / 秒
     val_per_mps = k_v * (25.0 - score_dv) * score_dv / 25.0         # 分 / (m/s)
 
-    print(f"\n── 分數拆解與交換率 {'─' * 30}")
-    print(f"  距離   {score_dist:>6.2f} / 50   "
-          f"(Δr_min {dr*1000:,.0f} m；≤5,000 m 時地板滿分 50)")
-    print(f"  時間   {score_time:>6.2f} / 25   "
-          f"(T {T:,.0f} s vs C_t {C_t:,.0f} s；每早到 1 s ≈ +{val_per_sec:.4g} 分)")
-    print(f"  燃料   {score_dv:>6.2f} / 25   "
-          f"(ΔV {dv:,.0f} m/s vs C_v {C_v:,.0f} m/s；每省 1 m/s ≈ +{val_per_mps:.4g} 分)")
-    print(f"  違規   {-penalty:>6.2f}        ({pen} 次 × -10)")
-    print(f"  {'─' * 5}")
-    print(f"  合計   {total:>6.2f} / 100")
+    lines = [f"\n── 分數拆解與交換率 {'─' * 30}",
+             f"  距離   {score_dist:>6.2f} / 50   (Δr_min {dr*1000:,.0f} m；≤5,000 m 時地板滿分 50)",
+             f"  時間   {score_time:>6.2f} / 25   (T {T:,.0f} s vs C_t {C_t:,.0f} s；每早到 1 s ≈ +{val_per_sec:.4g} 分)",
+             f"  燃料   {score_dv:>6.2f} / 25   (ΔV {dv:,.0f} m/s vs C_v {C_v:,.0f} m/s；每省 1 m/s ≈ +{val_per_mps:.4g} 分)",
+             f"  違規   {-penalty:>6.2f}        ({pen} 次 × -10)",
+             f"  {'─' * 5}",
+             f"  合計   {total:>6.2f} / 100"]
 
     # 交換率：省 1 秒 相當於 省多少 m/s（燃料/時間邊際價值之比）
     if val_per_mps > 1e-12 and val_per_sec > 1e-12:
         mps_per_sec = val_per_sec / val_per_mps
-        print(f"  ⇄ 交換率：省 1 秒 ≈ 省 {mps_per_sec:,.2f} m/s"
-              f"（花 ≤{mps_per_sec:,.2f} m/s 換早到 1 秒才划算；反過來省 1 m/s ≈ 早到 "
-              f"{1.0/mps_per_sec:,.2f} 秒）")
+        lines.append(f"  ⇄ 交換率：省 1 秒 ≈ 省 {mps_per_sec:,.2f} m/s"
+                     f"（花 ≤{mps_per_sec:,.2f} m/s 換早到 1 秒才划算；反過來省 1 m/s ≈ 早到 "
+                     f"{1.0/mps_per_sec:,.2f} 秒）")
     else:
         which = []
         if val_per_sec <= 1e-12:
             which.append("時間項已飽和（再早到幾乎不加分）")
         if val_per_mps <= 1e-12:
             which.append("燃料項已飽和（再省油幾乎不加分）")
-        print(f"  ⇄ 交換率：{'、'.join(which)}——這一側推不動分數了。")
+        lines.append(f"  ⇄ 交換率：{'、'.join(which)}——這一側推不動分數了。")
+    log.info("\n".join(lines))
 
     # 自我驗算：三塊必須加得回 mission_info 記錄的分數（對不上代表算法漂移）
     recorded = float(mission_info["score"])
     if abs(total - recorded) > 1e-6:
-        print(f"  ⚠️ 拆解 {total:.6f} 與記錄分數 {recorded:.6f} 不一致"
-              f"（差 {abs(total-recorded):.2e}）——計分算法可能有處漂移了，請查。")
+        log.warning(f"⚠️ 拆解 {total:.6f} 與記錄分數 {recorded:.6f} 不一致"
+                    f"（差 {abs(total-recorded):.2e}）——計分算法可能有處漂移了，請查。")
 
 
 def legalize_violating_winner(config, burns, times, mission_info, optimizer):
@@ -417,7 +426,7 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
         k_t=opt.k_t, C_t=opt.C_t, k_v=opt.k_v, C_v=opt.C_v, T_max=T_max,
         miss_tol=opt.MISS_TOLERANCE_SOFT, n_span=1, maxiter=80)
     if res is None or not res["feasible"]:
-        print("\n⚠️ HAP-67 自動拆分：這個違規解在段數上限內拆不出合法版，沿用原解。")
+        log.info("⚠️ HAP-67 自動拆分：這個違規解在段數上限內拆不出合法版，沿用原解。")
         return None
 
     # free-ECI 結果 → 每棒「燒前狀態」→ VNB；組回 script_generator / mission_info 要的格式
@@ -443,9 +452,9 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
         "earth_safe": bool(float(np.min(m["arc_minr"])) >= opt.MIN_PERIAPSIS - 1e-3),
         "min_arc_radius_km": float(np.min(m["arc_minr"])),
     }
-    print(f"\n🔧 HAP-67 自動拆分：違規解 {mission_info['score']:.4f}（{mission_info['penalty_count']} 次違規）"
-          f" → 合法 {new_mi['score']:.4f}（{Nf} 棒、零違規、總Δv {new_mi['total_dv_mps']:,.0f} m/s）"
-          f"，差 {new_mi['score']-mission_info['score']:+.4f} 分。")
+    log.info(f"\n🔧 HAP-67 自動拆分：違規解 {mission_info['score']:.4f}（{mission_info['penalty_count']} 次違規）"
+             f" → 合法 {new_mi['score']:.4f}（{Nf} 棒、零違規、總Δv {new_mi['total_dv_mps']:,.0f} m/s）"
+             f"，差 {new_mi['score']-mission_info['score']:+.4f} 分。")
     return burns_vnb, times_new, new_mi
 
 
@@ -459,6 +468,13 @@ def main():
     warnings.filterwarnings("ignore")
 
     args = parse_args()
+
+    # 執行期日誌（HAP-68）：終端機依 -v/-q 決定詳略，完整 DEBUG 一律落到 outputs/run.log
+    # （mode='w'，只留最新一次），終端機再怎麼精簡都追得回細節。
+    os.makedirs("outputs", exist_ok=True)
+    setup_logging(verbose=args.verbose, quiet=args.quiet,
+                  logfile=os.path.join("outputs", "run.log"))
+
     config = load_or_create_config(args.config)
 
     # GmatConsole 路徑解析順序：--gmat-console > config.json 的 local.gmat_console_path
@@ -479,7 +495,7 @@ def main():
     burns, times, mission_info, optimizer = run_study_over_revs(config)
 
     if burns is None or times is None:
-        print("任務終止。")
+        log.error("任務終止。")
         return
 
     # Earth-safe 硬性閘門 (2026-09-09, HAP-48)：初賽證實「軌跡穿過地表」是官方失格線
@@ -490,13 +506,12 @@ def main():
     earth_safe = bool(mission_info.get("earth_safe", True))
     if not earth_safe:
         alt = mission_info.get("min_arc_radius_km", float("nan")) - 6378.137
-        print("\n" + "🔴" * 30)
-        print("  警告：這個解的軌跡會穿過地球 (全程最低高度 "
-              f"{alt:,.0f} km，低於地表)。")
-        print("  官方會判此類軌跡失格 (初賽已證實)，**不會產生繳交腳本，絕對不可繳交**。")
-        print("  通常代表 T_max 內沒有 Earth-safe 合法解 —— 用 feasibility.py 確認，")
-        print("  或放寬 T_max / 調整棒數再重跑。仍會產出 outputs/output.txt 供診斷。")
-        print("🔴" * 30 + "\n")
+        log.warning("\n" + "🔴" * 30
+                    + f"\n  警告：這個解的軌跡會穿過地球 (全程最低高度 {alt:,.0f} km，低於地表)。"
+                    + "\n  官方會判此類軌跡失格 (初賽已證實)，**不會產生繳交腳本，絕對不可繳交**。"
+                    + "\n  通常代表 T_max 內沒有 Earth-safe 合法解 —— 用 feasibility.py 確認，"
+                    + "\n  或放寬 T_max / 調整棒數再重跑。仍會產出 outputs/output.txt 供診斷。"
+                    + "\n" + "🔴" * 30)
 
     # HAP-67 Stage 2：違規但 Earth-safe 的解，自動拆成合法多棒版（先給路線允許違規、再拆分
     # 的方法論正式接線）。成功就換掉 burns/times/mission_info，後面產腳本/驗證/紀錄全用合法版；
@@ -525,35 +540,35 @@ def main():
     execution_time = end_time - start_time
 
     minute_note = f" (約 {execution_time / 60:.2f} 分鐘)" if execution_time > 60 else ""
-    print(f"\n⏳ 總計算時間: {execution_time:.2f} 秒{minute_note}")
+    log.info(f"\n⏳ 總計算時間: {execution_time:.2f} 秒{minute_note}")
 
     # 3. 自動呼叫 GMAT 做無頭驗證，不用再手動開 GUI 點來點去
     gmat_result = None
     if args.no_gmat:
-        print("（跳過了 GMAT 驗證，記得手動開 GMAT 跑一次 outputs/output.txt 確認 InterceptSuccess）")
+        log.info("（跳過了 GMAT 驗證，記得手動開 GMAT 跑一次 outputs/output.txt 確認 InterceptSuccess）")
     else:
         gmat_result = run_gmat_verification(gmat_console_path, os.path.join("outputs", "output.txt"))
         if gmat_result:
             match = "✅" if gmat_result["intercept_success"] else "❌"
             dv_match = "✅" if gmat_result["final_burn_legal"] else "❌"
-            # 三欄對照 (GMAT / Python / 差距)：這份報告最重要的用途就是看兩個模型
-            # 差多遠，差距那一欄直接算好，不要讓使用者自己心算。
+            # 一般版本 (DC) 結果：終端機給一行事件摘要 (命中/Targeter/最後一棒)；GMAT vs Python
+            # 的逐項比對表是診斷細節，收進 DEBUG（-v 或 outputs/run.log 看，見準則：GMAT 表 → -v）。
             d_miss = abs(gmat_result['miss_km'] - mission_info['miss_km']) * 1000.0
             d_dv = abs(gmat_result['final_burn_dv_mps'] - mission_info['final_burn_dv_mps'])
-            print(f"\n── GMAT 驗證：一般版本 (含 DC 求解器) {'─' * 22}")
-            print(f"  {'':<12}{'GMAT':>14}{'Python':>14}{'差距':>12}")
-            print(f"  {'Δr_min':<12}{gmat_result['miss_km']*1000:>13,.3f}m"
-                  f"{mission_info['miss_km']*1000:>13,.3f}m{d_miss:>11,.3f}m")
-            # GMAT 自己的 DC 可以自由調整最後一棒去命中瞄準點，這是它實際收斂後的
-            # 真實大小，跟 InterceptSuccess 是分開的兩件事，兩個都要看。
-            print(f"  {'最後一棒 Δv':<10}{gmat_result['final_burn_dv_mps']:>13,.1f}m/s"
-                  f"{mission_info['final_burn_dv_mps']:>11,.1f}m/s{d_dv:>9,.1f}m/s")
-            print(f"  {'T_team':<12}{gmat_result['t_team_sec']:>13,.2f}s"
-                  f"{mission_info['T_team']:>13,.2f}s")
-            print(f"  命中 {match} {'成功' if gmat_result['intercept_success'] else '失敗'}"
-                  f"   Targeter {'✅ 收斂' if gmat_result['targeter_converged'] else '⚠️ 未收斂'}"
-                  f"   最後一棒 {dv_match} {'合規' if gmat_result['final_burn_legal'] else '超過上限'}")
-            print(f"  報表：{gmat_result['report_path']}")
+            log.info(f"🛰️ GMAT 一般版(DC)：命中 {match} {'成功' if gmat_result['intercept_success'] else '失敗'}"
+                     f"   Targeter {'✅收斂' if gmat_result['targeter_converged'] else '⚠️未收斂'}"
+                     f"   最後一棒 {dv_match} {'合規' if gmat_result['final_burn_legal'] else '超過上限'}"
+                     f"   (Δr {gmat_result['miss_km']*1000:,.0f}m)")
+            log.debug(
+                f"── GMAT 驗證：一般版本 (含 DC 求解器) {'─' * 22}\n"
+                f"  {'':<12}{'GMAT':>14}{'Python':>14}{'差距':>12}\n"
+                f"  {'Δr_min':<12}{gmat_result['miss_km']*1000:>13,.3f}m"
+                f"{mission_info['miss_km']*1000:>13,.3f}m{d_miss:>11,.3f}m\n"
+                f"  {'最後一棒 Δv':<10}{gmat_result['final_burn_dv_mps']:>13,.1f}m/s"
+                f"{mission_info['final_burn_dv_mps']:>11,.1f}m/s{d_dv:>9,.1f}m/s\n"
+                f"  {'T_team':<12}{gmat_result['t_team_sec']:>13,.2f}s"
+                f"{mission_info['T_team']:>13,.2f}s\n"
+                f"  報表：{gmat_result['report_path']}")
 
     # 3.5 產生「固定燃燒版本」(不含任何求解器，單純傳播+施加燃燒)。
     #
@@ -577,7 +592,7 @@ def main():
     fixed_script_source = None  # "gmat_dc" | "python_fallback" | None，寫進 run_history 方便回頭查
     if not earth_safe:
         # Earth-safe 閘門擋下 (HAP-48)：撞地球的解不產生繳交腳本，避免手滑送出去被失格。
-        print("\n⛔ Earth-safe 閘門：此解撞地球，跳過『固定燃燒版本』繳交腳本的產生。")
+        log.warning("⛔ Earth-safe 閘門：此解撞地球，跳過『固定燃燒版本』繳交腳本的產生。")
     elif not args.no_gmat and not args.no_fixed_script:
         clean_dc = bool(
             gmat_result and gmat_result["intercept_success"]
@@ -587,7 +602,7 @@ def main():
         if clean_dc:
             fixed_script_source = "gmat_dc"
             final_burn_vnb = gmat_result["final_burn_vnb"]
-            print("\n🔒 一般版本 (GMAT DC) 驗證乾淨通過，用 GMAT 收斂後的值產生固定燃燒版本...")
+            log.info("🔒 一般版本 (GMAT DC) 驗證乾淨通過，用 GMAT 收斂後的值產生固定燃燒版本...")
         elif mission_info["dc_converged"]:
             fixed_script_source = "python_fallback"
             final_burn_vnb = tuple(burns[-1])
@@ -596,12 +611,12 @@ def main():
                 "命中失敗 (Δr > 5km)" if not gmat_result["intercept_success"] else
                 "最後一棒超過 Δv 上限"
             )
-            print(f"\n⚠️ 一般版本 (GMAT DC) 沒有乾淨通過（{reason}），"
-                  f"改用 Python 自己算出的燃燒值產生固定燃燒版本，繞過 DC 直接驗證這個方案"
-                  f"能不能重現、真正的 Δv 是多少...")
+            # 為什麼要 fallback（DC 的 Vary 邊界搆不到需求量級等）寫在上面這段區塊註解裡。
+            log.info(f"⚠️ 一般版本 (GMAT DC) 沒有乾淨通過（{reason}），改用 Python 自算的燃燒值"
+                     f"產生固定燃燒版本...")
         else:
-            print("\n⚠️ 一般版本沒有通過，Python 自己的模型也沒收斂到瞄準點——這組解本身"
-                  "沒有可信的燃燒值可以拿來當 fallback，先處理好再重跑。")
+            log.warning("⚠️ 一般版本沒有通過，Python 自己的模型也沒收斂到瞄準點——這組解本身"
+                        "沒有可信的燃燒值可以拿來當 fallback，先處理好再重跑。")
 
         if final_burn_vnb is not None:
             script_generator(
@@ -622,25 +637,24 @@ def main():
                 fmatch = "✅" if fixed_script_result["intercept_success"] else "❌"
                 fdv_match = "✅" if fixed_script_result["final_burn_legal"] else "⚠️"
                 src_label = "GMAT DC 收斂後的值" if fixed_script_source == "gmat_dc" \
-                    else "Python 自己算的值 (DC 沒有乾淨通過的 fallback)"
-                print(f"\n── GMAT 驗證：固定燃燒版本 (無求解器，建議繳交這份) {'─' * 8}")
-                print(f"  檔案：outputs/output_submit.txt　燃燒值來源：{src_label}")
-                print(f"  Δr_min {fixed_script_result['miss_km']*1000:>12,.3f} m"
-                      f"   最後一棒 Δv {fixed_script_result['final_burn_dv_mps']:>9,.1f} m/s {fdv_match}")
-                print(f"  命中 {fmatch} {'成功' if fixed_script_result['intercept_success'] else '失敗'}"
-                      f"   {'合規' if fixed_script_result['final_burn_legal'] else '⚠️ 超過每棒上限'}")
+                    else "Python 自己算的值 (DC fallback)"
+                # 這是要繳交的那份，結果留一行事件級摘要（命中/合規/Δr）；細節(檔名/來源/Δr精確值)
+                # 收進 DEBUG。
+                log.info(f"📤 固定燃燒版(建議繳交)：命中 {fmatch} "
+                         f"{'成功' if fixed_script_result['intercept_success'] else '失敗'}"
+                         f"   最後一棒 {fdv_match} {'合規' if fixed_script_result['final_burn_legal'] else '超過每棒上限'}"
+                         f"   (Δr {fixed_script_result['miss_km']*1000:,.0f}m, "
+                         f"Δv {fixed_script_result['final_burn_dv_mps']:,.0f} m/s)")
+                log.debug(f"  檔案：outputs/output_submit.txt　燃燒值來源：{src_label}")
                 if fixed_script_result["intercept_success"] and fixed_script_result["final_burn_legal"]:
-                    print("  👉 命中且合規，可以直接繳交。")
+                    log.info("  👉 命中且合規，可以直接繳交。")
                 elif fixed_script_result["intercept_success"]:
-                    print("  👉 命中但超標：依規則第 5 節每次違規扣 10 分（不是取消資格），這份仍可繳交。")
-                    print("     但先確認沒有更好的合法解——用 feasibility.py 看合法解存不存在，")
-                    print("     再用 sweep_burns.py 或加大棒數/預算找找看。")
+                    log.info("  👉 命中但超標：依規則第 5 節每次違規扣 10 分（非取消資格），仍可繳交；"
+                             "但先用 feasibility.py / sweep_burns.py 確認沒有更好的合法解。")
                 else:
-                    print("  ⚠️ 沒有命中。來源若是 GMAT DC 的值，理論上該跟一般版本一致，這不該發生；")
-                    print("     若是 Python fallback，代表這組解本身站不住腳（模型在這個時間尺度上有落差），")
-                    print("     不建議採用。")
+                    log.warning("  ⚠️ 沒有命中：DC 來源不該發生；Python fallback 代表這組解站不住腳，不建議採用。")
             else:
-                print("  ⚠️ 固定版本沒有跑成功 (GMAT 呼叫失敗)。")
+                log.warning("  ⚠️ 固定版本沒有跑成功 (GMAT 呼叫失敗)。")
 
     # 4. 附加寫入執行紀錄，方便之後比較不同設定/軌道跑出來的分數
     append_run_history(config, mission_info, execution_time,

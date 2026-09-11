@@ -1,6 +1,7 @@
 import os
 import copy
 import math
+import logging
 import numpy as np
 from numba import njit
 from poliastro.core.iod import izzo
@@ -18,6 +19,7 @@ from src.propagator import get_r0_v0
 from src.scorer import calculate_score
 from src.core_math import (propagate_dop853, check_constraints, fast_norm,
                            to_vnb_frame, reaches_perigee)
+from src.runlog import log, is_verbose
 import numba as nb
 from tqdm import tqdm
 
@@ -348,6 +350,11 @@ class MissionOptimizer:
         # 不只是最終贏家——sweep_burns.py 用這個畫「燃燒次數 vs 分數」的趨勢表。
         # main.py 的正常流程不需要這個，只是額外多存一份，不影響 run_study() 原本的回傳值。
         self.burn_case_results: dict = {}
+        # 這趟 run_study() 的「大塊報告」(🚀 開跑行、任務規劃表、Python 預測、✅完成、
+        # 平手/proxy 診斷) 要用哪個 log 層級印。單跑時 = INFO (直接顯示)；REVS 集成時
+        # run_study_over_revs 會把每趟壓成 DEBUG，只在最後把勝出那趟的報告以 INFO 重印
+        # 一次，避免 console 上同一份報告印兩遍 (見 run_study_over_revs)。
+        self._report_level = logging.INFO
         # config 分兩塊環境設定：rules (主辦方規定/公告，我們不能改) 跟 strategy
         # (我們自己的任務設計選項，不是規則要求)。詳見 main.py 的 DEFAULT_CONFIG 註解。
         rules = config["rules"]
@@ -1520,15 +1527,15 @@ class MissionOptimizer:
         impossible = sorted(b for b in self.burns if b < min_burns)
         if not impossible:
             return
-        print(f"⚠️ 能量下限 {floor_mps:,.0f} m/s（每棒上限 {cap_mps:,.0f} m/s）"
-              f"→ 至少需要 {min_burns} 棒才可能合法。")
-        print(f"   MAX_BURNS 裡的 {impossible} 注定只能找到違規解，浪費搜尋時間；"
-              f"建議拿掉，或用 feasibility.py 先確認可行範圍。")
+        log.warning(f"⚠️ 能量下限 {floor_mps:,.0f} m/s（每棒上限 {cap_mps:,.0f} m/s）→ 至少需要 "
+                    f"{min_burns} 棒才可能合法；MAX_BURNS 裡的 {impossible} 注定只能找到違規解"
+                    f"（浪費搜尋時間，建議拿掉或用 feasibility.py 先確認）。")
 
     def run_study(self):
         cases = sorted(self.burns, reverse=True)
-        print(f"🚀 L-SHADE 軌道最佳化：推進次數 {sorted(self.burns)}，"
-              f"各 {self._maxiter_for(cases[0])} 代上限，{len(self.burns)} 個案例平行跑")
+        log.log(self._report_level,
+                f"🚀 L-SHADE 軌道最佳化：推進次數 {sorted(self.burns)}，"
+                f"各 {self._maxiter_for(cases[0])} 代上限，{len(self.burns)} 個案例平行跑")
         self.preflight_report()
 
         scalar_params = np.array([
@@ -1621,8 +1628,8 @@ class MissionOptimizer:
                         # note 是子行程準備好、交回主行程印的狀態備註 (同樣是為了不讓子行程
                         # 直接寫終端機)，平常是空字串，只有「提早停止」/「單執行緒」才有內容。
                         b_count, best_x, best_score, epochs_run, note = future.result()
-                        tqdm.write(f"✅ 推進 {b_count} 次完成：目標值 {best_score:.4f}，"
-                                   f"跑了 {epochs_run}/{self._maxiter_for(b_count)} 代{note}")
+                        log.info(f"✅ 推進 {b_count} 次完成：目標值 {best_score:.4f}，"
+                                 f"跑了 {epochs_run}/{self._maxiter_for(b_count)} 代{note}")
                         # best_x 也記下來 (2026-08-15 新增)：sweep_burns.py 要用它判斷
                         # 「這個燃燒次數的解，中間棒到底有沒有真的燒」。實測過好幾個
                         # 情境，多棒解的中間棒 Δv 會恰好是 0 (種子的空燒結構，L-SHADE
@@ -1639,7 +1646,7 @@ class MissionOptimizer:
                         # 不能在 as_completed 的順序裡邊收邊比。見 pbar.close() 之後。
 
                     except Exception as exc:
-                        tqdm.write(f"❌ [核心錯誤] 推進 {b} 次案例崩潰: {exc}")
+                        log.error(f"❌ [核心錯誤] 推進 {b} 次案例崩潰: {exc}")
                     finally:
                         # 不管成功/失敗/提早停止，這個案例的份額都補滿到它自己的世代
                         # 預算——提早停止代表子行程回報的最後一則 epoch < 預算，崩潰的
@@ -1659,7 +1666,7 @@ class MissionOptimizer:
         return self.refine_trajectory(best_overall_params, best_burns_count, best_overall_score)
 
     def refine_trajectory(self, initial_guess_x, num_burns, initial_fitness=None):
-        print("\n🔬 啟動高精度 NLP 微調...")
+        log.debug("🔬 啟動高精度 NLP 微調...")
         bounds = self._generate_bounds(num_burns)
         
         # 2026-08-15：容忍度規則抽到 _narrow_tolerance_bounds 共用 (原本這裡是
@@ -1694,7 +1701,7 @@ class MissionOptimizer:
         nlp_result = minimize(
             fun=fitness_wrapper, x0=initial_guess_x,
             method='L-BFGS-B', bounds=narrow_bounds,
-            options={'disp': True, 'maxiter': 50}
+            options={'disp': is_verbose(), 'maxiter': 50}   # scipy 自己的迭代碎念只在 -v 才放出來
         )
 
         # 安全回退：L-BFGS-B 的 success 只代表「收斂了」，不代表「比原本的解更好」。
@@ -1703,17 +1710,18 @@ class MissionOptimizer:
         # 沒有變好 (更小，因為 mealpy 是找最小值) 就退回微調前的解。
         if nlp_result.success and nlp_result.fun <= initial_fitness:
             res = nlp_result.x
-            print(f"   ↳ NLP 微調有改善: {initial_fitness:.4f} -> {nlp_result.fun:.4f}，採用微調後的解")
+            # 真的動到解 = 事件，值一行 INFO。
+            log.info(f"🔬 NLP 微調有改善: {initial_fitness:.4f} → {nlp_result.fun:.4f}")
         elif not nlp_result.success:
             # fun 可能其實有變小一點點，但 scipy 自己都不認為這是收斂的結果 (例如撞到
-            # maxiter 上限)，保守起見不採用，訊息如實反映「未收斂」而不是「沒有改善」。
+            # maxiter 上限)，保守起見不採用。沒採用 = no-op，降到 DEBUG。
             res = initial_guess_x
-            print(f"   ↳ NLP 微調未收斂 (scipy success=False，fitness {initial_fitness:.4f} -> "
-                  f"{nlp_result.fun:.4f})，保守起見保留微調前的解")
+            log.debug(f"NLP 微調未收斂 (scipy success=False，{initial_fitness:.4f} → "
+                      f"{nlp_result.fun:.4f})，保留微調前的解")
         else:
-            res = initial_guess_x
-            print(f"   ↳ NLP 微調沒有改善 (微調前 {initial_fitness:.4f} / 微調後 {nlp_result.fun:.4f})，"
-                  f"保留微調前的解")
+            res = initial_guess_x   # 收斂但沒更好 = no-op，降到 DEBUG。
+            log.debug(f"NLP 微調沒有改善 (微調前 {initial_fitness:.4f} / 微調後 "
+                      f"{nlp_result.fun:.4f})，保留微調前的解")
 
         res = self._tiebreak_polish(res, num_burns, fitness_wrapper, narrow_bounds)
         return self._replay_mission(res, num_burns)
@@ -1814,7 +1822,7 @@ class MissionOptimizer:
             out = minimize(fun=polish_objective, x0=x, method='L-BFGS-B',
                            bounds=polish_bounds, options={'disp': False, 'maxiter': 30})
         except Exception as exc:
-            print(f"   ↳ 平手判定微調跳過（{type(exc).__name__}）")
+            log.debug(f"平手判定微調跳過（{type(exc).__name__}）")
             return x
 
         cand = np.asarray(out.x, dtype=np.float64)
@@ -1826,17 +1834,18 @@ class MissionOptimizer:
                    f"（分數掉了 {cost:.6f} 分，在設定的打平門檻 "
                    f"{self.TIEBREAK_SCORE_EPS:g} 以內——這是拿分數換名次，"
                    f"只有在官方比分數會四捨五入的前提下才划算）")
-            print(f"   ↳ 平手判定微調（規則 §6 優先序 1）：Δr 瞄準偏移 "
-                  f"{x[offset_idx]*1000:,.1f} m → {cand[offset_idx]*1000:,.1f} m，"
-                  f"分數 {-baseline:.6f} → {-cand_fit:.6f}{tag}")
+            # 真的壓下了 Δr = 事件，值一行 INFO（tag 的細節留給 DEBUG/log 檔就好）。
+            log.info(f"⚖️ 平手微調(§6)：Δr {x[offset_idx]*1000:,.1f} → {cand[offset_idx]*1000:,.1f} m"
+                     f"，分數 {-baseline:.4f} → {-cand_fit:.4f}")
+            log.debug(f"   平手微調 tag：{tag}")
             return cand
+        # 以下兩支都是 no-op（沒動到解）：不掉分壓不動、或壓了會掉分而放棄。降到 DEBUG，
+        # 「為什麼壓不動」的原理（計分函式對瞄準點還有梯度、燃料項沒飽和）寫在本函式
+        # docstring 裡，不再每次執行都印出來上課。
         if cand_fit > baseline + self.TIEBREAK_SCORE_EPS:
-            print(f"   ↳ 平手判定微調沒有採用：壓小 Δr 會讓分數從 {-baseline:.4f} 掉到 "
-                  f"{-cand_fit:.4f}。分數優先於平手判定，維持原解。")
+            log.debug(f"平手微調沒採用：壓小 Δr 會讓分數 {-baseline:.4f} → {-cand_fit:.4f}，分數優先，維持原解。")
         else:
-            print(f"   ↳ 平手判定微調沒有空間：不掉分的前提下 Δr 壓不下去"
-                  f"（維持 {x[offset_idx]*1000:,.1f} m）——這代表計分函式對瞄準點"
-                  f"還有梯度（燃料項沒飽和），搜尋已經做過權衡了。")
+            log.debug(f"平手微調沒空間：不掉分的前提下 Δr 壓不下去（維持 {x[offset_idx]*1000:,.1f} m）。")
         return x
 
     def _pick_best_case(self):
@@ -1858,7 +1867,7 @@ class MissionOptimizer:
         viable = {b: r for b, r in self.burn_case_results.items()
                   if r.get("best_x") is not None and r["fitness"] < 0.0}
         if not viable:
-            print("\n❌ 最佳化失敗：所有的嘗試都撞毀或違規了。")
+            log.error("❌ 最佳化失敗：所有的嘗試都撞毀或違規了。")
             return None
 
         metrics = {}
@@ -1867,9 +1876,9 @@ class MissionOptimizer:
                 metrics[b] = self.mission_metrics(viable[b]["best_x"], b)
             except Exception as exc:
                 # 連成績都重建不出來的候選直接淘汰——那種方案本來就交不出去
-                print(f"  ⚠️ 推進 {b} 次的解沒辦法重建成績（{type(exc).__name__}），不列入挑選")
+                log.warning(f"⚠️ 推進 {b} 次的解沒辦法重建成績（{type(exc).__name__}），不列入挑選")
         if not metrics:
-            print("\n❌ 最佳化失敗：沒有任何一組解能重建出成績。")
+            log.error("❌ 最佳化失敗：沒有任何一組解能重建出成績。")
             return None
 
         # 打平的候選先各自跑一次收尾微調再比。理由：微調專門在動 Δr (規則第 6 節的
@@ -1881,8 +1890,8 @@ class MissionOptimizer:
         if len(set(pre_bucket.values())) < len(pre_bucket) and self.TIEBREAK_POLISH:
             top = max(pre_bucket.values())
             tied_pre = [k for k in sorted(metrics) if pre_bucket[k] == top]
-            print(f"\n⚖️  推進 {tied_pre} 次的分數打平，先各自跑一次規則 §6 的收尾微調"
-                  f"再比名次（比較「會交出去的那一版」，不是微調前的中間值）：")
+            # 內部前處理（打平候選先各自跑收尾微調再排名），不是使用者要盯的事件 → DEBUG。
+            log.debug(f"⚖️ 推進 {tied_pre} 次分數打平，先各自跑 §6 收尾微調再比名次。")
             for b in tied_pre:
                 try:
                     f = self._fitness_wrapper(b)
@@ -1895,7 +1904,7 @@ class MissionOptimizer:
                         viable[b]["fitness"] = float(f(polished))
                         metrics[b] = self.mission_metrics(polished, b)
                 except Exception as exc:
-                    print(f"     （推進 {b} 次的收尾微調跳過：{type(exc).__name__}）")
+                    log.debug(f"（推進 {b} 次的收尾微調跳過：{type(exc).__name__}）")
 
         def _key(b, floor_miss):
             m = metrics[b]
@@ -1917,28 +1926,25 @@ class MissionOptimizer:
         top_bucket = max(bucket.values())
         tied = sorted(b for b in metrics if bucket[b] == top_bucket)
         if len(tied) > 1:
-            print(f"\n⚖️  最終名次：推進 {tied} 次打平"
-                  f"（Score 都是 {metrics[tied[0]]['score']:.6f}），"
-                  f"依規則第 6 節比 Δr_min → ΔV_team → T_team：")
-            print(f"     {'棒數':<6}{'Δr_min (m)':>14}{'ΔV_team (m/s)':>16}{'T_team (s)':>14}")
+            # 事件濃縮成一行（報告層級）：打平 → 採用哪個。逐項比對表是細節 → DEBUG/log 檔。
+            log.log(self._report_level,
+                    f"⚖️ 推進 {tied} 次打平(Score {metrics[tied[0]]['score']:.4f}) → 依§6"
+                    f"(Δr→ΔV→T)採用 {best_burns_count} 棒")
+            log.debug(f"     {'棒數':<6}{'Δr_min (m)':>14}{'ΔV_team (m/s)':>16}{'T_team (s)':>14}")
             for b in tied:
                 m = metrics[b]
                 mark = "  ← 採用" if b == best_burns_count else ""
-                print(f"     {b:<6}{m['miss_km']*1000:>14,.1f}{m['dv_mps']:>16,.1f}"
-                      f"{m['t_team']:>14,.1f}{mark}")
+                log.debug(f"     {b:<6}{m['miss_km']*1000:>14,.1f}{m['dv_mps']:>16,.1f}"
+                          f"{m['t_team']:>14,.1f}{mark}")
 
             # 規則第 6 節的歧義：優先序 1 的符號是 d_min,team，跟第 4 節計分用的
             # Δr_min = max(Δr, 5) 不是同一個符號，官方沒有定義 d_min,team。兩種讀法
-            # 有時候會選出不同的方案 —— 這種時候講白，不要假裝沒有這回事。
+            # 有時候會選出不同的方案——這會改變答案，屬於使用者該知道的警告，留 WARNING
+            # 一行；「為什麼會歧義」的完整說明在上面這段註解裡，不再印到終端機上課。
             alt = min(metrics, key=lambda b: _key(b, True))
             if alt != best_burns_count:
-                print(f"\n     ⚠️ 規則第 6 節優先序 1 的讀法會改變答案："
-                      f"照**原始**最近距離比是推進 {best_burns_count} 次，"
-                      f"照第 4 節的 Δr_min=max(Δr,5) 地板比則是推進 {alt} 次。")
-                print("        規則沒有定義 d_min,team 這個符號，工具不替你決定，"
-                      "上表的數字自己看了定案。")
-                print("        (工具預設用原始距離：套了地板的話，所有攔截成功的隊伍"
-                      "這一項全都是 5，優先序 1 對成功組就完全失效了。)")
+                log.warning(f"⚠️ §6優先序1讀法會改變答案：原始最近距離→{best_burns_count}棒，"
+                            f"Δr_min=max(Δr,5)地板→{alt}棒。工具用原始距離，數字自己看了定案。")
 
         # 代理值最好的案例不見得會被選上——挑贏家是用重播算出來的**真實分數**，
         # 而搜尋用的目標值只是代理 (最後一棒用純二體 Lambert 的 Δv，不含 J2/J3/J4
@@ -1946,26 +1952,21 @@ class MissionOptimizer:
         # 3 棒代理 -80.72 但真實只有 72.33，輸給 1 棒真實 74.75 的解 (官方範例題目
         # 那種 6.4 小時的尺度則幾乎完全一致，中位數只差 0.02 分)。
         # 不講白的話，日誌上會看到「目標值比較好的案例沒被選」而完全沒有理由。
+        # 「目標值(代理)最好的案例沒被選」的診斷：代理 vs 真實分數的落差。原理長、而且常常
+        # 是 +0.0000（代理跟真實一致），純診斷 → DEBUG。為什麼代理會偏（最後一棒純二體
+        # Lambert、飛行時間越長偏越多）寫在上面這段註解裡，不印到終端機。
         fitness_best = min(viable, key=lambda b: viable[b]["fitness"])
         if fitness_best != best_burns_count and fitness_best in metrics:
-            print(f"\n📐 注意：目標值最好的是推進 {fitness_best} 次"
-                  f"（{viable[fitness_best]['fitness']:.4f}），但**沒有**採用它。")
-            print(f"     挑贏家看的是重播算出來的真實分數，不是搜尋用的目標值（代理）：")
-            print(f"       推進 {fitness_best} 次：目標值 "
-                  f"{-viable[fitness_best]['fitness']:.4f} vs 真實 "
-                  f"{metrics[fitness_best]['score']:.4f}"
-                  f"（差 {-viable[fitness_best]['fitness'] - metrics[fitness_best]['score']:+.4f}）")
-            print(f"       推進 {best_burns_count} 次：目標值 "
-                  f"{-viable[best_burns_count]['fitness']:.4f} vs 真實 "
-                  f"{metrics[best_burns_count]['score']:.4f}"
-                  f"（差 {-viable[best_burns_count]['fitness'] - metrics[best_burns_count]['score']:+.4f}）")
-            print(f"     代理值的誤差來自「最後一棒用純二體 Lambert 算 Δv」，飛行時間"
-                  f"越長偏越多；官方是用真實成績計分的，所以以真實分數為準。")
+            log.debug(f"📐 目標值最好的是 {fitness_best} 棒({viable[fitness_best]['fitness']:.4f})但沒採用"
+                      f"（挑贏家看真實分數不看代理）："
+                      f"{fitness_best}棒 代理{-viable[fitness_best]['fitness']:.4f}/真實{metrics[fitness_best]['score']:.4f}；"
+                      f"{best_burns_count}棒 代理{-viable[best_burns_count]['fitness']:.4f}/真實{metrics[best_burns_count]['score']:.4f}")
 
         m = metrics[best_burns_count]
-        print(f"\n✅ 最佳化完成！採用推進 {best_burns_count} 次的方案 "
-              f"(目標值 {best_overall_score:.4f}，Δr_min {m['miss_km']*1000:,.1f} m，"
-              f"ΔV_team {m['dv_mps']:,.1f} m/s，T_team {m['t_team']:,.1f} s)")
+        log.log(self._report_level,
+                f"✅ 最佳化完成！採用推進 {best_burns_count} 次的方案 "
+                f"(目標值 {best_overall_score:.4f}，Δr_min {m['miss_km']*1000:,.1f} m，"
+                f"ΔV_team {m['dv_mps']:,.1f} m/s，T_team {m['t_team']:,.1f} s)")
         return best_burns_count, best_overall_params, best_overall_score
 
     def mission_metrics(self, x, num_burns) -> dict:
@@ -2017,25 +2018,31 @@ class MissionOptimizer:
                 self.LAMBERT_MAX_REVS, self.MIN_PERIAPSIS
             )
 
-        print(f"\n── 任務規劃 {'─' * 46}")
-        print(f"  等待 {x[0]:,.1f}s 後開始"
-              f"，最後一棒 Lambert 走{'逆向 (retrograde)' if used_retrograde else '順向 (prograde)'}")
+        # 整份任務報告收進 lines、最後一次 log 出去（存進 mission_info["report_text"]，
+        # 讓 REVS 集成能把勝出那趟的報告以 INFO 重印一次，不必重算）。層級 = self._report_level：
+        # 單跑 INFO 直接顯示；集成時每趟被壓成 DEBUG，只重印勝出趟。
+        lines = [f"\n── 任務規劃 {'─' * 46}",
+                 f"  等待 {x[0]:,.1f}s 後開始，最後一棒 Lambert 走"
+                 f"{'逆向 (retrograde)' if used_retrograde else '順向 (prograde)'}"]
         total_dv = 0.0
         penalty_count = 0
-        for log in burn_logs:
-            over_limit = log['dv_mag'] > self.MAX_DV
-            total_dv += log['dv_mag']
+        vnb_lines = []   # 每棒的 VNB 向量：診斷細節，走 DEBUG（-v console 顯示、log 檔永遠有、
+                         # 預設 console 不印）——見準則：VNB 丟 -v 就好。
+        for bl in burn_logs:
+            over_limit = bl['dv_mag'] > self.MAX_DV
+            total_dv += bl['dv_mag']
             if over_limit:
                 penalty_count += 1
             flag = f"  ⚠️ 超過 {self.MAX_DV*1000:.0f} m/s 上限" if over_limit else ""
-            print(f"  [{log['type']:<10}] t={log['time']:>12,.1f}s   Δv={log['dv_mag']*1000:>8.1f} m/s"
-                  f"   VNB={np.round(log['dv_vnb'], 3)}{flag}")
+            lines.append(f"  [{bl['type']:<10}] t={bl['time']:>12,.1f}s   "
+                         f"Δv={bl['dv_mag']*1000:>8.1f} m/s{flag}")
+            vnb_lines.append(f"  [{bl['type']:<10}] VNB={np.round(bl['dv_vnb'], 3)}")
         # 實際用到幾棒 (2026-08-15)：多棒解常常退化成「中間棒 Δv=0 的空燒」，光看棒數
         # 會以為用了多棒策略，其實跟更少棒的方案是同一個解。這裡直接講白，免得誤讀。
         eff = effective_burns(num_burns, x)
         if eff < num_burns:
-            print(f"  ⚠️ 這是 {num_burns} 棒的方案，但實際只用到 {eff} 棒"
-                  f"（其餘是 Δv≈0 的空燒）——等價於 {eff} 棒解，多開的棒數沒有貢獻。")
+            lines.append(f"  ⚠️ 這是 {num_burns} 棒的方案，但實際只用到 {eff} 棒"
+                         f"（其餘是 Δv≈0 的空燒）——等價於 {eff} 棒解。")
 
         intercept_time = times[-1]
         final_score = calculate_score(
@@ -2050,48 +2057,42 @@ class MissionOptimizer:
         # 2026-08-14 起這是可設定的 (0=點質量 / 2=J2 / 3=+J3 / 4=+J4)，寫死會誤導。
         grav = {0: "點質量", 2: "J2", 3: "J2+J3", 4: "J2+J3+J4"}.get(self.GRAVITY_DEGREE,
                                                                        f"degree={self.GRAVITY_DEGREE}")
-        print(f"\n── Python 預測 ({grav}，不用開 GMAT) {'─' * 25}")
-        print(f"  Δr_min     {miss_km * 1000:>12,.1f} m   (門檻 5,000 m)")
-        print(f"  ΔV_team    {total_dv * 1000:>12,.1f} m/s")
-        print(f"  T_team     {intercept_time:>12,.1f} s")
-        print(f"  違規次數   {penalty_count:>12d}"
-              + ("   ⚠️ 依規則第 5 節每次扣 10 分" if penalty_count else ""))
-        print(f"  Score      {final_score:>12.2f} / 100")
+        lines += [f"\n── Python 預測 ({grav}，不用開 GMAT) {'─' * 25}",
+                  f"  Δr_min     {miss_km * 1000:>12,.1f} m   (門檻 5,000 m)",
+                  f"  ΔV_team    {total_dv * 1000:>12,.1f} m/s",
+                  f"  T_team     {intercept_time:>12,.1f} s",
+                  f"  違規次數   {penalty_count:>12d}"
+                  + ("   ⚠️ 依規則第 5 節每次扣 10 分" if penalty_count else ""),
+                  f"  Score      {final_score:>12.2f} / 100"]
 
         # Earth-safe 判定 (2026-09-09, HAP-48)：跟 fast_fitness_evaluator 一致的碰撞
         # 判定。初賽證實「軌跡穿過地表」是官方失格線,所以這條一定要印清楚、撞到就大聲擋。
         alt_km = min_arc_radius_km - self.RE_VAL
         safe_alt_km = self.MIN_PERIAPSIS - self.RE_VAL
         if earth_safe:
-            print(f"  Earth-safe    ✅   (全程最低高度 {alt_km:>10,.0f} km,門檻 {safe_alt_km:,.0f} km)")
+            lines.append(f"  Earth-safe    ✅   (全程最低高度 {alt_km:>10,.0f} km,門檻 {safe_alt_km:,.0f} km)")
         else:
-            print(f"  Earth-safe    🔴 撞地球 (最低高度 {alt_km:,.0f} km < 門檻 {safe_alt_km:,.0f} km)")
-            print("     ⚠️ 這條軌跡會鑽進地球——官方會判失格(初賽已證實),絕對不可繳交。")
-            print("     這種通常是「早抵達的便宜解」:分數漂亮但物理不成立。改找 Earth-safe 合法解"
-                  "(feasibility.py 確認存不存在),或加大 T_max/棒數。")
+            lines += [f"  Earth-safe    🔴 撞地球 (最低高度 {alt_km:,.0f} km < 門檻 {safe_alt_km:,.0f} km)"
+                      f"——官方會判失格,絕對不可繳交（改找 Earth-safe 合法解 / 加大 T_max/棒數）。"]
 
-        # 「荒謬超標」警告 (2026-08-15)：違規懲罰是固定的每次 -10 分，跟超標幅度無關，
-        # 而最後一棒是 Lambert 反算出來的、沒有上界。所以在**根本沒有合法解**的情境裡，
-        # 「花 10 分買一次完美命中 + 最快時間」永遠划算 —— 實測 hyper_fast (ECC=5) 交出
-        # 611,787 m/s (光速的 0.2%) 卻回報 Score 62.76，一個看起來很體面的數字。
-        # 這個計分是**忠於規則的**(規則第 5 節確實是每次扣 10 分、不是取消資格)，所以
-        # 不改分數；但這種方案實務上交不出去：GMAT 的 DifferentialCorrector 的 Vary
-        # 邊界結構上就到不了那個量級，一般版本一定不收斂。不講白的話，隊友看到 62 分
-        # 會以為有東西可以交。
-        worst_ratio = max((log['dv_mag'] / self.MAX_DV for log in burn_logs), default=0.0)
+        # 「荒謬超標」警告 (2026-08-15)：違規懲罰固定每次 -10 分、跟超標幅度無關，而最後一棒是
+        # Lambert 反算、沒有上界。所以在根本沒有合法解的情境裡「花 10 分買完美命中」永遠划算，
+        # 分數看起來很體面（實測 ECC=5 交出 611,787 m/s 卻回報 62.76）。分數忠於規則不改，但
+        # 這種方案實務上交不出去（GMAT DC 的 Vary 邊界搆不到那個量級，一般版本必不收斂）——
+        # 濃縮成一行警告；完整的「為什麼」寫在本段註解裡，不印到終端機上課。
+        worst_ratio = max((bl['dv_mag'] / self.MAX_DV for bl in burn_logs), default=0.0)
         if worst_ratio > 3.0:
-            print(f"\n  🔴 最大單棒超標 {worst_ratio:.0f} 倍上限"
-                  f"（{max(log['dv_mag'] for log in burn_logs)*1000:,.0f} m/s "
-                  f"vs 上限 {self.MAX_DV*1000:,.0f} m/s）。")
-            print("     上面的分數是照規則算的（違規只扣 10 分，跟超標幅度無關），但這種"
-                  "方案**實務上交不出去**：")
-            print("     GMAT 的 DifferentialCorrector 收斂不到這個量級，一般版本會直接失敗。")
-            print("     出現這個警告通常代表**這組情境在 T_max 內根本沒有合法解**，"
-                  "搜尋只是在違規解裡挑最好的。")
-            print("     建議：用 feasibility.py 確認，或放寬 T_max / 調整軌道參數。")
+            lines.append(f"  🔴 最大單棒超標 {worst_ratio:.0f} 倍上限"
+                         f"（{max(bl['dv_mag'] for bl in burn_logs)*1000:,.0f} vs 上限 "
+                         f"{self.MAX_DV*1000:,.0f} m/s）——實務上交不出去(DC 收斂不到)，"
+                         f"通常代表 T_max 內無合法解，見 feasibility.py。")
         if not dc_converged:
-            print("  ⚠️ 最後一棒的差分修正未收斂——這個解的命中距離可能不可靠，"
-                  "建議檢查或加大 refine_lambert_burn 的 max_iter。")
+            lines.append("  ⚠️ 最後一棒差分修正未收斂——命中距離可能不可靠，"
+                         "建議加大 refine_lambert_burn 的 max_iter。")
+
+        report_text = "\n".join(lines)
+        log.log(self._report_level, report_text)
+        log.debug("── 各棒 VNB 分量 " + "─" * 40 + "\n" + "\n".join(vnb_lines))
 
         burns = [log['dv_vnb'] for log in burn_logs]
         times_diff = np.diff(times).tolist()
@@ -2111,6 +2112,9 @@ class MissionOptimizer:
             # 繳交腳本。min_arc_radius_km 是全程實際到達過的最低軌道半徑 (km)。
             "earth_safe": bool(earth_safe),
             "min_arc_radius_km": float(min_arc_radius_km),
+            # 這趟任務規劃 + Python 預測的完整報告文字，讓 REVS 集成能把勝出趟以 INFO
+            # 重印一次（見 run_study_over_revs），不必重跑重播。
+            "report_text": report_text,
         }
         return burns, times_diff, mission_info
 
@@ -2183,13 +2187,18 @@ def run_study_over_revs(config):
 
     candidates = []   # [(revs, burns, times, mission_info)]
     optimizers = []   # 對齊 candidates，保留每趟的 optimizer 實例給呼叫端用
+    multi = len(revs_values) > 1
     for idx, revs in enumerate(revs_values):
-        if len(revs_values) > 1:
-            print(f"\n{'='*70}\n🎲 REVS 集成 第 {idx + 1}/{len(revs_values)} 趟："
-                  f"LAMBERT_MAX_REVS={revs}（同 SEED，只差這個）\n{'=' * 70}")
+        if multi:
+            log.info(f"\n🎲 REVS 集成 第 {idx + 1}/{len(revs_values)} 趟："
+                     f"LAMBERT_MAX_REVS={revs}（同 SEED，只差這個）")
         cfg = copy.deepcopy(config)
         cfg.setdefault("strategy", {})["LAMBERT_MAX_REVS"] = revs
         opt = MissionOptimizer(cfg)
+        # 集成時把每趟的大塊報告壓成 DEBUG（console 預設不印、-v/log 檔仍看得到），
+        # 避免同一份報告在 console 上印每一趟——只在下面把勝出趟以 INFO 重印一次。
+        if multi:
+            opt._report_level = logging.DEBUG
         burns, times, mission_info = opt.run_study()
         candidates.append((revs, burns, times, mission_info))
         optimizers.append(opt)
@@ -2201,21 +2210,25 @@ def run_study_over_revs(config):
     best_i, floor_disagrees = pick_best_across_revs(
         candidates, eps=optimizers[0].TIEBREAK_SCORE_EPS)
 
-    # 集成對照表：把每趟的成績並排攤開，選了誰、差多少都講白。
-    print(f"\n{'=' * 70}\n🏁 REVS 集成結果（規則第 6 節：Score → Δr_min → ΔV_team → T_team）")
-    print(f"   {'REVS':>5}{'Score':>10}{'Δr_min(m)':>13}{'ΔV_team(m/s)':>15}{'T_team(s)':>13}")
+    # 集成對照表：把每趟的成績並排攤開，選了誰、差多少都講白（這是集成的決策，留 INFO）。
+    table = [f"\n🏁 REVS 集成結果（規則第 6 節：Score → Δr_min → ΔV_team → T_team）",
+             f"   {'REVS':>5}{'Score':>10}{'Δr_min(m)':>13}{'ΔV_team(m/s)':>15}{'T_team(s)':>13}"]
     for i, (revs, _b, _t, mi) in enumerate(candidates):
         if isinstance(mi, dict):
             mark = "  ← 採用" if i == best_i else ""
-            print(f"   {revs:>5}{mi['score']:>10.4f}{mi['miss_km'] * 1000:>13,.1f}"
-                  f"{mi['total_dv_mps']:>15,.1f}{mi['T_team']:>13,.1f}{mark}")
+            table.append(f"   {revs:>5}{mi['score']:>10.4f}{mi['miss_km'] * 1000:>13,.1f}"
+                         f"{mi['total_dv_mps']:>15,.1f}{mi['T_team']:>13,.1f}{mark}")
         else:
-            print(f"   {revs:>5}   （這趟全軍覆沒，不列入挑選）")
+            table.append(f"   {revs:>5}   （這趟全軍覆沒，不列入挑選）")
+    log.info("\n".join(table))
     if floor_disagrees:
-        print("   ⚠️ 規則第 6 節優先序 1 的另一種讀法（Δr_min 套 max(Δr,5) 地板）"
-              "會選出不同的贏家——上表數字自己看了定案（見 tiebreak_rank_key）。")
+        log.warning("⚠️ §6優先序1的另一種讀法（Δr_min 套 max(Δr,5) 地板）會選出不同贏家"
+                    "——上表數字自己看了定案（見 tiebreak_rank_key）。")
 
     _, burns, times, mission_info = candidates[best_i]
+    # 勝出那趟的任務規劃 + Python 預測，以 INFO 重印一次（每趟跑的時候是 DEBUG）。
+    if isinstance(mission_info, dict) and mission_info.get("report_text"):
+        log.info(mission_info["report_text"])
     return burns, times, mission_info, optimizers[best_i]
 
 

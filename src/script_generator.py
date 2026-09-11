@@ -2,6 +2,8 @@ import os
 import math
 import datetime
 
+from src.runlog import log
+
 
 def _require_ascii(script_content, what="GMAT 腳本"):
     """比賽當天最不該踩的那種無聲失敗：腳本混進非 ASCII 字元。
@@ -512,5 +514,5 @@ Report_Intercept.ColumnWidth = 20;
     with open(archive_path, "w", encoding="utf-8") as f:
         f.write(script_content)
 
-    print(f"📄 GMAT script 已建立：outputs/{output_filename} (備份於 {archive_path})")
+    log.info(f"📄 GMAT script 已建立：outputs/{output_filename} (備份於 {archive_path})")
     return output_path

@@ -18,6 +18,8 @@ config.json 的欄位驗證。
 """
 import math
 
+from src.runlog import log
+
 _EARTH_RE_KM = 6378.137
 _ORBIT_FIELDS = ("SMA", "ECC", "INC", "RAAN", "AOP", "TA")
 
@@ -382,4 +384,4 @@ def validate_config(config) -> None:
         warnings.append("rules.k_v < 0 會讓 Δv 分數隨油耗變大反而變高，方向可能跟規則的意圖相反，請確認不是打錯正負號")
 
     for w in warnings:
-        print(f"⚠️  設定檔警告: {w}")
+        log.warning(f"⚠️  設定檔警告: {w}")
