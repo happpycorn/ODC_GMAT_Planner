@@ -6,9 +6,11 @@ import numpy as np
 from numba import njit
 from poliastro.core.iod import izzo
 import concurrent.futures
+import contextlib
 import multiprocessing
 import queue
 import threading
+from threadpoolctl import threadpool_limits
 
 from typing import Tuple
 from scipy.optimize import minimize
@@ -2179,6 +2181,30 @@ def run_study_over_revs(config):
     MissionOptimizer 實例，main.py 產腳本／印拆解都要用它（MAX_DV、GRAVITY_DEGREE
     等）。全部失敗時回傳最後一趟的 (None, None, (None, None), optimizer)。
     """
+    # 重現性 (2026-09-22)：設了 SEED 代表「要可重現」，但這條保證原本有漏——mealpy 的
+    # seed 只鎖到它自己的 RNG（optimizer.py 內另有全域 np.random 補丁），**scipy SLSQP 種子
+    # 精修 / L-BFGS-B polish 走的多執行緒 BLAS 沒鎖**。多執行緒 BLAS 浮點歸約 run-to-run
+    # 順序不同 → 種子值差在 ~1e-10 → 混沌的 L-SHADE 放大成臨界翻盤（2 vs 3 棒、分數 ±1），
+    # 實測同 SEED 同 config 跑兩次 seed pool 不一樣。這裡在 spawn 子行程「之前」pin 住 BLAS
+    # 執行緒數；子行程（種子生成＋DE 都在裡面）於 spawn 繼承這份 env、重新 import numpy 時
+    # 就吃到單執行緒 BLAS，整條管線才真的可重現。沒設 SEED（要隨機探索）就不動，保留多核速度。
+    # 這個 pipeline 是 numba(nogil) 評估為主、BLAS 只有種子精修那點，pin 成 1 的速度代價可忽略。
+    #
+    # 兩層都要 pin，缺一不可（實測過）：
+    #   1. env 設在 spawn「之前」→ 子行程（_optimize_burn_case：種子生成＋DE 都在裡面）繼承、
+    #      重新 import numpy 時吃到單執行緒 BLAS。
+    #   2. threadpool_limits 包住父行程的 run_study()（收子行程結果後還會做 tiebreak/L-BFGS-B
+    #      polish，那段在父行程跑）——父行程的 numpy/BLAS 早在本函式被呼叫前就 import 了，env
+    #      這時才設已經來不及，只能用 threadpoolctl 在 runtime 重新限制已載入的 BLAS。
+    seed_set = config.get("optimization", {}).get("SEED") is not None
+    if seed_set:
+        for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+            os.environ[_v] = "1"
+
+    def _blas_ctx():
+        # 每趟開一個新的 context（不重用同一個物件），seed 沒設就不限制、保留多核。
+        return threadpool_limits(limits=1, user_api="blas") if seed_set else contextlib.nullcontext()
+
     strategy = config.get("strategy", {})
     high_revs = max(0, int(strategy.get("LAMBERT_MAX_REVS", 4)))
     ensemble = bool(strategy.get("REVS_ENSEMBLE", True))
@@ -2199,7 +2225,8 @@ def run_study_over_revs(config):
         # 避免同一份報告在 console 上印每一趟——只在下面把勝出趟以 INFO 重印一次。
         if multi:
             opt._report_level = logging.DEBUG
-        burns, times, mission_info = opt.run_study()
+        with _blas_ctx():
+            burns, times, mission_info = opt.run_study()
         candidates.append((revs, burns, times, mission_info))
         optimizers.append(opt)
 
