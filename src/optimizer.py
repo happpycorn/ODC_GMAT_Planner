@@ -550,12 +550,12 @@ class MissionOptimizer:
         偏移量，r 夾在 [0, MISS_TOLERANCE_SOFT] —— 天生保證瞄準點落在規則允許的命中
         容許範圍內，讓優化器自己決定要不要用這個容許範圍去換更省油的轉移。
         """
-        # 中間棒 dv_r 的上界：預設夾在 MAX_DV_SOFT (天生合規)；開拆棒感知搜尋時放寬到
-        # MAX_FACTOR×MAX_DV，讓 DE 能提出「靠拆棒實現」的大衝量節點 (代價由 fitness 的
-        # 拆棒 surrogate 預付，見 SPLIT_AWARE_SEARCH 的說明)。
+        # 中間棒 dv_r 的上界：預設夾在 MAX_DV_SOFT (天生合規)；開拆棒感知搜尋時放寬，讓 DE
+        # 能提出「靠拆棒實現」的大衝量節點 (代價由 fitness 的拆棒 surrogate 預付)。放寬幅度
+        # 由 energy_floor 動態算 (B1)，不再是永遠 3×MAX_DV——見 _split_aware_dv_ub。
         dv_ub = self.MAX_DV_SOFT
         if self.SPLIT_AWARE_SEARCH:
-            dv_ub = self.SPLIT_AWARE_MAX_FACTOR * self.MAX_DV
+            dv_ub = self._split_aware_dv_ub()
         lb = [0.0]
         ub = [self.T_max]
         for _ in range(1, num_burns):
@@ -910,6 +910,28 @@ class MissionOptimizer:
         v_now = math.sqrt(mu * (2.0 / ra_b - 1.0 / a_b))
         v_need = math.sqrt(mu * (2.0 / ra_b - 2.0 / (ra_b + ra_a)))
         return abs(v_now - v_need)
+
+    def _split_aware_dv_ub(self) -> float:
+        """SPLIT_AWARE_SEARCH 開時，中間棒 Δv 大小的上界 (km/s)——B1（2026-09-22）。
+
+        取代舊的「永遠 SPLIT_AWARE_MAX_FACTOR × MAX_DV」：那個 factor 是猜的，設低漏解、
+        設高稀釋 DE 解析度。改由情境**實際能量差** energy_floor_dv() 算出「夠用」的上界：
+            dv_ub = clamp( ⌈floor/cap⌉·cap + margin ,  MAX_DV_SOFT ,  MAX_FACTOR·MAX_DV )
+        低能量差（軌道半徑範圍已重疊，floor≈0）自動收窄到 ~1×cap（不放寬、不稀釋搜尋）；
+        高能量差（雙曲線飛掠很可能，floor 遠超 cap）自動放寬到夠用、但仍夾在 MAX_FACTOR·MAX_DV
+        這個硬天花板內。energy_floor_dv() 是封閉解、微秒級，無條件算不拖慢。
+
+        物理：SPLIT_AWARE 的中間棒代表「一個之後會被拆成多發合法燒的大節點」，它要能承載的
+        最大衝量，量級就是把 B/A 軌道能量差一次交割所需的 Δv（≥floor），⌈floor/cap⌉·cap 是
+        「用整數發 cap 蓋過那個能量差」的量，margin 給 DE 一點超出下限的迴旋。"""
+        hard_cap = float(self.SPLIT_AWARE_MAX_FACTOR) * self.MAX_DV
+        cap = self.MAX_DV
+        if cap <= 0.0:
+            return hard_cap
+        floor = self.energy_floor_dv()          # km/s，封閉解
+        needed = math.ceil(floor / cap) * cap + cap   # margin = 一發 cap
+        # 只放寬、不收到比預設 MAX_DV_SOFT 還緊；也不超過 MAX_FACTOR·MAX_DV 硬天花板
+        return max(self.MAX_DV_SOFT, min(hard_cap, needed))
 
     @staticmethod
     def _direction_to_spherical(u) -> Tuple[float, float]:
