@@ -1427,6 +1427,13 @@ class MissionOptimizer:
         # seed_candidates 是空列表，starting_solutions 自然變成 None，行為等同
         # 加這個功能之前的版本。
         n_seeds = max(1, round(pop_size * 0.05))
+        # 可重現性 (2026-09-22)：初始族群的 random_part 用全域 np.random 抽，而下面 solve 前才
+        # np.random.seed() 已經太晚——那批隨機初始個體是**沒 seed** 的。窄窗 (預設每棒上界=cap)
+        # 被種子主導、看不出來；SPLIT_AWARE 放寬上界到 factor×cap 後就露餡 (同 SEED 跑兩次會翻
+        # 2/3 棒)。這裡在生成種子 / 抽 random_part **之前**先 seed，讓整個初始族群可重現；
+        # solve 前還會再 seed 一次，讓搜尋本身也可重現 (見下 self.seed 分支)。
+        if self.seed is not None:
+            np.random.seed(self.seed)
         seed_candidates = self._generate_seed_candidates(current_burns, n_seeds)
         if seed_candidates:
             lb_arr, ub_arr = np.array(lb), np.array(ub)
