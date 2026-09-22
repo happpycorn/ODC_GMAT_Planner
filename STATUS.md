@@ -4,7 +4,7 @@
 **怎麼用這個工具看 [README.md](README.md)；演算法/物理模型原理看 [METHODOLOGY.md](docs/METHODOLOGY.md)**；
 初賽的逐日開發日誌封存在 [docs/log/DEVLOG_prelim.md](docs/log/DEVLOG_prelim.md)；更細的技術決策看 commit log 跟程式碼註解。
 
-**最後更新：2026-09-11——初賽已結束；HAP-67 拆棒管線上線（違規解自動合法化，見下）。**
+**最後更新：2026-09-12——初賽已結束；HAP-67 拆棒管線上線；雙曲線 A 端到端（含拆棒）重驗過（見下 P3）。**
 
 ## 這是什麼
 
@@ -13,7 +13,7 @@ TASA／淡江大學辦的「第一屆軌道設計競賽」的任務規劃工具�
 
 - **初賽**：A 是圓軌道、被動（只受重力），單純攔截。**已結束。**
 - **下一輪（排位賽起）**：官方簡報說是**完全不同玩法**——A 變雙曲線、即時追逐戰。工具的雙曲線輸入端
-  防禦大多已就位，但**從未端到端實跑過**（見下面風險 P3）。玩法／計分細節要等官方發題才知道。
+  已端到端跑過、含 HAP-67 拆棒管線（見下面 P3），但沒鎖進回歸測試。玩法／計分細節要等官方發題才知道。
 
 規則要點（初賽）：Δv ≤ 1500 m/s/次、機動間隔 ≥100s、T_max=4×A 週期、**Δr ≤ 5km 即算成功且以內同分**
 （這點很關鍵，計分對命中位置是平的，決定策略）、繳交「Script + 至少模擬一次的 Report」。
@@ -50,14 +50,29 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
   中間棒（大機動都被節線攔截閃掉、或落終端棒已處理），故「中間棒拆分器」不做、此旗標休眠別刪，
   下一輪雙曲線 A 真題出來再重驗。完整調查見
   [HAP67_SPLIT_AWARE_INVESTIGATION.md](docs/HAP67_SPLIT_AWARE_INVESTIGATION.md)。
-- 回歸：`uv run python run_regression.py`（6 支、~38s，動任何東西前先跑）。拆棒管線已有正式
-  回歸 `tests/test_burn_splitter.py`（性質式斷言：合法/命中/Earth-safe/動態段數）。
+- 回歸：`uv run python run_regression.py`（7 支、~120s，動任何東西前先跑）。拆棒管線有
+  `tests/test_burn_splitter.py`；**雙曲線 A 端到端有 `tests/test_hyperbolic_e2e.py`（2026-09-22 補，
+  A5）**——結構煙霧（雙曲線輸入端＋種子產生器不炸）＋拆棒 e2e（違規→自動拆分→零違規/命中/
+  Earth-safe），性質式斷言。這補上了 STATUS 舊列的 P3 缺口。
+- **可重現性（2026-09-22 修）**：管線設了 SEED 現在**真的**可重現了。原本 `seed→單執行緒` 只鎖
+  mealpy 的 RNG，沒鎖 scipy SLSQP 種子精修走的**多執行緒 BLAS**——多執行緒 BLAS 浮點歸約
+  run-to-run 順序不同，會讓種子/DE 在臨界點翻盤（2 vs 3 棒、分數 ±1）。修法：`run_study_over_revs`
+  偵測到 SEED 時，spawn 前 pin BLAS env（子行程繼承）＋ `threadpool_limits` 包父行程 polish
+  （新增 `threadpoolctl` 依賴）。**任何 before/after 對照都靠這個才可信**（見 memory
+  odc-blas-nondeterminism）。
 
 **開始下一輪前要處理的風險**（出自 [PROJECT_AUDIT_20260909.md](docs/PROJECT_AUDIT_20260909.md)）：
 - 🟠 **P2 Earth-safe 判定是點質量解析式**（`reaches_perigee`/`check_constraints`）。下一輪若開攝動，
   長弧近地點會漂、解析判定不再精確——而它是失格線。→ HAP-20（攝動開時切數值密集取樣）。
-- 🟠 **P3 雙曲線 A 從未端到端跑過**。防禦就位但沒有一組雙曲線測資實跑過 `main.py`+GMAT。→ HAP-46/HAP-36。
+- ✅ **P3 雙曲線 A 端到端已重驗（2026-09-12）**。這條審計當時寫「從未跑過」時已經過時——
+  2026-08-15 就跑過 `hyperbolic_smoke`/`hyper_far`/`hyper_fast` 三組（見
+  [SCENARIOS.md](docs/SCENARIOS.md)），只是那次在 HAP-67 拆棒管線之前，沒測到「贏家違規時
+  自動拆分合法化」這條新路徑。09-12 用 `hyperbolic_test`（見 SCENARIOS.md 同節）逼 DE 交出
+  違規解，確認 `AUTO_SPLIT_LEGALIZE` 在雙曲線幾何下正常拆成合法解、GMAT 一般版/固定燃燒版
+  都收斂命中。**仍缺的是回歸測試**——`run_regression.py`/`tests/` 沒有任何雙曲線案例，
+  下次動拆棒管線或雙曲線輸入端會沒有自動防護，得補一支 `tests/test_hyperbolic_e2e.py`。
 - 🟡 **P4 雙曲線 A 的 TA 未檢查是否落在漸近線內**（`|TA|<arccos(−1/e)`）。給錯會晚到 poliastro 才炸。
+  這次手動抓 config 時有踩到這條規則（沒有 validator 幫忙擋），還是沒修。
 - ⚠️ **計分參數與 A/B 六根數要等官方發題**（`k_t/C_t/k_v/C_v`）。
 
 ## 環境（本機、不進 git）
