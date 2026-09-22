@@ -135,6 +135,11 @@ D1 (Earth-safe 數值複驗) 交件前必過
   2. **攔截末端速度自由 → transversality 與 rendezvous 不同**，不能直接抄 Lawden/Prussing 的
      rendezvous primer 公式，要用攔截變體（末端 p 橫截條件放鬆）。成本因此是「中」不是「低」。
 - **輸出**：先當純診斷（不改搜尋行為），確認讀數合理再接 C2。**成本**：中。
+- 🚧 **v1 上線（2026-09-22）**：`src/primer.py`（`intercept_primer_profile`）+ `tests/test_primer.py`。
+  純二體 STM primer 剖面，**攔截末端橫截條件用 p(t_f)=0**（速度自由、scorer 無速度成本）。
+  驗證：單棒 Lambert 攔截 → max|p|=1.00、optimal-ish；「抬高換面+5216大棒」→ max|p|=**2.005**、
+  **add-node**、峰值正確落在大棒前的弧 40% 處。純診斷、不改搜尋。**還缺**：跑在真實 DE 贏家上、
+  primer 圖輸出、interior 節點的精確 seeding 位置換算（接 C2 時做）。
 
 ### C2. primer 當 split-aware 自動開關（依賴 B1 + C1）
 - **做法**：先跑預設（中間棒夾 cap，便宜穩健）→ 對贏家算 primer →
