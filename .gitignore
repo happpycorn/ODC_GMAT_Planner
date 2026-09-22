@@ -13,6 +13,9 @@ configs/*
 
 outputs/*
 
+# Claude/夜跑產出的暫存目錄（規劃筆記、bundle zip 等），比照 outputs/ 可拋、不進版控
+Claude outputs/
+
 # porkchop 的原始網格 9.7 MB，跑 porkchop_grid.py 50 秒就重建，不進版控
 scratch_overnight/porkchop_h*.npz
 
