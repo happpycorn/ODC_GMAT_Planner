@@ -80,7 +80,7 @@ uv run main.py --config configs/my_scenario.json
 執行完後會依序做三件事：
 
 1. **Python 端高精度預覽**：終端機直接印出這組解的預估成績（用含 J2 的高精度模型算出來的真實 Δr_min / ΔV_team / T_team / 違規次數 / Score），不用等 GMAT 就能先判斷這組解值不值得。
-2. **產出 GMAT 任務腳本**：寫到 `outputs/output.txt`。
+2. **保存方案與產出 GMAT 任務腳本**：寫到本次獨立目錄的 `mission.json` 與 `output.txt`；目錄預設為 `outputs/runs/<唯一識別碼>/`，啟動時會印出。
 3. **自動呼叫 GMAT 做無頭驗證**：透過 `GmatConsole --exit --run` 在背景直接把腳本跑一次（不會跳出 GMAT 視窗），讀回 GMAT 自己算出來的 `InterceptSuccess`/`MissDistance`/`T_team`，跟 Python 的預測印在一起對照。**整個流程一次跑完，不用手動開 GMAT。**
 
 GMAT 相關參數：
@@ -91,6 +91,41 @@ uv run main.py --no-gmat                                              # 只要 P
 ```
 
 若沒裝 GMAT 或路徑不對，這步只會印警告，不會讓程式中斷；Python 算出來的結果跟 `output.txt` 照樣正常產出。
+
+### 分段執行：修改後不用每次從搜尋重跑
+
+`main.py` 仍可一次跑到底。開發時，可先存下求解結果，再從需要驗證的階段接著跑：
+
+```bash
+# 1. 搜尋＋primer＋拆棒，完成後保存 mission.json，不產腳本、不跑 GMAT
+uv run main.py --config configs/contest.json --stop-after solve --run-dir outputs/runs/solve-a
+
+# 2. 只重產腳本：不搜尋、不拆棒、不跑 GMAT
+uv run main.py --from-mission outputs/runs/solve-a/mission.json --stop-after export --run-dir outputs/runs/export-a
+
+# 3. 用已保存方案產腳本並跑 GMAT DC／固定燃燒版雙驗證，不重新求解
+uv run main.py --from-mission outputs/runs/solve-a/mission.json --run-dir outputs/runs/verify-a
+
+# 4. 只重驗既有固定燃燒腳本，不重新求解或重產任務
+uv run main.py --verify-script outputs/runs/verify-a/output_submit.txt --run-dir outputs/runs/recheck-a
+```
+
+`--run-dir` 可省略，程式會自動建立唯一目錄；指定時必須是**尚不存在**的目錄，避免覆蓋先前結果。
+`--no-gmat` 等同停在 export。只改模型大小可加 `--model-scale 0.8`，不需修改存檔。
+
+改拆棒器時，仍用 `--from-winner <winner_presplit_seed*.json>`，跳過搜尋、重跑拆棒；舊版存檔也可讀。
+新執行會把每顆 seed 的拆前／拆後結果及最終 `mission.json` 放在同一個 run 目錄。
+`mission.json` 表示已完成 Python 求解，不保證合法或已通過 GMAT；Earth-safe 閘門仍會擋下不安全的繳交腳本。
+
+重播會使用存檔內的軌道、規則與求解設定；不需要本機 `configs/config.json`。
+重播時若另外給 `--config`，只讀取其中的 `local.gmat_console_path`，不覆寫物理設定。
+存檔有格式版本、內容雜湊、程式來源雜湊與來源鏈；改動求解/物理模組或 `uv.lock` 後會拒絕直接重用拆後方案，
+請重新求解，或在只改拆棒器時從 `--from-winner` 重播。產腳本程式的修改不會要求重跑搜尋。
+
+GMAT 單獨驗證支援本工具產生、含 `Report_Intercept` 的腳本；會保存執行副本，只改報表目的地，原始腳本保持不變。
+每次驗證的 `verification.json` 記錄腳本雜湊、結果與 `checks_passed`（命中、末棒合規、DC 模式另需收斂）。
+此欄位不代表重新檢查了全軌跡 Earth-safe 或每一棒的合規性；完整方案的 Python 檢查仍在 `mission.json`。
+GMAT 路徑字串需使用 ASCII；自動驗證會將報表分開保存，不再共用 GMAT 安裝目錄的報表。
 
 ---
 
@@ -119,7 +154,7 @@ uv run feasibility.py --config configs/x.json --burns 3 # 加做 3 棒可行性 
 | 情況 | 建議 |
 |---|---|
 | 能量下限 = 0、合法解常見（>1%） | 直接 `main.py`，`MAX_BURNS` 用 `[1]` 或 `[1,2]` |
-| 能量下限 > 每棒上限 | `MAX_BURNS` 從下限起跳，別放更小的（注定違規） |
+| 能量下限 > 每棒上限 | 若 `AUTO_SPLIT_LEGALIZE=true`（預設），可保留較低棒數作為 route-first 候選，贏家會再動態拆棒；關閉自動拆棒時，才應讓 `MAX_BURNS` 從直接合法下限起跳 |
 | 合法解極稀有（<0.05%） | 窄窗地形，用正式預算別省，靠種子機制找 |
 
 ### 2. `sweep_burns.py`：燃燒次數範圍很寬時才划算
@@ -142,8 +177,10 @@ uv run sweep_burns.py --config configs/x.json --burns 2-8
 
 ### `main.py` 已經內建的檢查（所以前面兩步可以跳過）
 
-* **開跑前**：如果 `MAX_BURNS` 裡有「能量上不可能合法」的燃燒次數，會直接警告並建議
-  拿掉（能量下限是封閉解，算一次不到微秒，所以無條件做，不影響速度）。
+* **開跑前**：如果 `MAX_BURNS` 裡有「搜尋輸出當下不可能直接合法」的燃燒次數，會直接
+  說明。預設開啟 `AUTO_SPLIT_LEGALIZE` 時，這些低棒數會保留作為 route-first 候選，若勝出
+  再動態拆成合法多棒解，**不會自動刪除，也不應只因警告手動拿掉**；只有關閉自動拆棒時，
+  才會建議移除。能量下限是封閉解，算一次不到微秒，所以這項檢查不影響速度。
 * **印任務規劃時**：如果贏家其實是「中間棒 Δv≈0 的空燒」，會明講「這是 N 棒的方案但
   實際只用到 M 棒」——多棒解退化成單棒很常見，光看棒數會誤以為用了多棒策略。
 * **挑贏家時**：分數打平的候選是照**規則第 6 節的平手判定**排名次的
@@ -237,13 +274,27 @@ uv run python tests/test_arc_safety.py
 
 ## 📂 資料夾讀寫說明
 
-* **輸入資料：** 軌道參數與計分參數放在 `configs/config.json`（找不到會自動生成範例）。
-* **GMAT 任務腳本（兩份）：**
-  * `outputs/output.txt`：一般版本，最後一棒靠 GMAT 自己的 `DifferentialCorrector`（`Target/Vary/Achieve`）收斂命中瞄準點，用來找出正確答案。
-  * `outputs/output_submit.txt`：**建議拿去正式繳交的版本**。一般版本驗證通過後會自動產生，把 GMAT 剛剛收斂出來的燃燒值直接寫死，整份腳本不含任何求解器——單純傳播＋施加燃燒，換一台電腦（例如比賽當天主辦單位準備的電腦）執行，不用擔心求解器的收斂行為跟我們這邊不一樣，因為根本沒有求解器在跑。想跳過這一步（省幾秒）可以加 `--no-fixed-script`。
-  * 兩份都會各自備份一份帶時間戳記的版本到 `outputs/history/`，避免之後的測試跑動不小心把先前的好結果蓋掉。
-* **GMAT 攔截報表：** 預設會被 `main.py` 自動讀取並印出對照，不用手動找。原始檔案在 GMAT 安裝資料夾下的 `output/GMAT_InterceptReport.txt`（如果想自己手動在 GMAT 裡開 `output.txt`/`output_submit.txt` 執行也完全可以，看 `InterceptSuccess` 欄位：1 = 成功、0 = 失敗）。3D 視角 `View_Intercept` 會自動用紅/綠/灰區分 ShipA/ShipB/地球。
-* **執行紀錄：** 每次執行都會把這次用的設定跟結果（時間戳、分數、ΔV、T_team、違規次數、兩份腳本各自的 GMAT 實際驗證結果…）附加一行 JSON 到 `outputs/run_history.jsonl`，方便之後比較不同設定/軌道跑出來的分數，以及 Python 預測跟 GMAT 實測差多少。
+輸入仍為 `configs/config.json`；以下輸出皆相對於本次 `outputs/runs/<id>/`（或指定的 `--run-dir`）。
+新流程不再覆寫舊的 `outputs/output.txt`、`outputs/output_submit.txt`、`outputs/run.log` 或全域歷史紀錄。
+
+| 檔案 | 用途 |
+|---|---|
+| `mission.json` | 最終 Python 方案，可用 `--from-mission` 重新產腳本／驗證 |
+| `winner_presplit_seed*.json` | 各 seed 拆棒前贏家，可用 `--from-winner` 重跑拆棒 |
+| `mission_seed*.json` | 各 seed 拆棒後方案（portfolio 也保留非最終贏家） |
+| `output.txt` | 一般 GMAT 腳本，末棒由 DifferentialCorrector 修正 |
+| `output_submit.txt` | 固定燃燒繳交版；應搭配本次固定版報表確認結果 |
+| `gmat_dc/`、`gmat_fixed/` | 各自的 `executed.script`、`GMAT_InterceptReport.txt`、stdout/stderr 和 `verification.json` |
+| `gmat/` | `--verify-script` 的獨立驗證資料，格式同上 |
+| `run.json` | 來源鏈、程式版本、執行狀態、各階段時間與驗證結果 |
+| `run.log` | 本次完整日誌 |
+| `run_history.jsonl` | 產腳本／驗證階段的成績與 GMAT 結果 |
+| `history/` | 腳本產生器保留的時間戳副本 |
+
+`run.json.status=completed` 表示要求的階段執行完畢，不代表可繳交。
+只停在 solve/export 時尚未 GMAT 驗證；完整模式遇到 GMAT 執行失敗會記錄
+`verification_status=failed`，Python 方案仍保留。`--verify-script` 執行失敗會以非零退出碼結束。
+在 GMAT GUI 手動執行可使用 `output.txt`／`output_submit.txt`；它們保留相對報表名稱，便於移到其他電腦。
 
 ---
 
@@ -269,7 +320,7 @@ uv run python tests/test_arc_safety.py
 
 ### B. 比賽當天，主辦單位準備的電腦
 
-**不需要部署上面這整套東西。** 規則寫明「太空船的指令下達與模擬，需使用主辦/承辦單位所準備的電腦」，但正式要拿去執行的 `outputs/output_submit.txt` 本身就是一份**純文字的 GMAT script**，不含任何求解器（見上面「固定燃燒版本」的說明）——只要那台電腦上有裝 GMAT（官方應該會確保這件事，畢竟整場比賽都靠 GMAT 跑），直接把這個檔案帶過去（USB/email 都行），在 GMAT 裡開檔執行就好，完全不需要 Python、`uv`、或這個 repo 的任何程式碼。
+**不需要部署上面這整套東西。** 規則寫明「太空船的指令下達與模擬，需使用主辦/承辦單位所準備的電腦」，但正式要拿去執行的 本次目錄的 `output_submit.txt` 本身就是一份**純文字的 GMAT script**，不含任何求解器（見上面「固定燃燒版本」的說明）——只要那台電腦上有裝 GMAT（官方應該會確保這件事，畢竟整場比賽都靠 GMAT 跑），直接把這個檔案帶過去（USB/email 都行），在 GMAT 裡開檔執行就好，完全不需要 Python、`uv`、或這個 repo 的任何程式碼。
 
 真正需要在自己電腦上（賽前「先期模擬與運算」）跑的是這整套工具，用來**找出**這份 script；比賽現場要交出去的只是**結果**。兩件事分開想，能大幅降低「主辦單位電腦環境跟我們不一樣」的風險——順便也是這個 session 加「固定燃燒版本」的動機。
 
@@ -277,10 +328,10 @@ uv run python tests/test_arc_safety.py
 
 ## ✅ 正式提交前
 
-規則附則：「所有結果以主辦單位驗證程式為準；若結果無法重現，主辦單位得取消其成績。」`main.py` 現在每次執行都會自動跑 GMAT 驗證，**正式提交前還是建議再手動確認一次**：`run_history.jsonl` 最新那筆記錄裡：
+規則附則：「所有結果以主辦單位驗證程式為準；若結果無法重現，主辦單位得取消其成績。」`main.py` 現在每次執行都會自動跑 GMAT 驗證，**正式提交前還是建議再手動確認一次**：本次目錄的 `run_history.jsonl` 那筆記錄裡：
 
-1. `gmat_verified.intercept_success`、`targeter_converged` 都是 `true`，且沒有任何一次燃燒超過 1500 m/s（一般版本，`outputs/output.txt`，用來確認算出來的方案本身沒問題）。
-2. `fixed_script_verified.intercept_success`、`final_burn_legal` 都是 `true`（固定燃燒版本，`outputs/output_submit.txt`，**這份才是建議繳交的檔案**，不含任何求解器，換電腦跑結果會更穩定）。
+1. `gmat_verified.intercept_success`、`targeter_converged` 都是 `true`，且沒有任何一次燃燒超過 1500 m/s（一般版本，本次目錄的 `output.txt`，用來確認算出來的方案本身沒問題）。
+2. `fixed_script_verified.intercept_success`、`final_burn_legal` 都是 `true`（固定燃燒版本，本次目錄的 `output_submit.txt`，**這份才是建議繳交的檔案**，不含任何求解器，換電腦跑結果會更穩定）。
 
 如果沒有 `fixed_script_verified` 這個欄位，代表一般版本沒有通過驗證（或是有加 `--no-fixed-script`），先確認一般版本乾淨過了，再重跑一次讓固定版本產生出來。
 

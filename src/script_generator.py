@@ -33,7 +33,7 @@ def script_generator(
     b_sma, b_ecc, b_inc, b_raan, b_aop, b_ta,
     burns, times, aim_point, max_dv=1.5, gravity_degree=2,
     final_burn_fixed_vnb=None, output_filename="output.txt",
-    model_scale=0.5,
+    model_scale=0.5, output_dir="outputs", report_filename="GMAT_InterceptReport.txt",
 ):
     """
     gravity_degree: highest zonal (m=0) harmonic to include, matching Python's
@@ -79,6 +79,8 @@ def script_generator(
         guaranteed legal — check FinalBurnLegal in the report.
     See METHODOLOGY.md/STATUS.md for the full reasoning.
     """
+    if any(c in str(report_filename) for c in ("'", "\n", "\r")):
+        raise ValueError("GMAT report filename contains invalid characters")
     aim_x, aim_y, aim_z = aim_point
     fixed_mode = final_burn_fixed_vnb is not None
     final_burn_idx = len(burns) - 1
@@ -485,7 +487,7 @@ View_ShipBChase.ShowPlot = true;
 % final burn's Element1/2/3 (VNB components, km/s)
 Create ReportFile Report_Intercept;
 Report_Intercept.SolverIterations = Current;
-Report_Intercept.Filename = 'GMAT_InterceptReport.txt';
+Report_Intercept.Filename = '{report_filename}';
 Report_Intercept.WriteHeaders = true;
 Report_Intercept.Precision = 10;
 Report_Intercept.ColumnWidth = 20;
@@ -501,12 +503,12 @@ Report_Intercept.ColumnWidth = 20;
     # 就把前面跑出來的好結果蓋掉，想找回舊版本直接去 history 資料夾撈。
     # outputs/ 整個被 .gitignore 排除，全新 git clone 下來這個資料夾根本不存在
     # (git 不會建立空資料夾)，這裡的 makedirs 之前漏了，寫檔案前一定要先確保資料夾在。
-    os.makedirs("outputs", exist_ok=True)
-    output_path = os.path.join("outputs", output_filename)
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, output_filename)
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(script_content)
 
-    history_dir = os.path.join("outputs", "history")
+    history_dir = os.path.join(output_dir, "history")
     os.makedirs(history_dir, exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     stem, ext = os.path.splitext(output_filename)
@@ -514,5 +516,5 @@ Report_Intercept.ColumnWidth = 20;
     with open(archive_path, "w", encoding="utf-8") as f:
         f.write(script_content)
 
-    log.info(f"📄 GMAT script 已建立：outputs/{output_filename} (備份於 {archive_path})")
+    log.info(f"📄 GMAT script 已建立：{output_path} (備份於 {archive_path})")
     return output_path

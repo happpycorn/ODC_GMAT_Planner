@@ -425,6 +425,10 @@ class MissionOptimizer:
         self.SPLIT_AWARE_SEARCH = bool(strategy.get("SPLIT_AWARE_SEARCH", False))
         self.SPLIT_AWARE_MAX_FACTOR = max(1, int(strategy.get("SPLIT_AWARE_MAX_FACTOR", 3)))
         self.SPLIT_AWARE_DV_OVERHEAD = max(1.0, float(strategy.get("SPLIT_AWARE_DV_OVERHEAD", 1.02)))
+        # 搜尋後的 route-first 合法化開關。main.py 真正執行拆棒時仍以同一個 config 值
+        # 為準；optimizer 也保存一份，讓 preflight 能正確解讀「低於直接合法棒數」的案例：
+        # 開啟時它們不是該刪的浪費，而是刻意保留給後處理拆棒的路線候選。
+        self.AUTO_SPLIT_LEGALIZE = bool(strategy.get("AUTO_SPLIT_LEGALIZE", True))
 
         # 攔截容許範圍：規則只要求 Δr ≤ 這個值，超出的精準度不會多加分 (Δr_min 會被
         # 地板夾住)，開放讓最後一棒 Lambert 瞄準這個球內最省油的點，而不是死盯著 A
@@ -1553,10 +1557,12 @@ class MissionOptimizer:
         """
         開跑前的免費健檢 (2026-08-15)：能量下限是封閉解、微秒等級，所以無條件算。
 
-        會攔到一種很浪費的設定錯誤：MAX_BURNS 裡放了「在物理上不可能合法」的棒數。
-        B 要讓軌道半徑範圍碰到 A 至少要花 energy_floor_dv()，如果連這個下限都超過
-        「棒數 × 每棒上限」，那個案例注定只能產生違規解 (每次違規扣 10 分)，跑再多代
-        也不會變合法——與其讓使用者事後看報表才發現，不如開跑前就講。
+        MAX_BURNS 裡若有低於「直接合法所需棒數」的案例，它在搜尋輸出當下必然違規；但
+        AUTO_SPLIT_LEGALIZE 開啟時，這可能正是 route-first 流程刻意要的候選：先用少數
+        邏輯棒找到好路線，再由 legalize_violating_winner 動態拆成合法多棒解。因此這裡
+        只做說明，絕不修改 self.burns，也不會在拆棒開啟時建議使用者刪除案例。
+
+        只有 AUTO_SPLIT_LEGALIZE 關閉時，這些案例才沒有後續合法化路徑，可以明確建議移除。
 
         詳細的可行性分析 (合法解有多稀有、多棒構造存不存在) 在 feasibility.py，
         這裡只做這個零成本的必要條件檢查。
@@ -1569,9 +1575,17 @@ class MissionOptimizer:
         impossible = sorted(b for b in self.burns if b < min_burns)
         if not impossible:
             return
-        log.warning(f"⚠️ 能量下限 {floor_mps:,.0f} m/s（每棒上限 {cap_mps:,.0f} m/s）→ 至少需要 "
-                    f"{min_burns} 棒才可能合法；MAX_BURNS 裡的 {impossible} 注定只能找到違規解"
-                    f"（浪費搜尋時間，建議拿掉或用 feasibility.py 先確認）。")
+        prefix = (f"⚠️ 能量下限 {floor_mps:,.0f} m/s（每棒上限 {cap_mps:,.0f} m/s）→ "
+                  f"至少需要 {min_burns} 棒才能直接合法；MAX_BURNS 裡的 {impossible} "
+                  "在搜尋輸出當下必然違規。")
+        if self.AUTO_SPLIT_LEGALIZE:
+            log.warning(prefix +
+                        " AUTO_SPLIT_LEGALIZE 已開啟：保留它們作為 route-first 候選，"
+                        "贏家會再動態拆棒合法化；不要只因這個警告移除。")
+        else:
+            log.warning(prefix +
+                        " AUTO_SPLIT_LEGALIZE 已關閉，沒有後續拆棒路徑；若只接受合法解，"
+                        "建議移除這些棒數或先用 feasibility.py 確認。")
 
     def run_study(self):
         cases = sorted(self.burns, reverse=True)

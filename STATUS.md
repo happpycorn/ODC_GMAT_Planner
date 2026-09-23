@@ -4,7 +4,18 @@
 **怎麼用這個工具看 [README.md](README.md)；演算法/物理模型原理看 [METHODOLOGY.md](docs/METHODOLOGY.md)**；
 初賽的逐日開發日誌封存在 [docs/log/DEVLOG_prelim.md](docs/log/DEVLOG_prelim.md)；更細的技術決策看 commit log 跟程式碼註解。
 
-**最後更新：2026-09-23——C3：拆棒 SLSQP 跑到收斂，contest 同路線 98.3121 → 98.3174（GMAT 過，高於初賽冠軍 98.3162）；新增 `--from-winner` 重播。**
+**最後更新：2026-09-23——分段管線第一版：拆棒後方案存檔、獨立產檔／GMAT 驗證、每次執行隔離輸出。C3 拆棒收斂改良保留。**
+
+## 分段管線第一版（2026-09-23）
+
+- 原本 `uv run main.py` 一路跑到底仍可使用；新入口與命令範例見 [README 分段執行](README.md#分段執行修改後不用每次從搜尋重跑)。
+- `--stop-after solve` 保存拆棒後的 `mission.json`；`--from-mission` 跳過搜尋、primer 與拆棒，重跑產檔／驗證。
+- `--verify-script` 只驗證現有腳本。每次使用新的 `outputs/runs/<run-id>/`，保存實際執行副本、隔離報表、stdout/stderr、雜湊與驗證結果；舊 `outputs/` 產物不覆寫。
+- 方案存檔驗證內容雜湊與物理程式版本；修改求解／物理程式後拒用舊方案，需重新求解或從拆棒前存檔重播。Python 求解成功不等於 GMAT 通過。
+- 實測小預算案例（`tests/fixtures/pipeline_smoke.json`）：全流程 36.2 秒，從 `mission.json` 重跑下游 5.0 秒；兩份一般版／固定燃燒版腳本逐位元相同，真實 GMAT 皆命中且合規。這是單次煙霧測試，不是普遍加速倍率。
+- 既有拆棒前存檔實測：拆棒 413.6 秒，保存六棒方案後重播下游 3.5 秒；一般版與固定燃燒版 GMAT 皆通過。產物位於本機 `outputs/runs/stage-refactor-validation*`（不納入 Git）。
+- 新增 `tests/test_pipeline_stages.py`，測階段跳過、舊存檔相容、快照完整性、每種子保留、輸出不覆蓋、報表隔離與失敗、安全閘門。
+- 本版未拆開搜尋內部候選集與 primer 診斷；修改搜尋／拆棒演算法仍須跑對應測試，不應拿下游重播取代物理回歸。
 
 ## 這是什麼
 
@@ -68,7 +79,7 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
   `joint_nlp_split` 的 SLSQP 被 maxiter=80 截斷（每次都 status=9），擦邊解被判不可行、退回 greedy
   暖啟。A1：maxiter 預設 1000 + SLSQP 對略緊約束求解（cap −0.02 m/s、miss −5 m、近地點 +1 m），
   feasible 仍用真實約束判。contest SEED=0 同一路線 **98.3121 → 98.3174**，GMAT 一般版/固定燃燒版
-  皆命中、收斂、合規。另：每次完整跑自動存 `outputs/winner_presplit_seed<SEED>.json`，
+  皆命中、收斂、合規。另：每次完整跑自動存本次目錄的 `winner_presplit_seed<SEED>.json`，
   **`main.py --from-winner <檔>` 跳過搜尋、只重跑拆棒 + 產腳本 + GMAT（~4 分鐘）——改拆棒器時用它，
   不要重跑整條管線**。完整診斷與數據見 [C3_CONVEX_SPLITTER_PLAN.md](docs/C3_CONVEX_SPLITTER_PLAN.md) §6。
 - **末端速度匹配審查（D2，2026-09-22，純審查無改動）**：確認全管線是**純位置攔截**、無

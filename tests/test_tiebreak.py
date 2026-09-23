@@ -12,11 +12,14 @@
 
 import os
 import sys
+import copy
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.optimizer import (MissionOptimizer, tiebreak_rank_key,
                            decision_variable_dims, pick_best_across_revs)
+from src.config_validator import _validate_strategy
 
 FAILS = []
 
@@ -116,6 +119,38 @@ check("三項全同時選棒數最少的（規則外的可重現性保證）",
 # 全軍覆沒（fitness >= 0 代表撞毀/無效）
 check("全部無效時回傳 None",
       pick({1: (0.0, 9.0, 0.0, 0.0)}, fitness={1: 0.0}) is None)
+
+
+print("\n── preflight_report：低棒數 route-first 候選不可被誤導刪除 ──")
+
+# 拉大 A/B 半徑差，保證能量下限超過一棒上限，讓 MAX_BURNS=[1] 觸發提示。
+PREFLIGHT_CFG = copy.deepcopy(CFG)
+PREFLIGHT_CFG["orbit_A"]["SMA"] = 30000.0
+PREFLIGHT_CFG["optimization"]["MAX_BURNS"] = [1]
+
+cfg_split = copy.deepcopy(PREFLIGHT_CFG)
+cfg_split["strategy"]["AUTO_SPLIT_LEGALIZE"] = True
+opt_split = MissionOptimizer(cfg_split)
+burns_before = list(opt_split.burns)
+with patch("src.optimizer.log.warning") as warning:
+    opt_split.preflight_report()
+split_msg = warning.call_args.args[0] if warning.called else ""
+check("自動拆棒開啟時明確要求保留 route-first 候選",
+      "保留" in split_msg and "route-first" in split_msg and "不要" in split_msg)
+check("preflight 只提示、不修改 MAX_BURNS", opt_split.burns == burns_before)
+
+cfg_no_split = copy.deepcopy(PREFLIGHT_CFG)
+cfg_no_split["strategy"]["AUTO_SPLIT_LEGALIZE"] = False
+opt_no_split = MissionOptimizer(cfg_no_split)
+with patch("src.optimizer.log.warning") as warning:
+    opt_no_split.preflight_report()
+no_split_msg = warning.call_args.args[0] if warning.called else ""
+check("只有自動拆棒關閉時才建議移除低棒數", "已關閉" in no_split_msg and "建議移除" in no_split_msg)
+
+strategy_errors = []
+_validate_strategy({**PREFLIGHT_CFG["strategy"], "AUTO_SPLIT_LEGALIZE": "false"}, strategy_errors)
+check("AUTO_SPLIT_LEGALIZE 字串 false 會被 validator 擋下（避免 bool('false') 誤判為開啟）",
+      any("AUTO_SPLIT_LEGALIZE" in error for error in strategy_errors))
 
 
 # ────────────────────────────────────────────────────────────────────────
