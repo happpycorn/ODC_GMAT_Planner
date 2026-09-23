@@ -198,9 +198,16 @@ def _simulate_free(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0):
     }
 
 
+# SLSQP 求解用的約束餘裕（判 feasible 仍用真實邊界，見 joint_nlp_split docstring）。
+# 分數對命中距離在 5 km 內是平的，miss 餘裕免費；cap 餘裕 0.02 m/s/棒，代價 <1e-5 分。
+_NLP_CAP_MARGIN = 2e-5     # km/s
+_NLP_MISS_MARGIN = 5e-3    # km
+_NLP_PERI_MARGIN = 1e-3    # km
+
+
 def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
                     A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v,
-                    T_max, miss_tol, maxiter=80):
+                    T_max, miss_tol, maxiter=1000):
     """對一個 N 棒暖啟 `x0` (free-ECI 佈局) 做 SLSQP 聯合優化，回傳優化後的解與指標。
 
     目標 = -calculate_score(miss, T_team, 總Δv, penalty=0)；約束 (ineq ≥0)：每棒 ≤cap、
@@ -209,6 +216,12 @@ def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
     回傳 dict（含 x / score / total_dv_mps / T_team / miss_km / dv_mps / feasible），或 None
     (SLSQP 後仍不可行)。penalty=0 是因為 cap 約束保證合規；若 SLSQP 沒壓進 cap，feasible 會是
     False、由呼叫端丟掉。
+
+    maxiter 與約束餘裕（C3，2026-09-23；數據見 docs/C3_CONVEX_SPLITTER_PLAN.md §6）：
+    - maxiter 預設 1000：此題收斂要 236~823 次迭代，舊值 80 讓**每一次**都被截斷（status=9）。
+    - SLSQP 對**略緊**的約束求解（`_NLP_*_MARGIN`），出來再用**真實**約束判 feasible。截斷/收斂
+      點常貼著約束邊界、差 1e-3 量級（miss 3.501 vs 3.5、單棒 1498.01 vs 1498.00），用真實邊界
+      求解時這種擦邊解會被判不可行丟掉、退回差 0.01 分的 greedy 暖啟——拆後分數的抖動主因。
     """
     x0 = np.asarray(x0, dtype=np.float64)
     _cache = {}
@@ -226,13 +239,13 @@ def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
                                 0, k_t, C_t, k_v, C_v)
 
     def c_cap(x):
-        return cap - metrics(x)["dv_mags"]                 # 每棒 ≤cap
+        return (cap - _NLP_CAP_MARGIN) - metrics(x)["dv_mags"]            # 每棒 ≤cap
 
     def c_peri(x):
-        return metrics(x)["arc_minr"] - min_periapsis      # 每段弧 Earth-safe
+        return metrics(x)["arc_minr"] - (min_periapsis + _NLP_PERI_MARGIN)  # 每段弧 Earth-safe
 
     def c_miss(x):
-        return np.array([miss_tol - metrics(x)["miss_km"]])  # 命中 A(T)
+        return np.array([(miss_tol - _NLP_MISS_MARGIN) - metrics(x)["miss_km"]])  # 命中 A(T)
 
     # 邊界：t0∈[0,T_max]；棒間滑行∈[min_coast,T_max]、最後一段∈[0,T_max]；dv 各分量∈[-cap,cap]。
     lb = [0.0] + [min_coast] * (N - 1) + [0.0] + [-cap] * (3 * N)
@@ -261,7 +274,7 @@ def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
 def legalize_route(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
                    cap, min_coast, mu, j2, j3, j4, re, min_periapsis, max_revs,
                    A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, T_max,
-                   miss_tol, n_span=1, max_seg=14, maxiter=80):
+                   miss_tol, n_span=1, max_seg=14, maxiter=1000):
     """Stage 2 對外單一入口：吃一條「前導合法棒 + 一發(可能超標的)終端攔截」的 route，
     回傳**合法化 + joint-NLP 優化後**的最佳解（free-ECI），或 None（拆不出）。
 

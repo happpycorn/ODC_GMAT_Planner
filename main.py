@@ -154,6 +154,12 @@ def parse_args():
              "適合正式繳交——換一台電腦跑也不用擔心求解器行為不一致，因為根本沒有"
              "求解器在跑。開發/迭代時想省這幾秒可以加這個旗標跳過。"
     )
+    parser.add_argument(
+        "--from-winner", default=None, metavar="JSON",
+        help="跳過搜尋，從拆棒前贏家存檔（outputs/winner_presplit_seed*.json，每次完整跑都會"
+             "自動存）直接接拆棒合法化 + 產腳本 + GMAT。改拆棒器/驗證時用，幾分鐘一輪。"
+             "此模式下軌道/規則一律取存檔內的 config，--config 只用來找 GmatConsole 路徑"
+    )
     # 執行期輸出的詳略（HAP-68）。預設終端機只印事件級摘要，完整 DEBUG 一律寫進
     # outputs/run.log，事後要追細節去撈那個檔就好。
     parser.add_argument(
@@ -522,7 +528,7 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
         min_periapsis=opt.MIN_PERIAPSIS, max_revs=opt.LAMBERT_MAX_REVS,
         A_r0=opt.A_r0, A_v0=opt.A_v0, B_r0=opt.B_r0, B_v0=opt.B_v0,
         k_t=opt.k_t, C_t=opt.C_t, k_v=opt.k_v, C_v=opt.C_v, T_max=T_max,
-        miss_tol=opt.MISS_TOLERANCE_SOFT, n_span=1, maxiter=80)
+        miss_tol=opt.MISS_TOLERANCE_SOFT, n_span=1)  # maxiter 用拆棒器預設（C3：1000）
     if res is None or not res["feasible"]:
         log.info("⚠️ HAP-67 自動拆分：這個違規解在段數上限內拆不出合法版，沿用原解。")
         return None
@@ -556,21 +562,76 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
     return burns_vnb, times_new, new_mi
 
 
+def _to_jsonable(obj):
+    """numpy 陣列/純量、tuple 轉成 json.dump 吃得下的型別（float 走 repr，逐位元可還原）。"""
+    if isinstance(obj, dict):
+        return {k: _to_jsonable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, np.ndarray)):
+        return [_to_jsonable(v) for v in obj]
+    if isinstance(obj, np.generic):
+        return obj.item()
+    return obj
+
+
+def save_winner_checkpoint(path, optimizer, burns, times, mission_info):
+    """把「拆棒前」的 DE 贏家存檔（C3，2026-09-23）。
+
+    動機：拆棒器（`legalize_violating_winner`）是搜尋之後的純後處理，但以前改它、調它都得
+    重跑十幾分鐘到幾小時的搜尋才驗得到。存下贏家後，`main.py --from-winner <檔>` 直接從這裡
+    接拆棒 + GMAT，幾分鐘一輪。存的 config 是**勝出那趟 optimizer 實際用的**（含 REVS 集成
+    挑中的 LAMBERT_MAX_REVS、C2 重搜改過的 MAX_BURNS），重播才會跟原管線走同一條路。"""
+    payload = {
+        "saved_at": datetime.datetime.now().isoformat(timespec="seconds"),
+        "config": optimizer.config,
+        "burns": burns, "times": times, "mission_info": mission_info,
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(_to_jsonable(payload), f, ensure_ascii=False, indent=1)
+    log.debug(f"💾 拆棒前贏家已存檔：{path}（可用 --from-winner 重播拆棒/GMAT）")
+
+
+def load_winner_checkpoint(path):
+    """讀回 `save_winner_checkpoint` 的存檔 → (config, burns, times, mission_info, optimizer)。"""
+    with open(path, "r", encoding="utf-8") as f:
+        p = json.load(f)
+    config = p["config"]
+    mi = p["mission_info"]
+    mi["x"] = np.asarray(mi["x"], dtype=np.float64)
+    mi["aim_point"] = tuple(mi["aim_point"])
+    burns = [tuple(b) for b in p["burns"]]
+    return config, burns, list(p["times"]), mi, MissionOptimizer(config)
+
+
+def _legalize_stage(config, burns, times, mi, opt):
+    """拆棒合法化那一段（Earth-safe 才拆）。`_solve_pipeline` 與 `--from-winner` 重播共用。"""
+    if bool(mi.get("earth_safe", True)):
+        _legal = legalize_violating_winner(config, burns, times, mi, opt)
+        if _legal is not None:
+            burns, times, mi = _legal
+    return burns, times, mi
+
+
 def _solve_pipeline(config):
     """一顆 SEED 的完整求解：搜尋 → C2 primer 條件式重搜 →（Earth-safe 時）拆棒合法化。
     回傳 (burns, times, mission_info, optimizer)；搜尋失敗回 (None, None, None, None)。
     **不印 Earth-safe 警告**——那只該對最終勝出解印一次（見 main / run_seed_portfolio），
-    不然 seed-portfolio 會對每顆中間候選都吼一次。"""
+    不然 seed-portfolio 會對每顆中間候選都吼一次。
+
+    拆棒前的贏家會存到 `outputs/winner_presplit_seed<SEED>.json`（見 save_winner_checkpoint）。"""
     burns, times, mi, opt = run_study_over_revs(config)
     if burns is None or times is None:
         return None, None, None, None
     _c2 = primer_guided_research(config, burns, times, mi, opt)
     if _c2 is not None:
         burns, times, mi, opt = _c2
-    if bool(mi.get("earth_safe", True)):
-        _legal = legalize_violating_winner(config, burns, times, mi, opt)
-        if _legal is not None:
-            burns, times, mi = _legal
+    seed = config.get("optimization", {}).get("SEED")
+    try:
+        save_winner_checkpoint(
+            os.path.join("outputs", f"winner_presplit_seed{'none' if seed is None else seed}.json"),
+            opt, burns, times, mi)
+    except (OSError, TypeError) as exc:            # 存檔失敗不該擋管線
+        log.warning(f"⚠️ 拆棒前贏家存檔失敗（不影響本次結果）：{exc}")
+    burns, times, mi = _legalize_stage(config, burns, times, mi, opt)
     return burns, times, mi, opt
 
 
@@ -651,7 +712,15 @@ def main():
     #    seed-portfolio：strategy.SEED_PORTFOLIO_N>1 時跑 N 顆 SEED、§6 留拆後分最高的
     #    避開低籤（預設 1 = 關，行為與單跑相同）。內層每顆仍走 REVS 集成
     #    (REVS_ENSEMBLE)。回傳的 optimizer 是勝出解的實例，後面產腳本/印拆解都用它。
-    burns, times, mission_info, optimizer = run_seed_portfolio(config)
+    if args.from_winner:
+        # 重播模式：搜尋結果取自存檔，只重跑拆棒之後的後處理。存檔 config 是勝出那趟實際用的，
+        # 軌道/規則/產腳本全用它；GmatConsole 路徑已在上面由 --config 那份解析好了。
+        config, burns, times, mission_info, optimizer = load_winner_checkpoint(args.from_winner)
+        log.info(f"♻️ 從存檔重播（跳過搜尋）：{args.from_winner}"
+                 f"（拆棒前 {mission_info['score']:.4f}，{mission_info['num_burns']} 棒）")
+        burns, times, mission_info = _legalize_stage(config, burns, times, mission_info, optimizer)
+    else:
+        burns, times, mission_info, optimizer = run_seed_portfolio(config)
 
     if burns is None or times is None:
         log.error("任務終止。")
