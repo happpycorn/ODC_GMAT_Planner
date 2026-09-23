@@ -19,11 +19,10 @@ Earth-safe (唯一抓得到撞地球的，見 odc-collision-check-verification-g
 """
 import math
 import numpy as np
-from poliastro.core.iod import izzo
 from scipy.optimize import minimize
 
 from src.core_math import (propagate_dop853, check_constraints, fast_norm,
-                           reaches_perigee)
+                           reaches_perigee, lambert_izzo)
 from src.scorer import calculate_score
 
 
@@ -37,9 +36,8 @@ def _lam_best(r0, r1, tof, vref, mu, max_revs):
                 continue                      # M=0 只有一組解
             for pg in range(2):
                 try:
-                    vt, _ = izzo(mu, r0, r1, float(tof), M=m,
-                                 prograde=(pg == 0), lowpath=(lp == 0),
-                                 numiter=35, rtol=1e-8)
+                    vt, _ = lambert_izzo(mu, r0, r1, float(tof), M=m,
+                                 prograde=(pg == 0), lowpath=(lp == 0))
                 except Exception:
                     continue
                 d = fast_norm(vt - vref)
@@ -360,6 +358,28 @@ def drop_null_burns(x, N, tol=1e-6):
         return x, N
     n = len(keep_dv)
     return np.concatenate([[t0], np.array(keep_coast), np.array(keep_dv).ravel()]), n
+
+
+def prune_null_burns(x, N, cap, min_periapsis, mu, j2, j3, j4, re,
+                     A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, miss_tol, tols=(5e-5, 1e-9)):
+    """`drop_null_burns` 的安全版：依序試每個門檻 (km/s)，剔除後用**真實約束重評**
+    （cap / 近地點 / 命中 ≤miss_tol），第一個仍 feasible 的就採用；回傳 `_eval_free` 格式的
+    dict（分數/Δr/Δv 全是剔除後重算的，前後自洽），沒東西可剔或都不可行回 None（沿用原解）。
+
+    為什麼門檻不能只取「真的 0」：joint NLP 用有限差分梯度，多餘段只會壓到 mm/s 級
+    （contest 實測終端殘留 1.8 mm/s），不是 0。但 mm/s 乘上數千秒滑行就是好幾 m 的位置差
+    （實測剔 1 mm/s 級 → Δr 偏 1.5 m），所以剔完必須重評、不能假設軌跡不變。50 mm/s 上限
+    最多偏 ~150 m，對 3.5 km 瞄準點 vs 5 km 規則門檻綽綽有餘；GMAT DC 也會對最後一發實燒重打靶。
+    """
+    for tol in tols:
+        xd, Nd = drop_null_burns(x, N, tol)
+        if Nd == N:
+            continue
+        ev = _eval_free(xd, Nd, cap, min_periapsis, mu, j2, j3, j4, re,
+                        A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, miss_tol)
+        if ev["feasible"]:
+            return ev
+    return None
 
 
 def _eval_free(x, N, cap, min_periapsis, mu, j2, j3, j4, re,

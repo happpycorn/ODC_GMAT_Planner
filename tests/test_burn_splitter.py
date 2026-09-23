@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.optimizer import MissionOptimizer
 from src.core_math import propagate_dop853, fast_norm
-from src.burn_splitter import legalize_intercept, legalize_route, _lam_best, drop_null_burns, _simulate_free
+from src.burn_splitter import legalize_intercept, legalize_route, _lam_best, drop_null_burns, prune_null_burns, _simulate_free
 
 _FAILED = []
 
@@ -126,6 +126,10 @@ def main():
             check("drop_null_burns 後 Δr 不變（<1 m）", abs(ma["miss_km"] - mb["miss_km"]) < 1e-3)
             check("drop_null_burns 後 T_team 不變", abs(ma["T_team"] - mb["T_team"]) < 1e-6)
             check("drop_null_burns 後總 Δv 不變", abs(ma["total_dv"] - mb["total_dv"]) < 1e-12)
+            pr = prune_null_burns(xz, Nz, cap, mp, mu, j2, j3, j4, re,
+                                  opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0,
+                                  opt.k_t, opt.C_t, opt.k_v, opt.C_v, opt.MISS_TOLERANCE_SOFT)
+            check("prune_null_burns 剔除並重評為 feasible", pr is not None and pr["N"] == N0 and pr["feasible"])
 
     print("\n── 收工 ──")
     if _FAILED:

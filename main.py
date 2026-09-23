@@ -21,7 +21,7 @@ from src.script_generator import script_generator
 from src.config_validator import validate_config, ConfigValidationError
 from src.core_math import propagate_dop853, fast_norm, to_vnb_frame
 from src.scorer import calculate_score
-from src.burn_splitter import legalize_route, _simulate_free, drop_null_burns
+from src.burn_splitter import legalize_route, _simulate_free, prune_null_burns
 from src.runlog import log, setup as setup_logging
 
 # GmatConsole 路徑的最後備援值 (只在 --gmat-console 沒給、config.json 也沒有
@@ -535,19 +535,22 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
 
     # free-ECI 結果 → 每棒「燒前狀態」→ VNB；組回 script_generator / mission_info 要的格式
     Nf = int(res["N"]); xf = np.asarray(res["x"], dtype=np.float64)
-    # NLP 壓成 0 的段 / DE 留下的空燒不寫進繳交腳本（軌跡不變，只合併傳播切點；見 drop_null_burns）
-    n_raw = Nf
-    xf, Nf = drop_null_burns(xf, Nf)
-    if Nf != n_raw:
-        log.debug(f"拆棒解剔除 {n_raw - Nf} 發 Δv≈0 空燒：{n_raw} → {Nf} 棒（軌跡不變）")
+    # NLP 壓到 ~0 的段 / DE 留下的空燒不寫進繳交腳本：剔除後用真實約束重評，通過才換成剔除版
+    # （分數/Δr/Δv 一律用剔除後重算的值，前後自洽；見 prune_null_burns）
+    pr = prune_null_burns(xf, Nf, opt.MAX_DV_SOFT, opt.MIN_PERIAPSIS, mu, j2, j3, j4, re,
+                          opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0,
+                          opt.k_t, opt.C_t, opt.k_v, opt.C_v, opt.MISS_TOLERANCE_SOFT)
+    if pr is not None:
+        log.debug(f"拆棒解剔除 {Nf - pr['N']} 發 Δv≈0 空燒：{Nf} → {pr['N']} 棒"
+                  f"（重評 {res['score']:.6f} → {pr['score']:.6f}，Δr {res['miss_km']:.4f} → "
+                  f"{pr['miss_km']:.4f} km）")
+        res = pr
+        Nf = int(res["N"]); xf = np.asarray(res["x"], dtype=np.float64)
     t0f = float(xf[0]); coastsf = xf[1:1 + Nf]; dvsf = xf[1 + Nf:].reshape(Nf, 3)
     rr, vv = _p(opt.B_r0, opt.B_v0, t0f); states = []
     for i in range(Nf):
         states.append((rr.copy(), vv.copy())); vv = vv + dvsf[i]; rr, vv = _p(rr, vv, coastsf[i])
     m = _simulate_free(xf, Nf, mu, j2, j3, j4, re, opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0)
-    if abs(m["miss_km"] - float(res["miss_km"])) > 1e-3:
-        log.warning(f"⚠️ 剔除空燒後重模擬的 Δr 與拆棒器不一致（{m['miss_km']:.6f} vs "
-                    f"{float(res['miss_km']):.6f} km）——請查 drop_null_burns。")
     burns_vnb = [tuple(float(c) for c in to_vnb_frame(rp, vp, dvsf[i]))
                  for i, (rp, vp) in enumerate(states)]
     times_new = [float(t0f)] + [float(c) for c in coastsf]

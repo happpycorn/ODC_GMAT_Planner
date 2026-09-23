@@ -2,6 +2,7 @@
 import math
 import numpy as np
 from numba import njit
+from poliastro.core.iod import izzo as _izzo
 from scipy.integrate._ivp.dop853_coefficients import A as _DOP853_A_FULL, C as _DOP853_C_FULL, E3 as _DOP853_E3, E5 as _DOP853_E5, N_STAGES as _DOP853_N_STAGES
 
 # DOP853 (Hairer 版 8 階 Dormand-Prince，scipy 的 solve_ivp(method='DOP853') 用的
@@ -372,3 +373,17 @@ def propagate_dop853(
     v_final = np.array([state[3], state[4], state[5]], dtype=np.float64)
 
     return r_final, v_final
+
+@njit(cache=True)
+def lambert_izzo(mu, r0, r1, tof, M, prograde, lowpath):
+    """Python 端呼叫 Lambert (poliastro izzo) 的唯一入口（numiter=35、rtol=1e-8 寫死）。
+
+    為什麼不直接呼叫 izzo：izzo 是 numba dispatcher，Python 端呼叫會用到「當下已編好的哪個
+    特化版本」取決於行程歷史——`fast_fitness_evaluator`（cache=True）冷編譯時會順手把 izzo
+    編成 numiter=Literal[35] 版並留在 dispatcher 上，Python 呼叫就沿用它；有快取時沒有這一步，
+    Python 呼叫改編 int64 版。兩版浮點結果有微差，SLSQP 拆棒會放大成 ~3e-5 分 / 1.7 m/s
+    （C3 2026-09-23 實測：同輸入冷/熱快取 98.317456 vs 98.317422）。包成有快取的 njit 後，
+    這裡連結的永遠是同一個 Literal[35] 特化、與搜尋端 fast_fitness_evaluator 內部同一版，
+    結果不再隨快取狀態漂。
+    """
+    return _izzo(mu, r0, r1, tof, M, prograde, lowpath, 35, 1e-8)

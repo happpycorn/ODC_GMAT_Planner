@@ -4,7 +4,7 @@ import math
 import logging
 import numpy as np
 from numba import njit
-from poliastro.core.iod import izzo
+from poliastro.core.iod import izzo  # 只給 njit 的 fast_fitness_evaluator 用；Python 端走 core_math.lambert_izzo
 import concurrent.futures
 import contextlib
 import multiprocessing
@@ -20,7 +20,7 @@ from mealpy.evolutionary_based.SHADE import L_SHADE
 from src.propagator import get_r0_v0
 from src.scorer import calculate_score
 from src.core_math import (propagate_dop853, check_constraints, fast_norm,
-                           to_vnb_frame, reaches_perigee)
+                           to_vnb_frame, reaches_perigee, lambert_izzo)
 from src.runlog import log, is_verbose
 import numba as nb
 from tqdm import tqdm
@@ -722,8 +722,8 @@ class MissionOptimizer:
                     r_a, _ = propagate_dop853(self.A_r0, self.A_v0, tw + ft, dt, mu, j2, j3, j4, re)
                     for prograde in (True, False):
                         try:
-                            v1, _ = izzo(mu, r_b, r_a, ft, M=0, prograde=prograde,
-                                         lowpath=True, numiter=35, rtol=1e-8)
+                            v1, _ = lambert_izzo(mu, r_b, r_a, ft, M=0, prograde=prograde,
+                                         lowpath=True)
                             dv = fast_norm(v1 - v_b)
                         except Exception:
                             continue
@@ -772,8 +772,8 @@ class MissionOptimizer:
                     r_a, _ = propagate_dop853(self.A_r0, self.A_v0, tw + ft, dt, mu, j2, j3, j4, re)
                     for prograde in (True, False):
                         try:
-                            v1, _ = izzo(mu, r_b, r_a, ft, M=0, prograde=prograde,
-                                         lowpath=True, numiter=35, rtol=1e-8)
+                            v1, _ = lambert_izzo(mu, r_b, r_a, ft, M=0, prograde=prograde,
+                                         lowpath=True)
                             dv = fast_norm(v1 - v_b)
                         except Exception:
                             continue
@@ -1067,8 +1067,8 @@ class MissionOptimizer:
                                                dt, mu, j2, j3, j4, re)
                     for prograde in (True, False):
                         try:
-                            v1, _ = izzo(mu, r_cur, r_a, float(ft), M=0, prograde=prograde,
-                                          lowpath=True, numiter=35, rtol=1e-8)
+                            v1, _ = lambert_izzo(mu, r_cur, r_a, float(ft), M=0, prograde=prograde,
+                                          lowpath=True)
                         except Exception:
                             continue
                         dv = fast_norm(v1 - v_cur)
@@ -1140,9 +1140,8 @@ class MissionOptimizer:
                         continue
                     for pg in range(2):
                         try:
-                            vt, _ = izzo(mu, r0, r1, float(tof), M=m,
-                                         prograde=(pg == 0), lowpath=(lp == 0),
-                                         numiter=35, rtol=1e-8)
+                            vt, _ = lambert_izzo(mu, r0, r1, float(tof), M=m,
+                                         prograde=(pg == 0), lowpath=(lp == 0))
                         except Exception:
                             continue
                         d = fast_norm(vt - vref)
@@ -1796,9 +1795,8 @@ class MissionOptimizer:
                     continue                    # M=0 只有一組解
                 for prograde in (True, False):
                     try:
-                        v1, _ = izzo(self.MU, r0, r_target, float(tof), M=m_rev,
-                                     prograde=prograde, lowpath=lowpath,
-                                     numiter=35, rtol=1e-8)
+                        v1, _ = lambert_izzo(self.MU, r0, r_target, float(tof), M=m_rev,
+                                     prograde=prograde, lowpath=lowpath)
                     except Exception:
                         continue
                     d = fast_norm(v1 - v0)
@@ -2459,9 +2457,8 @@ def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_
                 continue                       # M=0 只有一組解
             for prograde in (True, False):
                 try:
-                    v_try, _ = izzo(mu, r_curr, r_aim, t_final_leg, M=m_rev,
-                                    prograde=prograde, lowpath=lowpath,
-                                    numiter=35, rtol=1e-8)
+                    v_try, _ = lambert_izzo(mu, r_curr, r_aim, t_final_leg, M=m_rev,
+                                    prograde=prograde, lowpath=lowpath)
                 except Exception:
                     continue
                 d_try = fast_norm(v_try - v_curr)
