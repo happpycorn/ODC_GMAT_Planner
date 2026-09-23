@@ -19,6 +19,7 @@
 | [`88.32_pointmass.md`](88.32_pointmass.md) | 88.32 | 88.30 在正確點質量模型（`GRAVITY_DEGREE=0`）下的重驗 |
 | [`98.21_split5.md`](98.21_split5.md) | 98.21 | 把 88 家族的超標收尾拆成 4 段合法燒 → 罰分歸零 |
 | [`98.31_split5_rebalanced.md`](98.31_split5_rebalanced.md) | 98.31 | 五棒再平衡 |
+| [`98.319_route4_split6.md`](98.319_route4_split6.md) | **98.3190** | 2026-09-23 事後：4 棒路線家族（拆前 88.30 反而拆後最高）+ A1 拆棒，GMAT 驗證、含繳交腳本 |
 
 ## 教訓（負面/警示）
 

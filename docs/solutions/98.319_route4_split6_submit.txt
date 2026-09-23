@@ -1,0 +1,363 @@
+
+%General Mission Analysis Tool(GMAT) Script
+%Created: 2026-06-27 00:00:00
+%
+% SUBMISSION VARIANT: every burn (including the final one) is a fixed
+% value - no solver runs in this script. See the comment near 'Burns' below.
+%
+% ShipA = Spacecraft A (the alien ship, passive, gravity only)
+% ShipB = Spacecraft B (the earth ship, active maneuvers, does the intercept)
+% To check whether the intercept succeeded, no need to eyeball the 3D view:
+% after running, open GMAT_InterceptReport.txt (location depends on your
+% GMAT output folder setting) and check TWO columns, both must be 1:
+% - InterceptSuccess: 1 = got within the 5 km miss-distance rule, 0 = failed
+% - FinalBurnLegal: 1 = the final burn's ACTUAL post-convergence magnitude
+%   (FinalBurnDvMps) stayed within the 1500 m/s rule limit, 0 = violated it.
+%   This is the burn GMAT's own targeter is free to adjust to hit the aim
+%   point, so its real magnitude can differ from what Python predicted -
+%   InterceptSuccess alone does NOT tell you whether this burn is legal.
+
+%----------------------------------------
+%---------- Spacecraft
+%----------------------------------------
+
+% The DryMass/Cd/Cr/DragArea/SRPArea/BurnB*.Isp/GravitationalAccel values below
+% are cosmetic: they are required fields for Spacecraft/ImpulsiveBurn objects,
+% but Drag=None and SRP=Off in DefaultProp_ForceModel (see below) mean drag and
+% solar radiation pressure are never actually applied, so Cd/Cr/DragArea/SRPArea
+% have no effect on the propagated trajectory; BurnB*.DecrementMass = false means
+% mass never decreases, so Isp/GravitationalAccel don't affect any burn's actual
+% Delta-v or the resulting orbit either. The numbers below are just typical
+% values for a mid-size chemical-propulsion satellite, kept here so the script
+% looks complete and passes GMAT's parser - changing them will NOT change
+% InterceptSuccess/FinalBurnLegal.
+Create Spacecraft ShipA;
+ShipA.DateFormat = TAIModJulian;
+ShipA.Epoch = '21545';
+ShipA.CoordinateSystem = EarthMJ2000Eq;
+ShipA.DisplayStateType = Keplerian;
+ShipA.SMA = 7099.999999999989;
+ShipA.ECC = 3.014018116696737e-16;
+ShipA.INC = 120.0;
+ShipA.RAAN = 29.99999999999999;
+ShipA.AOP = 0.0;
+ShipA.TA = 305.349;
+ShipA.DryMass = 850;
+ShipA.Cd = 2.2;
+ShipA.Cr = 1.8;
+ShipA.DragArea = 6;
+ShipA.SRPArea = 8;
+% Trajectory colors belong on the Spacecraft in R2026a, not on the OrbitView
+% (OrbitView.OrbitColor/TargetColor were removed - setting them there is
+% silently ignored and emits an interpreter warning). Purely a visual aid.
+ShipA.OrbitColor = Red;
+ShipA.TargetColor = Gray;
+% ModelScale: GMAT defaults to 3.0, which only suits small-orbit scenes. The
+% camera distance now scales with orbit size (see View_Intercept) but the
+% spacecraft model does not shrink with it, so a large scene ends up as a
+% screenful of spacecraft - worst in the ShipB chase view, whose camera sits
+% only ~540 km from the ship. Raise strategy.GMAT_MODEL_SCALE if it is too small.
+ShipA.ModelScale = 0.5;
+
+Create Spacecraft ShipB;
+ShipB.DateFormat = TAIModJulian;
+ShipB.Epoch = '21545';
+ShipB.CoordinateSystem = EarthMJ2000Eq;
+ShipB.DisplayStateType = Keplerian;
+ShipB.SMA = 6799.999999999999;
+ShipB.ECC = 1.302888025334762e-16;
+ShipB.INC = 39.99999999999999;
+ShipB.RAAN = 59.99999999999999;
+ShipB.AOP = 0.0;
+ShipB.TA = 179.6860000000047;
+ShipB.DryMass = 850;
+ShipB.Cd = 2.2;
+ShipB.Cr = 1.8;
+ShipB.DragArea = 6;
+ShipB.SRPArea = 8;
+ShipB.OrbitColor = Lime;
+ShipB.TargetColor = Gray;
+ShipB.ModelScale = 0.5;
+
+%----------------------------------------
+%---------- ForceModels
+%----------------------------------------
+
+Create ForceModel DefaultProp_ForceModel;
+DefaultProp_ForceModel.CentralBody = Earth;
+DefaultProp_ForceModel.PrimaryBodies = {Earth};
+DefaultProp_ForceModel.Drag = None;
+DefaultProp_ForceModel.SRP = Off;
+DefaultProp_ForceModel.RelativisticCorrection = Off;
+DefaultProp_ForceModel.ErrorControl = RSSStep;
+DefaultProp_ForceModel.GravityField.Earth.Degree = 0;
+DefaultProp_ForceModel.GravityField.Earth.Order = 0;
+DefaultProp_ForceModel.GravityField.Earth.StmLimit = 100;
+DefaultProp_ForceModel.GravityField.Earth.PotentialFile = 'JGM2.cof';
+DefaultProp_ForceModel.GravityField.Earth.TideModel = 'None';
+
+%----------------------------------------
+%---------- Propagators
+%----------------------------------------
+
+Create Propagator DefaultProp;
+DefaultProp.FM = DefaultProp_ForceModel;
+DefaultProp.Type = RungeKutta89;
+DefaultProp.InitialStepSize = 60;
+DefaultProp.Accuracy = 9.999999999999999e-12;
+DefaultProp.MinStep = 0.001;
+DefaultProp.MaxStep = 2700;
+DefaultProp.MaxStepAttempts = 50;
+DefaultProp.StopIfAccuracyIsViolated = true;
+
+
+%----------------------------------------
+%---------- Burns
+%----------------------------------------
+
+% Submission variant: every burn below (including the final one) is a fixed,
+% pre-computed value - no DifferentialCorrector anywhere in this script. The
+% final burn's Element1/2/3 are GMAT's own *converged* answer from a prior
+% Target/Vary/Achieve run (see script_generator()'s docstring), not Python's
+% raw estimate, so this script only needs to propagate and apply maneuvers -
+% nothing here needs to "solve" or "converge".
+
+Create ImpulsiveBurn BurnB0;
+BurnB0.CoordinateSystem = Local;
+BurnB0.Origin = Earth;
+BurnB0.Axes = VNB;
+BurnB0.Element1 = 1.1555082;
+BurnB0.Element2 = -0.0703118;
+BurnB0.Element3 = 0.9506846;
+% DecrementMass=false: mass never decreases, so Isp/GravitationalAccel below
+% are cosmetic-only (300s is a typical bipropellant value) - see the comment
+% above the Spacecraft block for the full explanation.
+BurnB0.DecrementMass = false;
+BurnB0.Isp = 300;
+BurnB0.GravitationalAccel = 9.81;
+
+Create ImpulsiveBurn BurnB1;
+BurnB1.CoordinateSystem = Local;
+BurnB1.Origin = Earth;
+BurnB1.Axes = VNB;
+BurnB1.Element1 = 0.0383863;
+BurnB1.Element2 = -0.0046955;
+BurnB1.Element3 = 0.0297656;
+% DecrementMass=false: mass never decreases, so Isp/GravitationalAccel below
+% are cosmetic-only (300s is a typical bipropellant value) - see the comment
+% above the Spacecraft block for the full explanation.
+BurnB1.DecrementMass = false;
+BurnB1.Isp = 300;
+BurnB1.GravitationalAccel = 9.81;
+
+Create ImpulsiveBurn BurnB2;
+BurnB2.CoordinateSystem = Local;
+BurnB2.Origin = Earth;
+BurnB2.Axes = VNB;
+BurnB2.Element1 = -1.0821613;
+BurnB2.Element2 = -0.9511339;
+BurnB2.Element3 = 0.4101405;
+% DecrementMass=false: mass never decreases, so Isp/GravitationalAccel below
+% are cosmetic-only (300s is a typical bipropellant value) - see the comment
+% above the Spacecraft block for the full explanation.
+BurnB2.DecrementMass = false;
+BurnB2.Isp = 300;
+BurnB2.GravitationalAccel = 9.81;
+
+Create ImpulsiveBurn BurnB3;
+BurnB3.CoordinateSystem = Local;
+BurnB3.Origin = Earth;
+BurnB3.Axes = VNB;
+BurnB3.Element1 = -0.8429550;
+BurnB3.Element2 = -1.1903887;
+BurnB3.Element3 = 0.3410945;
+% DecrementMass=false: mass never decreases, so Isp/GravitationalAccel below
+% are cosmetic-only (300s is a typical bipropellant value) - see the comment
+% above the Spacecraft block for the full explanation.
+BurnB3.DecrementMass = false;
+BurnB3.Isp = 300;
+BurnB3.GravitationalAccel = 9.81;
+
+Create ImpulsiveBurn BurnB4;
+BurnB4.CoordinateSystem = Local;
+BurnB4.Origin = Earth;
+BurnB4.Axes = VNB;
+BurnB4.Element1 = -0.4093174;
+BurnB4.Element2 = -1.4335058;
+BurnB4.Element3 = 0.1465069;
+% DecrementMass=false: mass never decreases, so Isp/GravitationalAccel below
+% are cosmetic-only (300s is a typical bipropellant value) - see the comment
+% above the Spacecraft block for the full explanation.
+BurnB4.DecrementMass = false;
+BurnB4.Isp = 300;
+BurnB4.GravitationalAccel = 9.81;
+
+Create ImpulsiveBurn BurnB5;
+BurnB5.CoordinateSystem = Local;
+BurnB5.Origin = Earth;
+BurnB5.Axes = VNB;
+BurnB5.Element1 = 0.0202722;
+BurnB5.Element2 = -0.1394324;
+BurnB5.Element3 = -0.0119111;
+% DecrementMass=false: mass never decreases, so Isp/GravitationalAccel below
+% are cosmetic-only (300s is a typical bipropellant value) - see the comment
+% above the Spacecraft block for the full explanation.
+BurnB5.DecrementMass = false;
+BurnB5.Isp = 300;
+BurnB5.GravitationalAccel = 9.81;
+
+
+%----------------------------------------
+%---------- Subscribers (3D view + text report)
+%----------------------------------------
+
+% 3D orbit view: uses the standard OrbitView (no extra plugin needed, works
+% on any GMAT install). Default camera looks at Earth from a diagonal
+% offset; ShipA=red, ShipB=green, Earth=gray for quick visual ID.
+% This is just a visual aid - you can still freely rotate/zoom it in GMAT.
+Create OrbitView View_Intercept;
+View_Intercept.SolverIterations = Current;
+View_Intercept.Add = {ShipA, ShipB, Earth};
+View_Intercept.CoordinateSystem = EarthMJ2000Eq;
+View_Intercept.ViewPointReference = Earth;
+View_Intercept.ViewPointVector = [ 10248 10248 10248 ];
+View_Intercept.ViewDirection = Earth;
+View_Intercept.ViewScaleFactor = 1.0;
+View_Intercept.ViewUpCoordinateSystem = EarthMJ2000Eq;
+View_Intercept.ViewUpAxis = Z;
+View_Intercept.XYPlane = On;
+View_Intercept.Axes = On;
+View_Intercept.Grid = Off;
+View_Intercept.DataCollectFrequency = 1;
+View_Intercept.UpdatePlotFrequency = 50;
+View_Intercept.NumPointsToRedraw = 0;
+View_Intercept.ShowPlot = true;
+
+% Second 3D view (2026-08-14 added): a chase camera anchored near ShipB,
+% always aimed at ShipA. The view above is a fixed Earth-centered overview of
+% the whole scene; this one is "what B sees" - the camera follows ShipB
+% (ViewPointReference=ShipB moves with it every frame) and keeps ShipA in
+% frame, making the final-approach geometry/alignment much easier to read
+% visually than the wide Earth view.
+%
+% BUGFIX (2026-08-14, found by real GMAT testing): the first version put
+% ViewPointVector=[500 500 500] in the EarthMJ2000Eq frame - a FIXED inertial
+% direction, not something that tracks ShipB's own position. ShipB's orbital
+% radius (~6400-7000km for a typical LEO) is only a few hundred km bigger than
+% Earth's own radius (6378km), and the offset's magnitude (~866km) is bigger
+% than that margin - so whenever ShipB's orbital phase put it in roughly the
+% opposite direction from the fixed [500 500 500] vector, the offset
+% subtracted more from ShipB's distance-from-Earth than that margin allowed,
+% putting the camera INSIDE the Earth (looked like being swallowed by the
+% planet). Fixed by defining the offset in a coordinate system anchored on
+% ShipB itself with an axis that always points radially outward from Earth
+% (Axes=ObjectReferenced, XAxis=R with Primary=Earth/Secondary=ShipB) instead
+% of a fixed inertial direction - the camera is now always further from Earth
+% than ShipB by construction, regardless of orbital phase.
+Create CoordinateSystem ShipBChaseFrame;
+ShipBChaseFrame.Origin = ShipB;
+ShipBChaseFrame.Axes = ObjectReferenced;
+ShipBChaseFrame.XAxis = R;
+ShipBChaseFrame.ZAxis = N;
+ShipBChaseFrame.Primary = Earth;
+ShipBChaseFrame.Secondary = ShipB;
+
+% NON-ASCII WARNING: keep every comment in this file plain ASCII - GMAT's
+% parser rejects the whole script outright if any non-ASCII character sneaks
+% in (bit this exact bug once already, see commit 887e64e and STATUS.md).
+Create OrbitView View_ShipBChase;
+View_ShipBChase.SolverIterations = Current;
+View_ShipBChase.Add = {ShipA, ShipB, Earth};
+View_ShipBChase.CoordinateSystem = ShipBChaseFrame;
+View_ShipBChase.ViewPointReference = ShipB;
+View_ShipBChase.ViewPointVector = [ 18570 0 7428 ];
+View_ShipBChase.ViewDirection = ShipA;
+View_ShipBChase.ViewScaleFactor = 1.0;
+View_ShipBChase.ViewUpCoordinateSystem = EarthMJ2000Eq;
+View_ShipBChase.ViewUpAxis = Z;
+View_ShipBChase.XYPlane = Off;
+View_ShipBChase.Axes = On;
+View_ShipBChase.Grid = Off;
+View_ShipBChase.DataCollectFrequency = 1;
+View_ShipBChase.UpdatePlotFrequency = 50;
+View_ShipBChase.NumPointsToRedraw = 0;
+View_ShipBChase.ShowPlot = true;
+
+% Text report: after the run, just open this file and read the numbers -
+% no need to squint at the 3D plot.
+% Columns: ShipB elapsed time (s) | final MissDistance (km) | InterceptSuccess
+% (1=success/0=fail) | FinalBurnDvMps (actual post-convergence magnitude of
+% the last burn, m/s) | FinalBurnLegal (1=<=1500 m/s, 0=violated the limit) |
+% final burn's Element1/2/3 (VNB components, km/s)
+Create ReportFile Report_Intercept;
+Report_Intercept.SolverIterations = Current;
+Report_Intercept.Filename = 'GMAT_InterceptReport.txt';
+Report_Intercept.WriteHeaders = true;
+Report_Intercept.Precision = 10;
+Report_Intercept.ColumnWidth = 20;
+
+
+%----------------------------------------
+%---------- Mission Sequence
+%----------------------------------------
+
+Create Variable MissDistance InterceptSuccess FinalBurnDvMps FinalBurnLegal;
+GMAT MissDistance = 0;
+GMAT InterceptSuccess = 0;
+GMAT FinalBurnDvMps = 0;
+GMAT FinalBurnLegal = 0;
+
+BeginMissionSequence;
+
+Propagate DefaultProp(ShipA, ShipB) {ShipA.ElapsedSecs = 0.00000};
+Maneuver BurnB0(ShipB);
+
+Propagate DefaultProp(ShipA, ShipB) {ShipA.ElapsedSecs = 100.11433};
+Maneuver BurnB1(ShipB);
+
+Propagate DefaultProp(ShipA, ShipB) {ShipA.ElapsedSecs = 2157.16376};
+Maneuver BurnB2(ShipB);
+
+Propagate DefaultProp(ShipA, ShipB) {ShipA.ElapsedSecs = 100.00000};
+Maneuver BurnB3(ShipB);
+
+Propagate DefaultProp(ShipA, ShipB) {ShipA.ElapsedSecs = 100.00002};
+Maneuver BurnB4(ShipB);
+
+Propagate DefaultProp(ShipA, ShipB) {ShipA.ElapsedSecs = 141.04646};
+
+% Submission variant: no solver here - this burn's Element1/2/3 are already
+% GMAT's own converged answer (baked in above), so we just apply it directly
+% like every other burn and propagate to the intercept time.
+Maneuver BurnB5(ShipB);
+
+Propagate DefaultProp(ShipA, ShipB) {ShipA.ElapsedSecs = 3078.28458};
+
+% No need to eyeball the 3D view: compute the final relative distance here,
+% compare it against the rule's 5 km threshold, and store it as a 0/1 flag
+% that also gets written to the report file.
+GMAT MissDistance = sqrt((ShipA.EarthMJ2000Eq.X - ShipB.EarthMJ2000Eq.X)^2 + (ShipA.EarthMJ2000Eq.Y - ShipB.EarthMJ2000Eq.Y)^2 + (ShipA.EarthMJ2000Eq.Z - ShipB.EarthMJ2000Eq.Z)^2);
+
+If MissDistance <= 5
+   GMAT InterceptSuccess = 1;
+EndIf;
+
+% The Target/Vary/Achieve block above (normal mode) is free to move this burn
+% anywhere within its Lower/Upper bounds to hit the aim point - Python's
+% predicted magnitude for this burn is NOT necessarily what GMAT actually
+% converged to. Compute the real magnitude here so a violation of the rule's
+% 1500 m/s per-burn limit can never happen without showing up in the report
+% (previously this was invisible: InterceptSuccess only checked distance,
+% never the Delta-v GMAT's own corrector actually used). In fixed-burn mode
+% this just confirms the baked-in value is still legal.
+GMAT FinalBurnDvMps = sqrt(BurnB5.Element1^2 + BurnB5.Element2^2 + BurnB5.Element3^2) * 1000;
+
+If FinalBurnDvMps <= 1500.0
+   GMAT FinalBurnLegal = 1;
+EndIf;
+
+% Element1/2/3 of the final burn are reported too so main.py can read back
+% GMAT's own converged answer (normal mode) and bake it into the fixed-burn
+% submission variant - see script_generator()'s docstring.
+Report Report_Intercept ShipB.ElapsedSecs MissDistance InterceptSuccess FinalBurnDvMps FinalBurnLegal BurnB5.Element1 BurnB5.Element2 BurnB5.Element3;
+
