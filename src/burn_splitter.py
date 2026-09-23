@@ -334,6 +334,34 @@ def legalize_route(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
     return best
 
 
+def drop_null_burns(x, N, tol=1e-6):
+    """把 free-ECI 解裡 |Δv| < tol (km/s) 的空燒剔除，滑行時間併進前一段（第一棒空就併進 t0）。
+
+    joint NLP 收斂後常把多餘的段壓到 0（C3：contest 的 A1 解帳面 7 棒、實燒 5 棒）；DE 也會
+    留下 Δv≈0 的空燒棒。它們合規（間隔只會變長）但會讓繳交腳本出現「Δv=0 的 Maneuver」、
+    讓評審困惑，且空的最後一棒會變成 GMAT DC 打靶棒。軌跡完全不變：空燒不改速度，合併的只是
+    傳播時間切點。回傳 (x_new, N_new)；全部都空（不該發生）時原樣回傳。
+    """
+    x = np.asarray(x, dtype=np.float64)
+    t0 = float(x[0])
+    coasts = [float(c) for c in x[1:1 + N]]
+    dvs = x[1 + N:].reshape(N, 3)
+    keep_dv, keep_coast = [], []
+    for i in range(N):
+        if fast_norm(dvs[i]) < tol:
+            if keep_coast:
+                keep_coast[-1] += coasts[i]
+            else:
+                t0 += coasts[i]
+            continue
+        keep_dv.append(dvs[i].copy())
+        keep_coast.append(coasts[i])
+    if not keep_dv or len(keep_dv) == N:
+        return x, N
+    n = len(keep_dv)
+    return np.concatenate([[t0], np.array(keep_coast), np.array(keep_dv).ravel()]), n
+
+
 def _eval_free(x, N, cap, min_periapsis, mu, j2, j3, j4, re,
                A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, miss_tol):
     """把一個 free-ECI 解評成跟 joint_nlp_split 同形狀的 dict（不優化，只算分數+可行性）。

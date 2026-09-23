@@ -21,7 +21,7 @@ from src.script_generator import script_generator
 from src.config_validator import validate_config, ConfigValidationError
 from src.core_math import propagate_dop853, fast_norm, to_vnb_frame
 from src.scorer import calculate_score
-from src.burn_splitter import legalize_route, _simulate_free
+from src.burn_splitter import legalize_route, _simulate_free, drop_null_burns
 from src.runlog import log, setup as setup_logging
 
 # GmatConsole 路徑的最後備援值 (只在 --gmat-console 沒給、config.json 也沒有
@@ -535,11 +535,19 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
 
     # free-ECI 結果 → 每棒「燒前狀態」→ VNB；組回 script_generator / mission_info 要的格式
     Nf = int(res["N"]); xf = np.asarray(res["x"], dtype=np.float64)
+    # NLP 壓成 0 的段 / DE 留下的空燒不寫進繳交腳本（軌跡不變，只合併傳播切點；見 drop_null_burns）
+    n_raw = Nf
+    xf, Nf = drop_null_burns(xf, Nf)
+    if Nf != n_raw:
+        log.debug(f"拆棒解剔除 {n_raw - Nf} 發 Δv≈0 空燒：{n_raw} → {Nf} 棒（軌跡不變）")
     t0f = float(xf[0]); coastsf = xf[1:1 + Nf]; dvsf = xf[1 + Nf:].reshape(Nf, 3)
     rr, vv = _p(opt.B_r0, opt.B_v0, t0f); states = []
     for i in range(Nf):
         states.append((rr.copy(), vv.copy())); vv = vv + dvsf[i]; rr, vv = _p(rr, vv, coastsf[i])
     m = _simulate_free(xf, Nf, mu, j2, j3, j4, re, opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0)
+    if abs(m["miss_km"] - float(res["miss_km"])) > 1e-3:
+        log.warning(f"⚠️ 剔除空燒後重模擬的 Δr 與拆棒器不一致（{m['miss_km']:.6f} vs "
+                    f"{float(res['miss_km']):.6f} km）——請查 drop_null_burns。")
     burns_vnb = [tuple(float(c) for c in to_vnb_frame(rp, vp, dvsf[i]))
                  for i, (rp, vp) in enumerate(states)]
     times_new = [float(t0f)] + [float(c) for c in coastsf]
@@ -552,7 +560,7 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
         # 猜測靠 DC 收斂」這回事，本來就自洽——對齊 dc_converged 語意設 True。
         "dc_converged": True,
         "aim_point": tuple(float(c) for c in m["r_final"]),
-        "final_burn_dv_mps": float(res["dv_mps"][-1]),
+        "final_burn_dv_mps": float(fast_norm(dvsf[-1]) * 1000.0),
         "earth_safe": bool(float(np.min(m["arc_minr"])) >= opt.MIN_PERIAPSIS - 1e-3),
         "min_arc_radius_km": float(np.min(m["arc_minr"])),
     }

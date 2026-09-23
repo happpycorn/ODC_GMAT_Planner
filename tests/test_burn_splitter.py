@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.optimizer import MissionOptimizer
 from src.core_math import propagate_dop853, fast_norm
-from src.burn_splitter import legalize_intercept, legalize_route, _lam_best
+from src.burn_splitter import legalize_intercept, legalize_route, _lam_best, drop_null_burns, _simulate_free
 
 _FAILED = []
 
@@ -106,6 +106,26 @@ def main():
         if res is not None:
             check("legalize_route 每棒 ≤ 上限", max(res["dv_mps"]) <= cap * 1000.0 + 1.0)
             check("legalize_route 命中 ≤ 容許", res["miss_km"] <= opt.MISS_TOLERANCE_SOFT + 1e-3)
+
+            # drop_null_burns（C3）：在解的頭、中、尾各插一發 Δv=0 空燒 → 剔除後棒數還原、
+            # 軌跡不變（同 Δr / 同 T / 同總 Δv），間隔只會變長。
+            N0 = int(res["N"]); x0 = np.asarray(res["x"], dtype=np.float64)
+            t0_, co_, dv_ = float(x0[0]), list(x0[1:1 + N0]), list(x0[1 + N0:].reshape(N0, 3))
+            # 頭：t0 切一半給空燒；中：第 0 棒後的滑行切半插空燒；尾：最後一段滑行切半插空燒
+            Z = np.zeros(3)
+            pairs = [(Z, t0_ / 2.0), (dv_[0], co_[0] / 2.0), (Z, co_[0] / 2.0)] + \
+                    [(dv_[i], co_[i]) for i in range(1, N0)]
+            dl, cl = pairs[-1]
+            pairs[-1:] = [(dl, cl / 2.0), (Z, cl / 2.0)]
+            Nz = len(pairs)
+            xz = np.concatenate([[t0_ / 2.0], [c for _, c in pairs], np.array([d for d, _ in pairs]).ravel()])
+            xd, Nd = drop_null_burns(xz, Nz)
+            check(f"drop_null_burns 剔回 {N0} 棒（插了 {Nz - N0} 發空燒）", Nd == N0)
+            ma = _simulate_free(x0, N0, mu, j2, j3, j4, re, opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0)
+            mb = _simulate_free(xd, Nd, mu, j2, j3, j4, re, opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0)
+            check("drop_null_burns 後 Δr 不變（<1 m）", abs(ma["miss_km"] - mb["miss_km"]) < 1e-3)
+            check("drop_null_burns 後 T_team 不變", abs(ma["T_team"] - mb["T_team"]) < 1e-6)
+            check("drop_null_burns 後總 Δv 不變", abs(ma["total_dv"] - mb["total_dv"]) < 1e-12)
 
     print("\n── 收工 ──")
     if _FAILED:
