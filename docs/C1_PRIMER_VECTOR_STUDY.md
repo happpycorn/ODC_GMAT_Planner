@@ -112,9 +112,20 @@ convex 說「**在上限下怎麼拆到全域最優**」。我們現在的拆棒
   - `|p| ≤ 1` 全程 → 結構已（局部）最優、不需加棒 → SPLIT_AWARE 沒開的必要（cap-bound 沒害到你，
     這就是圓軌道輪 0/14 的物理原因，見 memory `odc-split-aware-not-needed`）。
   - `|p| > 1` 區間 → 該處缺一發節點 / 現有節點位置不對 → 值得開 SPLIT_AWARE 並在該處 seeding。
-- **C2（依賴 B1 + C1）**：先跑預設（中間棒夾 cap，便宜穩健）→ 對贏家算 primer →
-  `|p|≤1` 收工；`|p|>1` 才用 **B1 的 energy_floor 動態上界**（已完成，2026-09-22）打開
-  SPLIT_AWARE、用 primer 指的位置 seeding。**只在理論說會賺時才付昂貴寬範圍搜尋。**
+- **C2（依賴 B1 + C1）✅ 已完成（2026-09-22）**：先跑預設（中間棒夾 cap，便宜穩健）→ 對
+  贏家算 primer → `|p|≤1` 收工；`|p|>1` 才用 **B1 的 energy_floor 動態上界**打開 SPLIT_AWARE、
+  用 primer 指的位置 seeding。**只在理論說會賺時才付昂貴寬範圍搜尋。**
+  - **接線**：`main.primer_guided_research()`（在拆棒合法化之前跑，診斷標準決策向量贏家）
+    → 診斷 `main._primer_diagnose_winner()`（重播 `reconstruct_mission_logs` 拿脈衝剖面）
+    → add-node 時以 `primer.insert_node_seed()` 造一顆「在指定弧插 Δv=0 佔位節點」的 N+1
+    棒種子，經 `optimizer.external_seeds`（新增，隨 self pickle 到子行程）注入初始族群，
+    開 `SPLIT_AWARE_SEARCH` 以 N+1 棒重搜，最後 `tiebreak_rank_key`（§6）取兩者較優的。
+  - **旗標**：`strategy.PRIMER_GUIDED_RESEARCH`（預設 True；對圓軌道輪永遠讀 optimal-ish、
+    只多印一行證書、零行為改變、零額外成本——安全）。
+  - **實證（2026-09-22）**：contest 贏家（含被拆的 4692 m/s 大棒）primer **max|p|=1.000
+    → optimal-ish**，證實那發大棒**在對的位置**（拆只是為 cap，不是節點放錯），C2 不重搜、
+    交給既有 burn_splitter——正是 0/14 的物理。強制 add-node 走重搜分支也驗過全程不炸、
+    §6 正確拒絕不划算的拆分。單元測試見 `tests/test_primer.py` Case 3。
 
 ---
 

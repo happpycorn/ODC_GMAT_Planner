@@ -14,10 +14,11 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.optimizer import MissionOptimizer
+from src.optimizer import (MissionOptimizer, reconstruct_mission_logs,
+                           decision_variable_dims)
 from src.core_math import propagate_dop853, fast_norm
 from poliastro.core.iod import izzo
-from src.primer import intercept_primer_profile
+from src.primer import intercept_primer_profile, insert_node_seed, _arc_schedule
 
 _FAILED = []
 
@@ -72,6 +73,47 @@ def main():
           r2["arcs"][r2["worst_arc"]]["kind"] == "inter-impulse")
     check("次優(大棒)解 末端 primer≈0（攔截橫截條件）",
           r2["arcs"][-1]["p_end_norm"] <= 1e-2)
+
+    # Case 3（C2）：insert_node_seed 的插棒種子——在指定弧插 Δv=0 節點，回傳 N+1 棒種子。
+    # 斷言性質（決定性、純算術）：維度對、重播出 N+1 棒、插入節點 Δv≈0、時刻落在被切的弧內、
+    # 其餘燒的 Δv 保持不變（插零燒不該擾動既有節點）。
+    print("\n── C2 插棒種子 ──")
+    N = 3
+    x = np.zeros(decision_variable_dims(N))
+    x[0] = 500.0
+    x[1:5] = [0.30, 1.0, 0.5, 0.30]      # 中間棒 1
+    x[5:9] = [0.20, 1.2, 2.0, 0.40]      # 中間棒 2
+    x[-4] = 0.30                          # 收尾段
+    x[-3:] = [2.0, 1.0, 0.5]
+
+    def replay(xx, NN):
+        logs, tms, *_ = reconstruct_mission_logs(
+            xx, NN, o.MIN_COAST_TIME, o.T_max, o.A_r0, o.A_v0, o.B_r0, o.B_v0,
+            mu, j2, j3, j4, re, lambert_max_revs=0)
+        return logs, tms
+
+    sched = _arc_schedule(x, N, o.T_max, o.MIN_COAST_TIME)
+    for arc_idx in (1, N - 1):               # 切 leading 弧 & 切收尾弧兩種路徑都測
+        frac = 0.5
+        seed = insert_node_seed(x, N, arc_idx, frac, o.T_max, o.MIN_COAST_TIME)
+        check(f"arc{arc_idx}: 種子維度 = dims(N+1)",
+              len(seed) == decision_variable_dims(N + 1))
+        logs, _ = replay(seed, N + 1)
+        check(f"arc{arc_idx}: 重播出 {N + 1} 棒", len(logs) == N + 1)
+        # 插入的 Δv=0 佔位節點：切 leading 弧在 arc_idx+1；切收尾弧則是最後一顆 leading
+        # 燒（index N-1，落在弧起點，讓重解的 Lambert 收尾燒去承接中點）。
+        zero_i = arc_idx + 1 if arc_idx <= N - 2 else N - 1
+        check(f"arc{arc_idx}: 佔位節點 Δv≈0（={logs[zero_i]['dv_mag']:.5f}）",
+              logs[zero_i]["dv_mag"] < 1e-6)
+        # 被切的弧確實在 ~frac 處多了一個燒邊界：leading 弧是佔位節點本身、收尾弧是新的
+        # Lambert 收尾燒（index N）落在中點。
+        c_start, D = sched[arc_idx]
+        want_t = c_start + frac * D
+        mid_i = zero_i if arc_idx <= N - 2 else N
+        got_t = logs[mid_i]["time"]
+        check(f"arc{arc_idx}: ~{frac*100:.0f}% 處新增燒邊界（want~{want_t:.0f}, got {got_t:.0f}）",
+              abs(got_t - want_t) < 0.05 * D)
+        check(f"arc{arc_idx}: 第 0 棒 Δv 保持 0.30", abs(logs[0]["dv_mag"] - 0.30) < 1e-9)
 
     print("\n── 收工 ──")
     if _FAILED:

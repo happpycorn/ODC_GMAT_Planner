@@ -8,12 +8,15 @@ import argparse
 import datetime
 import subprocess
 import multiprocessing
+import copy
 import cProfile
 import pstats
 
 # 引入重構後的新模組
 import numpy as np
-from src.optimizer import MissionOptimizer, run_study_over_revs
+from src.optimizer import (MissionOptimizer, run_study_over_revs,
+                           reconstruct_mission_logs, tiebreak_rank_key)
+from src.primer import intercept_primer_profile, insert_node_seed
 from src.script_generator import script_generator
 from src.config_validator import validate_config, ConfigValidationError
 from src.core_math import propagate_dop853, fast_norm, to_vnb_frame
@@ -371,6 +374,101 @@ def print_score_breakdown(mission_info, optimizer):
                     f"（差 {abs(total-recorded):.2e}）——計分算法可能有處漂移了，請查。")
 
 
+def _primer_diagnose_winner(mission_info, opt):
+    """對 DE 贏家（標準決策向量、未拆棒前）算 primer 剖面（C1 診斷）。
+
+    重播用 `reconstruct_mission_logs` 拿到每發脈衝的絕對時刻與 ECI Δv（跟計分同一條
+    路徑，保證診斷的就是被評分的那條解），再餵 `intercept_primer_profile`。回傳 profile
+    dict（含 verdict / worst_arc / 各弧 p_peak / p_peak_frac），無法診斷時回 None。
+    """
+    x = mission_info.get("x")
+    N = int(mission_info.get("num_burns", 0))
+    if x is None or N < 1:
+        return None
+    mu, j2, j3, j4, re = opt.MU, opt.J2_VAL, opt.J3_VAL, opt.J4_VAL, opt.RE_VAL
+    try:
+        logs, times, *_ = reconstruct_mission_logs(
+            np.asarray(x, dtype=np.float64), N, opt.MIN_COAST_TIME, opt.T_max,
+            opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0, mu, j2, j3, j4, re,
+            lambert_max_revs=opt.LAMBERT_MAX_REVS)
+    except Exception as exc:                       # 重播偶發 Lambert 不收斂等，診斷不該擋管線
+        log.debug(f"primer 診斷重播失敗，略過：{exc}")
+        return None
+    t0 = float(logs[0]["time"])
+    r0, v0 = propagate_dop853(opt.B_r0, opt.B_v0, t0, 60.0, mu, j2, j3, j4, re)
+    impulses = [(float(bl["time"]), np.asarray(bl["dv_vec"], dtype=np.float64)) for bl in logs]
+    return intercept_primer_profile(r0, v0, impulses, float(times[-1]), mu)
+
+
+def primer_guided_research(config, burns, times, mission_info, optimizer):
+    """C2（2026-09-22）：primer 引導的條件式重搜。
+
+    先跑預設（中間棒夾 cap，便宜穩健，已在 run_study_over_revs 跑完）→ 對贏家算 primer：
+      - `|p|≤1` 全程（verdict=optimal-ish）→ 結構已（局部）最優，**收工不重搜**。這是圓
+        軌道攔截 0/14 的物理原因（見 memory odc-split-aware-not-needed），也是本函式對
+        當前題型的預設行為：只多印一行最優性證書，不改結果、不加成本。
+      - `|p|>1`（verdict=add-node）→ 該處缺節點 / 節點放錯 → 才付昂貴的寬範圍搜尋：開
+        `SPLIT_AWARE_SEARCH`（中間棒上界由 B1 的 energy_floor 動態算）、在 primer 指的弧
+        用 `insert_node_seed` 注入一顆插棒種子、以 N+1 棒重搜，最後照規則§6 取兩者較優的。
+
+    只在理論（primer）說會賺時才重搜——把「SPLIT_AWARE 該不該開、種子放哪」從用猜的
+    變成 primer 指的。回傳勝出的 (burns, times, mission_info, optimizer)；沿用原解時回 None。
+    旗標 strategy.PRIMER_GUIDED_RESEARCH=false 可整個關掉（連診斷都不跑）。
+    """
+    strat = config.get("strategy", {})
+    if not bool(strat.get("PRIMER_GUIDED_RESEARCH", True)):
+        return None
+    if not isinstance(mission_info, dict) or mission_info.get("x") is None:
+        return None
+
+    prof = _primer_diagnose_winner(mission_info, optimizer)
+    if prof is None:
+        return None
+
+    N = int(mission_info["num_burns"])
+    if prof["verdict"] == "optimal-ish":
+        log.info(f"🧭 primer 診斷：全程 |p|≤1（max|p|={prof['max_peak']:.3f}）"
+                 f"——結構已（局部）最優，不需加棒、不重搜。")
+        return None
+
+    warc = prof["worst_arc"]
+    a = prof["arcs"][warc]
+    frac = a["p_peak_frac"]
+    log.info(f"🧭 primer 診斷：max|p|={prof['max_peak']:.3f}>1（add-node）——第 {warc} 段"
+             f"（{a['kind']}）峰值落在 {frac*100:.0f}% 處，該插一發中途棒。開 SPLIT_AWARE "
+             f"+ 插棒種子，以 {N + 1} 棒重搜。")
+
+    # 重搜設定：開 SPLIT_AWARE（B1 動態上界自動生效）、鎖定 N+1 棒（是否真的比原解好交給
+    # §6 比較把關，不好就沿用原解）。其餘設定沿用。
+    cfg2 = copy.deepcopy(config)
+    s2 = cfg2.setdefault("strategy", {})
+    s2["SPLIT_AWARE_SEARCH"] = True
+    cfg2["optimization"] = dict(cfg2.get("optimization", {}))
+    cfg2["optimization"]["MAX_BURNS"] = [N + 1]
+
+    seed = insert_node_seed(np.asarray(mission_info["x"], dtype=np.float64), N,
+                            warc, frac, optimizer.T_max, optimizer.MIN_COAST_TIME)
+
+    b2, t2, mi2, opt2 = run_study_over_revs(cfg2, external_seeds={N + 1: [seed]})
+    if b2 is None or not isinstance(mi2, dict):
+        log.info("🧭 primer 重搜這趟沒跑出可用解，沿用原解。")
+        return None
+
+    eps = optimizer.TIEBREAK_SCORE_EPS
+    key_old = tiebreak_rank_key(mission_info["score"], mission_info["miss_km"],
+                                mission_info["total_dv_mps"], mission_info["T_team"], eps=eps)
+    key_new = tiebreak_rank_key(mi2["score"], mi2["miss_km"],
+                                mi2["total_dv_mps"], mi2["T_team"], eps=eps)
+    if key_new < key_old:
+        log.info(f"🧭 primer 重搜勝出：{mission_info['score']:.4f} → {mi2['score']:.4f}"
+                 f"（{N} → {N + 1} 棒，Δv {mission_info['total_dv_mps']:,.0f} → "
+                 f"{mi2['total_dv_mps']:,.0f} m/s），採用重搜解。")
+        return b2, t2, mi2, opt2
+    log.info(f"🧭 primer 重搜未勝過原解（重搜 {mi2['score']:.4f} vs 原 "
+             f"{mission_info['score']:.4f}），沿用原解。")
+    return None
+
+
 def legalize_violating_winner(config, burns, times, mission_info, optimizer):
     """HAP-67 Stage 2 接線：DE 贏家若有「超標但 Earth-safe」的違規棒，自動把它拆成合法
     多棒版（`burn_splitter.legalize_route`）並回傳新的 (burns_vnb, times, mission_info)；
@@ -458,6 +556,67 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
     return burns_vnb, times_new, new_mi
 
 
+def _solve_pipeline(config):
+    """一顆 SEED 的完整求解：搜尋 → C2 primer 條件式重搜 →（Earth-safe 時）拆棒合法化。
+    回傳 (burns, times, mission_info, optimizer)；搜尋失敗回 (None, None, None, None)。
+    **不印 Earth-safe 警告**——那只該對最終勝出解印一次（見 main / run_seed_portfolio），
+    不然 seed-portfolio 會對每顆中間候選都吼一次。"""
+    burns, times, mi, opt = run_study_over_revs(config)
+    if burns is None or times is None:
+        return None, None, None, None
+    _c2 = primer_guided_research(config, burns, times, mi, opt)
+    if _c2 is not None:
+        burns, times, mi, opt = _c2
+    if bool(mi.get("earth_safe", True)):
+        _legal = legalize_violating_winner(config, burns, times, mi, opt)
+        if _legal is not None:
+            burns, times, mi = _legal
+    return burns, times, mi, opt
+
+
+def run_seed_portfolio(config):
+    """Seed-portfolio 小模式（2026-09-22）：跑 N 顆 SEED 各自完整求解（含拆棒合法化），
+    照規則§6 留**拆後**分最高的那顆。
+
+    動機（本 session contest 分析）：單一 SEED 是決定性的，但可能抽到「低籤」——落在略差
+    的盆地 / 拆棒後差那 0.01。跑幾顆再留拆後最高分，幾乎免費穩拿家族高端（實測 +0.008）。
+    這是繳交前的品質旋鈕，不是搜尋演算法改動。
+
+    N = strategy.SEED_PORTFOLIO_N（預設 1 = 關，行為與單跑逐位元相同）。基準 SEED 取
+    optimization.SEED（沒設用 0），跑 base..base+N-1 保證可重現。回傳勝出的
+    (burns, times, mission_info, optimizer)。"""
+    N = max(1, int(config.get("strategy", {}).get("SEED_PORTFOLIO_N", 1)))
+    if N == 1:
+        return _solve_pipeline(config)
+
+    base = config.get("optimization", {}).get("SEED")
+    base = 0 if base is None else int(base)
+    best = None
+    table = [f"\n🎰 Seed-portfolio：跑 {N} 顆 SEED，§6 留拆後分最高（避開低籤）",
+             f"   {'SEED':>6}{'Score':>10}{'Δr_min(m)':>13}{'ΔV_team(m/s)':>15}{'棒數':>6}"]
+    for i in range(N):
+        sd = base + i
+        cfg = copy.deepcopy(config)
+        cfg.setdefault("optimization", {})["SEED"] = sd
+        log.info(f"\n🎰 Seed-portfolio 第 {i + 1}/{N} 顆（SEED={sd}）")
+        b, t, mi, opt = _solve_pipeline(cfg)
+        if b is None or not isinstance(mi, dict):
+            table.append(f"   {sd:>6}   （全軍覆沒，不列入挑選）")
+            continue
+        key = tiebreak_rank_key(mi["score"], mi["miss_km"], mi["total_dv_mps"],
+                                mi["T_team"], eps=opt.TIEBREAK_SCORE_EPS)
+        table.append(f"   {sd:>6}{mi['score']:>10.4f}{mi['miss_km'] * 1000:>13,.1f}"
+                     f"{mi['total_dv_mps']:>15,.1f}{mi['num_burns']:>6}")
+        if best is None or key < best[0]:
+            best = (key, sd, b, t, mi, opt)
+    if best is None:
+        log.error("Seed-portfolio：所有 SEED 都沒跑出可用解。")
+        return None, None, None, None
+    table.append(f"   → 採用 SEED={best[1]}（Score {best[4]['score']:.4f}，{best[4]['num_burns']} 棒）")
+    log.info("\n".join(table))
+    return best[2], best[3], best[4], best[5]
+
+
 def main():
     # 效能分析器設定
     if ENABLE_PROFILING:
@@ -487,12 +646,12 @@ def main():
 
     start_time = time.perf_counter()
 
-    # 1. 啟動最佳化器 (內部已經包含 L-SHADE 與 NLP 微調)。
-    #    預設會在 REVS=0 與 REVS=LAMBERT_MAX_REVS 各跑一次完整搜尋、取規則§6 較好的
-    #    那趟，換掉 seed×REVS 相依的搜尋脆弱性 (決策 3；成本約 1.8×)。想單跑一次就在
-    #    strategy 設 REVS_ENSEMBLE=false——大 SMA/高離心率跑不完 90 分鐘時的降級第一段。
-    #    回傳的 optimizer 是**勝出那趟**的實例，後面產腳本/印拆解都用它。
-    burns, times, mission_info, optimizer = run_study_over_revs(config)
+    # 1. 啟動最佳化器（含 L-SHADE、NLP 微調、C2 primer 條件式重搜、拆棒合法化——整條
+    #    「一顆 SEED → 一個可交解」的求解流程包在 _solve_pipeline 裡）。外面再包一層
+    #    seed-portfolio：strategy.SEED_PORTFOLIO_N>1 時跑 N 顆 SEED、§6 留拆後分最高的
+    #    避開低籤（預設 1 = 關，行為與單跑相同）。內層每顆仍走 REVS 集成
+    #    (REVS_ENSEMBLE)。回傳的 optimizer 是勝出解的實例，後面產腳本/印拆解都用它。
+    burns, times, mission_info, optimizer = run_seed_portfolio(config)
 
     if burns is None or times is None:
         log.error("任務終止。")
@@ -501,8 +660,8 @@ def main():
     # Earth-safe 硬性閘門 (2026-09-09, HAP-48)：初賽證實「軌跡穿過地表」是官方失格線
     # (撞地球的隊伍被判 F)。搜尋端 (fast_fitness_evaluator) 本來就會避開撞地球的解，
     # 但當 T_max 內根本沒有 Earth-safe 合法解時，搜尋只能回報「最不爛」的違規解，那有
-    # 可能是鑽地球的。這裡在繳交路徑上再擋一次：撞地球就不產生繳交腳本、大聲標記，
-    # 避免重演「分數漂亮但物理不成立、送出去被失格」(見作廢的 99.996)。
+    # 可能是鑽地球的。這裡在繳交路徑上再擋一次（對最終勝出解印一次）：撞地球就不產生
+    # 繳交腳本、大聲標記，避免重演「分數漂亮但物理不成立、送出去被失格」(見作廢的 99.996)。
     earth_safe = bool(mission_info.get("earth_safe", True))
     if not earth_safe:
         alt = mission_info.get("min_arc_radius_km", float("nan")) - 6378.137
@@ -512,15 +671,6 @@ def main():
                     + "\n  通常代表 T_max 內沒有 Earth-safe 合法解 —— 用 feasibility.py 確認，"
                     + "\n  或放寬 T_max / 調整棒數再重跑。仍會產出 outputs/output.txt 供診斷。"
                     + "\n" + "🔴" * 30)
-
-    # HAP-67 Stage 2：違規但 Earth-safe 的解，自動拆成合法多棒版（先給路線允許違規、再拆分
-    # 的方法論正式接線）。成功就換掉 burns/times/mission_info，後面產腳本/驗證/紀錄全用合法版；
-    # 拆不出或關掉旗標 (strategy.AUTO_SPLIT_LEGALIZE=false) 就沿用原解。
-    if earth_safe:
-        _legal = legalize_violating_winner(config, burns, times, mission_info, optimizer)
-        if _legal is not None:
-            burns, times, mission_info = _legal
-            earth_safe = bool(mission_info.get("earth_safe", True))
 
     # 分數拆解 + 交換率（純加印，不改計算；見 print_score_breakdown）
     print_score_breakdown(mission_info, optimizer)

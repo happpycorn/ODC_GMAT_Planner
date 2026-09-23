@@ -96,6 +96,22 @@ def _validate_orbit(orbit_cfg, label: str, errors: list):
         if not (0.0 <= inc <= 180.0):
             errors.append(f"{label}.INC 必須落在 [0, 180] 度之間，但收到 {inc}")
 
+    # 雙曲線 A 的真近點角必須落在漸近線內：|TA| < arccos(-1/e) (度)。超過的話那個「位置」
+    # 落在雙曲線的漸近線之外，物理上不存在於這條軌道上，給下去要拖到 poliastro 算 r 才炸、
+    # 錯誤訊息還看不出是這個原因 (memory odc-orbit-competition-project / P4 風險：手動抓 config
+    # 時就踩過這條，一直沒有 validator 幫忙擋)。橢圓/圓軌道沒有這個限制 (TA 任意)。
+    if numeric_ok.get("ECC") and numeric_ok.get("TA") and orbit_cfg["ECC"] > 1.0:
+        ecc = orbit_cfg["ECC"]
+        # TA 慣例是度；先折到 (-180, 180] 再比 (有人習慣寫 [0,360)，350° 其實是 -10°)。
+        ta_wrapped = (orbit_cfg["TA"] + 180.0) % 360.0 - 180.0
+        ta_inf_deg = math.degrees(math.acos(-1.0 / ecc))
+        if abs(ta_wrapped) >= ta_inf_deg:
+            errors.append(
+                f"{label}: 雙曲線軌道 (ECC={ecc}) 的真近點角 TA={orbit_cfg['TA']}° "
+                f"(折算 {ta_wrapped:.1f}°) 落在漸近線之外——|TA| 必須 < arccos(-1/e) = "
+                f"{ta_inf_deg:.1f}°，否則這個點不在這條雙曲線軌道上 (poliastro 會在算位置時才炸)"
+            )
+
     # 近地點半徑要在地球表面以上，軌道才有物理意義。SMA*(1-ECC) 這個公式對橢圓
     # (SMA>0, ECC<1) 跟雙曲線 (SMA<0, ECC>1) 都成立、都會算出正的近地點半徑，
     # 不用分兩套公式——只有在 SMA/ECC 符號已經兜得起來時才檢查 (兜不起來的組合
@@ -249,6 +265,17 @@ def _validate_strategy(strategy_cfg, errors: list):
         v = strategy_cfg["MISS_TOLERANCE_KM"]
         if not _is_number(v) or v < 0:
             errors.append(f"strategy.MISS_TOLERANCE_KM 必須是 >=0 的數字，但收到 {v!r}")
+
+    if "PRIMER_GUIDED_RESEARCH" in strategy_cfg and not isinstance(strategy_cfg["PRIMER_GUIDED_RESEARCH"], bool):
+        errors.append("strategy.PRIMER_GUIDED_RESEARCH 必須是 true/false，但收到 "
+                      f"{strategy_cfg['PRIMER_GUIDED_RESEARCH']!r}（C2：primer 引導的條件式重搜開關）")
+
+    if "SEED_PORTFOLIO_N" in strategy_cfg:
+        v = strategy_cfg["SEED_PORTFOLIO_N"]
+        if not (_is_int(v) and v >= 1):
+            errors.append(
+                f"strategy.SEED_PORTFOLIO_N 必須是 >=1 的整數，但收到 {v!r}。"
+                "1 (預設) = 單跑；>1 = 跑 N 顆 SEED、§6 留拆後分最高（成本 N 倍，繳交前用）")
 
 
 def _validate_local(local_cfg, errors: list):

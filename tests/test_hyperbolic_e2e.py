@@ -24,6 +24,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.optimizer import MissionOptimizer, run_study_over_revs
+from src.config_validator import _validate_orbit
 from main import legalize_violating_winner
 
 _FAILED = []
@@ -120,8 +121,29 @@ def test_split_pipeline_e2e():
     check("至少一棒（解非空）", len(burns) >= 1)
 
 
+def test_hyperbolic_ta_asymptote_validator():
+    """A4：雙曲線 TA 漸近線檢查——|TA| 必須 < arccos(-1/e)。漸近線外要擋、內要放，
+    折算 [0,360) 也要對，橢圓不受限。純檢查、決定性。"""
+    print("\n── A4. 雙曲線 TA 漸近線 validator ──")
+    e = 1.5
+    ta_inf = math.degrees(math.acos(-1.0 / e))   # ≈131.8°
+
+    def ta_rejected(ta, ecc=e):
+        errs = []
+        _validate_orbit({"SMA": -20000.0, "ECC": ecc, "INC": 30.0,
+                         "RAAN": 0.0, "AOP": 0.0, "TA": ta}, "orbit_A", errs)
+        return any("漸近線" in x for x in errs)
+
+    check(f"漸近線內 TA=100° 放行（<{ta_inf:.1f}°）", not ta_rejected(100.0))
+    check(f"漸近線外 TA={ta_inf+5:.1f}° 擋下", ta_rejected(ta_inf + 5.0))
+    check("折算 [0,360)：TA=233.2°（=-126.8°，內）放行", not ta_rejected(360.0 - (ta_inf - 5.0)))
+    check("折算 [0,360)：TA=223.2°（=-136.8°，外）擋下", ta_rejected(360.0 - (ta_inf + 5.0)))
+    check("橢圓 (ECC=0.1) TA=200° 不受漸近線限制", not ta_rejected(200.0, ecc=0.1))
+
+
 def main():
     test_structural_smoke()
+    test_hyperbolic_ta_asymptote_validator()
     test_split_pipeline_e2e()
     print("\n── 收工 ──")
     if _FAILED:

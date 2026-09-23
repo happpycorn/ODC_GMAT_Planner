@@ -50,7 +50,23 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
   中間棒（大機動都被節線攔截閃掉、或落終端棒已處理），故「中間棒拆分器」不做、此旗標休眠別刪，
   下一輪雙曲線 A 真題出來再重驗。完整調查見
   [HAP67_SPLIT_AWARE_INVESTIGATION.md](docs/HAP67_SPLIT_AWARE_INVESTIGATION.md)。
-- 回歸：`uv run python run_regression.py`（7 支、~120s，動任何東西前先跑）。拆棒管線有
+- **primer 引導的條件式重搜（C2，2026-09-22 上線，預設開）**：`main.primer_guided_research()`
+  在拆棒合法化前對 DE 贏家算 primer——`|p|≤1`（optimal-ish）就收工不重搜（圓軌道輪 0/14 的
+  物理，contest 贏家實測 max|p|=1.000）；`|p|>1`（add-node）才用 B1 的 energy_floor 動態上界
+  打開 `SPLIT_AWARE_SEARCH`、用 `primer.insert_node_seed()` 在 primer 指的弧注入插棒種子
+  （經新增的 `optimizer.external_seeds` 注入初始族群）、以 N+1 棒重搜，最後照§6 取優。
+  「SPLIT_AWARE 該不該開、種子放哪」從用猜的變成 primer 指的。旗標
+  `strategy.PRIMER_GUIDED_RESEARCH`（設 false 連診斷都不跑）。對當前圓軌道題型零行為改變、
+  零額外成本（只多印一行證書）。設計/實證見 [C1_PRIMER_VECTOR_STUDY.md](docs/C1_PRIMER_VECTOR_STUDY.md) §6。
+- **Seed-portfolio 小模式（2026-09-22，預設關）**：`main.run_seed_portfolio()` +
+  `_solve_pipeline()`。`strategy.SEED_PORTFOLIO_N>1` 時跑 N 顆 SEED（base..base+N-1）各自
+  完整求解（含 C2 + 拆棒），照§6 留**拆後**分最高的那顆，避開單一 SEED 抽到低籤（本 session
+  contest 分析：幾乎免費 +0.008）。預設 1 = 單跑、逐位元同舊行為。繳交前的品質旋鈕，成本 N 倍。
+- **末端速度匹配審查（D2，2026-09-22，純審查無改動）**：確認全管線是**純位置攔截**、無
+  rendezvous 末端速度匹配殘留——`_lam_best`/終端 Lambert 三處 `vref` 都是載具自身燒前速度
+  （非目標速度），scorer 的 `k_v/C_v` 罰的是總Δv預算不是速度差。雙曲線下不會浪費燃料去匹配
+  近地點高速。
+- 回歸：`uv run python run_regression.py`（8 支、~130s，動任何東西前先跑）。拆棒管線有
   `tests/test_burn_splitter.py`；**雙曲線 A 端到端有 `tests/test_hyperbolic_e2e.py`（2026-09-22 補，
   A5）**——結構煙霧（雙曲線輸入端＋種子產生器不炸）＋拆棒 e2e（違規→自動拆分→零違規/命中/
   Earth-safe），性質式斷言。這補上了 STATUS 舊列的 P3 缺口。
@@ -71,8 +87,9 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
   違規解，確認 `AUTO_SPLIT_LEGALIZE` 在雙曲線幾何下正常拆成合法解、GMAT 一般版/固定燃燒版
   都收斂命中。**仍缺的是回歸測試**——`run_regression.py`/`tests/` 沒有任何雙曲線案例，
   下次動拆棒管線或雙曲線輸入端會沒有自動防護，得補一支 `tests/test_hyperbolic_e2e.py`。
-- 🟡 **P4 雙曲線 A 的 TA 未檢查是否落在漸近線內**（`|TA|<arccos(−1/e)`）。給錯會晚到 poliastro 才炸。
-  這次手動抓 config 時有踩到這條規則（沒有 validator 幫忙擋），還是沒修。
+- ✅ **P4 雙曲線 A 的 TA 漸近線檢查已補（2026-09-22，A4）**：`config_validator._validate_orbit`
+  對 ECC>1 檢查 `|TA| < arccos(−1/e)`（TA 折到 (−180,180] 再比，容 [0,360) 寫法），漸近線外
+  直接報錯、不再拖到 poliastro 算位置才炸。回歸 `tests/test_hyperbolic_e2e.py`。
 - ⚠️ **計分參數與 A/B 六根數要等官方發題**（`k_t/C_t/k_v/C_v`）。
 
 ## 環境（本機、不進 git）

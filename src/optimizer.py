@@ -514,6 +514,11 @@ class MissionOptimizer:
         # 不設 (null/None) 就維持每次隨機，想探索不同解可以拿掉這個欄位。
         self.seed = config["optimization"].get("SEED")
 
+        # C2（2026-09-22）：外部注入的搜尋種子 {燃燒次數: [決策向量, ...]}，預設空。
+        # primer 診斷贏家判定 add-node 時，main._primer_guided_research 把「該加節點」
+        # 翻成一顆插棒種子塞進來（見 primer.insert_node_seed），保證它一定進初始族群。
+        # 是 numpy 陣列的純資料 dict，spawn 到子行程時隨 self 一起 pickle，跨行程沒問題。
+        self.external_seeds = {}
 
         # 計算時間上限 (T_max = T_MAX_PERIOD_MULTIPLE × A 的軌道週期，見上面的說明)。
         # 這個公式只在 A 是橢圓/圓軌道 (SMA>0, ECC<1，初賽) 時有意義——A 是雙曲線
@@ -1435,6 +1440,13 @@ class MissionOptimizer:
         if self.seed is not None:
             np.random.seed(self.seed)
         seed_candidates = self._generate_seed_candidates(current_burns, n_seeds)
+        # C2：外部注入的插棒種子放在最前面，確保不被 n_seeds 上限擠掉；夾回界內
+        # （coast_frac 反解可能微幅越界，clip 後仍是有效起點，DE 會再精修）。
+        ext = self.external_seeds.get(current_burns, [])
+        if ext:
+            _lb, _ub = np.array(lb), np.array(ub)
+            seed_candidates = [np.clip(np.asarray(s, dtype=np.float64), _lb, _ub)
+                               for s in ext] + list(seed_candidates)
         if seed_candidates:
             lb_arr, ub_arr = np.array(lb), np.array(ub)
             n_random = pop_size - len(seed_candidates)
@@ -2187,7 +2199,7 @@ def pick_best_across_revs(candidates, eps=None):
     return best, (alt != best)
 
 
-def run_study_over_revs(config):
+def run_study_over_revs(config, external_seeds=None):
     """（決策 3 / 2026-09-03）在多個 LAMBERT_MAX_REVS 值上各跑一次完整 run_study()，
     照規則第 6 節挑最好的那趟交出去，換掉 seed×REVS 相依的搜尋脆弱性。
 
@@ -2250,6 +2262,8 @@ def run_study_over_revs(config):
         cfg = copy.deepcopy(config)
         cfg.setdefault("strategy", {})["LAMBERT_MAX_REVS"] = revs
         opt = MissionOptimizer(cfg)
+        if external_seeds:                       # C2：primer 指路的插棒種子（見 main）
+            opt.external_seeds = external_seeds
         # 集成時把每趟的大塊報告壓成 DEBUG（console 預設不印、-v/log 檔仍看得到），
         # 避免同一份報告在 console 上印每一趟——只在下面把勝出趟以 INFO 重印一次。
         if multi:
