@@ -83,8 +83,8 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
   **`main.py --from-winner <檔>` 跳過搜尋、只重跑拆棒 + 產腳本 + GMAT（~4 分鐘）——改拆棒器時用它，
   不要重跑整條管線**。完整診斷與數據見 [C3_CONVEX_SPLITTER_PLAN.md](docs/C3_CONVEX_SPLITTER_PLAN.md) §6。
 - **路線家族 + 空燒剔除 + numba 非確定性（C3 續，2026-09-23）**：
-  - **98.3190**（contest 幾何新高，> 初賽冠軍 98.3162）：強制 4 棒搜尋 SEED=7，拆**前**只有 88.30（比 88.32
-    路線低）但拆後最高——**拆前最優 ≠ 拆後最優**，搜尋只看拆前分數所以預設走不到。封存於
+  - **98.3190**（contest 幾何新高，> 初賽冠軍 98.3162）：最初靠強制 4 棒搜尋 SEED=7 撞到；追查後是**第一棒貼 cap、
+    需要後面 100 s 有空位讓 NLP 分擔溢出**。`burn_splitter._slot_after_capped` 自動補空位後，**預設管線直接 98.3188**。封存於
     [docs/solutions/98.319_route4_split6.md](docs/solutions/98.319_route4_split6.md)（含繳交腳本）。
   - A1 後同盆地內各 SEED 拆後只差 ~1e-4（= 拆棒雜訊底線）；分數差距來自**盆地選擇**，不是拆法。
   - `burn_splitter.prune_null_burns`：剔除 NLP 壓到 mm/s 級的空燒，剔除後用真實約束重評才採用，繳交腳本只剩實燒。
@@ -120,8 +120,8 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
 - ⚠️ **計分參數與 A/B 六根數要等官方發題**（`k_t/C_t/k_v/C_v`）。
 
 **待辦（2026-09-23 晚更新，依優先序）**：
-1. **拆後分數進路線選擇**（進行中，branch `post-split-selection`）：DE 前幾名候選各拆一次、依拆後分數挑，
-   取代「多撞 SEED」——98.319 盆地在 10 顆 4 棒 SEED 裡只撞到 1 顆。
+1. ~~拆後分數進路線選擇~~ → **已解（2026-09-23 晚）**：98.319 其實是拆棒器沒處理「貼 cap 的前導棒」，
+   `_slot_after_capped` 補空位後**預設管線從頭跑就是 98.3188**（GMAT ✅）。多候選各拆暫不需要，雙曲線真題再評估。
 2. **測試 quick/full 分層**（[FLOW_EFFICIENCY_AUDIT](docs/FLOW_EFFICIENCY_AUDIT_20260923.md) P1）：`run_regression.py --quick`
    排除 slow e2e；`test_hyperbolic_e2e` 拆結構煙霧／e2e 兩支。
 3. **REVS 集成消融**（審計 P2，~1.8× 成本）與**種子雙重局部精修消融**（審計 P4）：固定 SEED 多情境跑數據再決定預設。
