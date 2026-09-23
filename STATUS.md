@@ -4,7 +4,7 @@
 **怎麼用這個工具看 [README.md](README.md)；演算法/物理模型原理看 [METHODOLOGY.md](docs/METHODOLOGY.md)**；
 初賽的逐日開發日誌封存在 [docs/log/DEVLOG_prelim.md](docs/log/DEVLOG_prelim.md)；更細的技術決策看 commit log 跟程式碼註解。
 
-**最後更新：2026-09-23——分段管線第一版：拆棒後方案存檔、獨立產檔／GMAT 驗證、每次執行隔離輸出。C3 拆棒收斂改良保留。**
+**最後更新：2026-09-23（晚）——contest 幾何新高 98.3190（4 棒路線家族 + A1 拆棒，GMAT 驗證）；繳交腳本剔除空燒；修 numba 快取非確定性；併入 Codex 分段管線。**
 
 ## 分段管線第一版（2026-09-23）
 
@@ -82,6 +82,14 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
   皆命中、收斂、合規。另：每次完整跑自動存本次目錄的 `winner_presplit_seed<SEED>.json`，
   **`main.py --from-winner <檔>` 跳過搜尋、只重跑拆棒 + 產腳本 + GMAT（~4 分鐘）——改拆棒器時用它，
   不要重跑整條管線**。完整診斷與數據見 [C3_CONVEX_SPLITTER_PLAN.md](docs/C3_CONVEX_SPLITTER_PLAN.md) §6。
+- **路線家族 + 空燒剔除 + numba 非確定性（C3 續，2026-09-23）**：
+  - **98.3190**（contest 幾何新高，> 初賽冠軍 98.3162）：強制 4 棒搜尋 SEED=7，拆**前**只有 88.30（比 88.32
+    路線低）但拆後最高——**拆前最優 ≠ 拆後最優**，搜尋只看拆前分數所以預設走不到。封存於
+    [docs/solutions/98.319_route4_split6.md](docs/solutions/98.319_route4_split6.md)（含繳交腳本）。
+  - A1 後同盆地內各 SEED 拆後只差 ~1e-4（= 拆棒雜訊底線）；分數差距來自**盆地選擇**，不是拆法。
+  - `burn_splitter.prune_null_burns`：剔除 NLP 壓到 mm/s 級的空燒，剔除後用真實約束重評才採用，繳交腳本只剩實燒。
+  - `core_math.lambert_izzo`：Python 端 Lambert 唯一入口。原本 numba 冷/熱快取會讓 izzo 特化版本不同，
+    同輸入拆出不同分（3e-5）；**Python 端不要直接呼叫 poliastro izzo**（見 memory odc-numba-cache-nondeterminism）。
 - **末端速度匹配審查（D2，2026-09-22，純審查無改動）**：確認全管線是**純位置攔截**、無
   rendezvous 末端速度匹配殘留——`_lam_best`/終端 Lambert 三處 `vref` 都是載具自身燒前速度
   （非目標速度），scorer 的 `k_v/C_v` 罰的是總Δv預算不是速度差。雙曲線下不會浪費燃料去匹配
@@ -111,16 +119,15 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
   直接報錯、不再拖到 poliastro 算位置才炸。回歸 `tests/test_hyperbolic_e2e.py`。
 - ⚠️ **計分參數與 A/B 六根數要等官方發題**（`k_t/C_t/k_v/C_v`）。
 
-**待辦（2026-09-23 整理，依優先序）**：
-1. **「前導 4 棒」路線家族拆後可能更高**：09-22 小預算煙霧經 C2 重搜 3→4 棒跳到另一條路線，舊拆棒器
-   （maxiter=80）就拆出 98.3190 > 現在的 98.3174。要：重現該路線存檔 → `--from-winner` 用 A1 重拆 +
-   GMAT → 若更高，查滿預算搜尋為何到不了（C2 讀拆**前**分數、看不到拆後差異）。見 C3 文件問題 ①。
-2. **量 A1 後的 SEED 間散布**（SEED 1/2 各 ~25 分鐘）→ 決定 seed-portfolio 退役、REVS 集成是否預設關。
-3. **繳交腳本剔除 Δv=0 機動**：A1 解有 2 發空燒（DE 留下的 + NLP 壓零的終端段），合規但會讓評審困惑；
-   剔除時 DC 打靶角色要移給最後一發實燒。
-4. 回歸變慢（~130s → ~364s，主要是 `test_hyperbolic_e2e`）：可讓該測試用較小 maxiter，或接受。
-5. 等官方：計分參數與六根數；雙曲線真題出來後重驗 SPLIT_AWARE / C2 在雙曲線下的行為；P2 Earth-safe。
-6. 凸拆棒器（C3 B 檔）擱置——A1 後散布已 1e-4 級，待 2 的數據再評估。
+**待辦（2026-09-23 晚更新，依優先序）**：
+1. **拆後分數進路線選擇**（進行中，branch `post-split-selection`）：DE 前幾名候選各拆一次、依拆後分數挑，
+   取代「多撞 SEED」——98.319 盆地在 10 顆 4 棒 SEED 裡只撞到 1 顆。
+2. **測試 quick/full 分層**（[FLOW_EFFICIENCY_AUDIT](docs/FLOW_EFFICIENCY_AUDIT_20260923.md) P1）：`run_regression.py --quick`
+   排除 slow e2e；`test_hyperbolic_e2e` 拆結構煙霧／e2e 兩支。
+3. **REVS 集成消融**（審計 P2，~1.8× 成本）與**種子雙重局部精修消融**（審計 P4）：固定 SEED 多情境跑數據再決定預設。
+4. seed-portfolio 定位改為「探索不同盆地」（同盆地散布已 1e-4）；預設維持 1。
+5. 等官方：計分參數與六根數；雙曲線真題出來後重驗 SPLIT_AWARE / C2；P2 Earth-safe（攝動開時數值取樣）。
+6. 凸拆棒器（C3 B 檔）擱置——拆棒雜訊已 1e-4。
 
 ## 環境（本機、不進 git）
 
