@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.optimizer import MissionOptimizer
 from src.core_math import propagate_dop853, fast_norm
-from src.burn_splitter import legalize_intercept, legalize_route, _lam_best, drop_null_burns, prune_null_burns, _simulate_free
+from src.burn_splitter import legalize_intercept, legalize_route, _lam_best, drop_null_burns, prune_null_burns, _simulate_free, _slot_after_capped
 
 _FAILED = []
 
@@ -120,8 +120,10 @@ def main():
             Nz = len(pairs)
             xz = np.concatenate([[t0_ / 2.0], [c for _, c in pairs], np.array([d for d, _ in pairs]).ravel()])
             xd, Nd = drop_null_burns(xz, Nz)
-            check(f"drop_null_burns 剔回 {N0} 棒（插了 {Nz - N0} 發空燒）", Nd == N0)
-            ma = _simulate_free(x0, N0, mu, j2, j3, j4, re, opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0)
+            _, Nexp = drop_null_burns(x0, N0)          # 拆棒結果本身可能含未用到的空位（_slot_after_capped）
+            check(f"drop_null_burns 剔回 {Nexp} 棒（插了 {Nz - N0} 發空燒）", Nd == Nexp)
+            xe, _ = drop_null_burns(x0, N0)
+            ma = _simulate_free(xe, Nexp, mu, j2, j3, j4, re, opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0)
             mb = _simulate_free(xd, Nd, mu, j2, j3, j4, re, opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0)
             check("drop_null_burns 後 Δr 不變（<1 m）", abs(ma["miss_km"] - mb["miss_km"]) < 1e-3)
             check("drop_null_burns 後 T_team 不變", abs(ma["T_team"] - mb["T_team"]) < 1e-6)
@@ -129,7 +131,23 @@ def main():
             pr = prune_null_burns(xz, Nz, cap, mp, mu, j2, j3, j4, re,
                                   opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0,
                                   opt.k_t, opt.C_t, opt.k_v, opt.C_v, opt.MISS_TOLERANCE_SOFT)
-            check("prune_null_burns 剔除並重評為 feasible", pr is not None and pr["N"] == N0 and pr["feasible"])
+            check("prune_null_burns 剔除並重評為 feasible", pr is not None and pr["N"] <= Nexp and pr["feasible"])
+
+    # _slot_after_capped（C3）：貼 cap 的前導棒後補 min_coast 空位、丟掉無用空燒；滑行總長不變
+    print("\n── 前導棒重排（貼 cap 補空位）──")
+    capv = 1.498; mcv = 100.0
+    big = np.array([capv, 0.0, 0.0]); small = np.array([0.5, 0.0, 0.0]); z = np.zeros(3)
+    out = _slot_after_capped([big, z], [1270.8, 1100.1], capv, mcv)
+    check("貼 cap 棒後補空位、原空燒併掉 → 2 發（棒 + 空位）",
+          out is not None and len(out[0]) == 2 and np.allclose(out[0][1], 0.0))
+    check("空位在 min_coast 處、總滑行不變",
+          out is not None and abs(out[1][0] - mcv) < 1e-9 and abs(sum(out[1]) - 2370.9) < 1e-9)
+    check("沒貼 cap、沒空燒 → 不改（回 None）", _slot_after_capped([small], [1000.0], capv, mcv) is None)
+    check("後續滑行 < 2×min_coast → 不補空位", _slot_after_capped([big], [150.0], capv, mcv) is None)
+    out = _slot_after_capped([big, z, z], [100.4, 767.2, 1519.0], capv, mcv)
+    check("緊跟 cap 棒的空燒（100.4 s）保留為空位、遠處空燒併掉",
+          out is not None and len(out[0]) == 2 and abs(out[1][0] - 100.4) < 1e-9
+          and abs(sum(out[1]) - 2386.6) < 1e-9)
 
     print("\n── 收工 ──")
     if _FAILED:

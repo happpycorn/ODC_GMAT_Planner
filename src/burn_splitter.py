@@ -269,11 +269,64 @@ def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
     }
 
 
+def _slot_after_capped(leading_dvs, leading_coasts, cap, min_coast, tol=1e-6):
+    """前導棒重排：丟掉 Δv≈0 的空燒，並在每發**貼著 cap** 的前導棒後 `min_coast` 處補一個 Δv=0 空位。
+
+    C3（2026-09-23）發現：contest 路線的第一棒想燒超過 cap、被夾在 1498 m/s；joint NLP 只要在它後面
+    100 s 有個空位，就會把溢出的 ~50 m/s 放進去（同一路線 98.3174 → 98.3190）。DE 留下的空燒位置是
+    隨機的（1270 s 用不上、100 s 才用得上），不能靠它。空位的後續滑行要 ≥ min_coast 才補。
+    回傳 (dvs, coasts)；沒有任何改變時回傳 None。
+    """
+    dvs, coasts, changed = [], [], False
+    for dv, c in zip(leading_dvs, leading_coasts):
+        dv = np.asarray(dv, dtype=np.float64); c = float(c)
+        if fast_norm(dv) < tol:
+            # 緊跟在貼 cap 棒後的空燒（間隔 ≤1.5×min_coast）本身就是有用的空位，保留；
+            # 其餘空燒位置隨機、用不上，併進前一段滑行。第一發就是空燒也保留（t0 由呼叫端管）。
+            is_slot = (dvs and fast_norm(dvs[-1]) >= cap - 1e-6
+                       and coasts[-1] <= 1.5 * min_coast)
+            if coasts and not is_slot:
+                coasts[-1] += c
+                changed = True
+                continue
+            dvs.append(dv); coasts.append(c)
+            continue
+        if fast_norm(dv) >= cap - 1e-6 and c >= 2.0 * min_coast:
+            dvs += [dv, np.zeros(3)]
+            coasts += [min_coast, c - min_coast]
+            changed = True
+        else:
+            dvs.append(dv); coasts.append(c)
+    return (dvs, coasts) if changed else None
+
+
 def legalize_route(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
                    cap, min_coast, mu, j2, j3, j4, re, min_periapsis, max_revs,
                    A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, T_max,
-                   miss_tol, n_span=1, max_seg=14, maxiter=1000):
-    """Stage 2 對外單一入口：吃一條「前導合法棒 + 一發(可能超標的)終端攔截」的 route，
+                   miss_tol, n_span=1, max_seg=14, maxiter=1000, slot_after_capped=True):
+    """Stage 2 對外單一入口（見 `_legalize_route_core`）。
+
+    `slot_after_capped=True`（預設）先用 `_slot_after_capped` 重排前導棒：丟掉無用空燒、在貼 cap
+    的前導棒後補空位給 NLP 分擔溢出量；重排版拆不出合法解才退回原樣。
+    """
+    kw = dict(cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3, j4=j4, re=re,
+              min_periapsis=min_periapsis, max_revs=max_revs, A_r0=A_r0, A_v0=A_v0,
+              B_r0=B_r0, B_v0=B_v0, k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v, T_max=T_max,
+              miss_tol=miss_tol, n_span=n_span, max_seg=max_seg, maxiter=maxiter)
+    if slot_after_capped:
+        aug = _slot_after_capped(leading_dvs, leading_coasts, cap, min_coast)
+        if aug is not None:
+            res = _legalize_route_core(t0, aug[0], aug[1], terminal_coast, target, **kw)
+            if res is not None and res["feasible"]:
+                return res
+    return _legalize_route_core(t0, leading_dvs, leading_coasts, terminal_coast, target, **kw)
+
+
+def _legalize_route_core(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
+                         cap, min_coast, mu, j2, j3, j4, re, min_periapsis, max_revs,
+                         A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, T_max,
+                         miss_tol, n_span=1, max_seg=14, maxiter=1000):
+    """Stage 2 核心：吃一條「前導合法棒 + 一發(可能超標的)終端攔截」的 route，
     回傳**合法化 + joint-NLP 優化後**的最佳解（free-ECI），或 None（拆不出）。
 
     流程：
