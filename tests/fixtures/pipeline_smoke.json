@@ -1,0 +1,16 @@
+{
+  "orbit_A": {"SMA": 9000.0, "ECC": 0.0, "INC": 0.0, "RAAN": 0.0, "AOP": 0.0, "TA": 0.0},
+  "orbit_B": {"SMA": 7500.0, "ECC": 0.0, "INC": 0.0, "RAAN": 0.0, "AOP": 0.0, "TA": 0.0},
+  "rules": {
+    "MAX_DV_MPS": 1500.0, "MIN_MANEUVER_INTERVAL_SEC": 100.0, "T_MAX_PERIOD_MULTIPLE": 4.0,
+    "k_t": 0.0001, "C_t": 11000.0, "k_v": 0.005, "C_v": 1200.0
+  },
+  "strategy": {
+    "GRAVITY_DEGREE": 0, "MISS_TOLERANCE_KM": 5.0,
+    "REVS_ENSEMBLE": false, "PRIMER_GUIDED_RESEARCH": false
+  },
+  "optimization": {
+    "MAX_BURNS": [1], "MAXITER": 10, "POPSIZE": 5,
+    "NUM_THREADS": 1, "MAX_EARLY_STOP": 5, "TOL": 0.001, "SEED": 0
+  }
+}

@@ -11,6 +11,11 @@ import multiprocessing
 import copy
 import cProfile
 import pstats
+import re
+import hashlib
+from pathlib import Path
+from src.pipeline_artifacts import (create_run_dir, save_mission, load_mission,
+                                    write_json, file_digest, provenance)
 
 # 引入重構後的新模組
 import numpy as np
@@ -83,6 +88,7 @@ DEFAULT_CONFIG = {
         "MISS_TOLERANCE_KM": 5.0,  # 規則只要求 Δr <= 這個值 (預設對齊規則的 5km)，可以
                                     # 彈性調小 (甚至設 0 退回精準瞄準)，讓最後一棒 Lambert
                                     # 在容許範圍內找最省油的落點，而不是死盯著 A 的精確位置
+        "AUTO_SPLIT_LEGALIZE": True,  # 低邏輯棒數先找 route，若贏家超標再動態拆成合法多棒解
         "REVS_ENSEMBLE": True,  # 預設在 REVS=0 與 REVS=LAMBERT_MAX_REVS 各跑一次完整搜尋、
                                 # 取規則§6 較好的那趟 (換掉 seed×REVS 相依脆弱性，成本約
                                 # 1.8×)。設 false 只跑一次 (用 LAMBERT_MAX_REVS)——T_max
@@ -108,7 +114,7 @@ def load_or_create_config(filename=os.path.join("configs", "config.json")):
     驗證失敗時印出訊息並用 sys.exit(1) 結束 (而不是往上丟例外)，讓失敗訊息乾淨、
     不夾帶一堆跟問題無關的內部呼叫堆疊。
     """
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    os.makedirs(os.path.dirname(filename) or ".", exist_ok=True)
     if not os.path.exists(filename):
         log.warning(f"⚠️ 找不到 {filename}，正在自動生成預設設定檔...")
         with open(filename, "w", encoding="utf-8") as f:
@@ -131,10 +137,10 @@ def load_or_create_config(filename=os.path.join("configs", "config.json")):
     return config
 
 
-def parse_args():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="軌道攔截設計賽 - 任務規劃與計分工具")
     parser.add_argument(
-        "--config", default=os.path.join("configs", "config.json"),
+        "--config", default=None,
         help="設定檔路徑 (預設 configs/config.json)，方便在測試資料/正式測資之間切換而不用互相覆蓋"
     )
     parser.add_argument(
@@ -148,18 +154,28 @@ def parse_args():
     )
     parser.add_argument(
         "--no-fixed-script", action="store_true",
-        help="跳過『固定燃燒版本』的產生+驗證。預設：一般版本 (outputs/output.txt，"
+        help="跳過『固定燃燒版本』的產生+驗證。預設：一般版本 (本次目錄的 output.txt，"
              "最後一棒靠 GMAT 的 DC 求解器收斂) 通過驗證後，會自動把 GMAT 收斂後的"
-             "燃燒值寫死、產生一份不含任何求解器的版本 (outputs/output_submit.txt)，"
+             "燃燒值寫死、產生一份不含任何求解器的版本 (output_submit.txt)，"
              "適合正式繳交——換一台電腦跑也不用擔心求解器行為不一致，因為根本沒有"
              "求解器在跑。開發/迭代時想省這幾秒可以加這個旗標跳過。"
     )
-    parser.add_argument(
+    sources = parser.add_mutually_exclusive_group()
+    sources.add_argument(
         "--from-winner", default=None, metavar="JSON",
-        help="跳過搜尋，從拆棒前贏家存檔（outputs/winner_presplit_seed*.json，每次完整跑都會"
+        help="跳過搜尋，從拆棒前贏家存檔（本次目錄的 winner_presplit_seed*.json，每次完整跑都會"
              "自動存）直接接拆棒合法化 + 產腳本 + GMAT。改拆棒器/驗證時用，幾分鐘一輪。"
              "此模式下軌道/規則一律取存檔內的 config，--config 只用來找 GmatConsole 路徑"
     )
+    sources.add_argument("--from-mission", metavar="JSON",
+                         help="讀拆棒後 mission.json，跳過搜尋與拆棒，接產腳本/GMAT；使用存檔設定")
+    sources.add_argument("--verify-script", metavar="SCRIPT",
+                         help="只用 GMAT 驗證既有腳本，在新目錄保存報表，不重新求解或產生任務")
+    parser.add_argument("--stop-after", choices=("solve", "export", "verify"), default="verify",
+                        help="停在求解存檔/產腳本/GMAT 驗證（預設 verify）")
+    parser.add_argument("--run-dir", help="本次輸出目錄，必須尚不存在；預設 outputs/runs/<唯一識別碼>")
+    parser.add_argument("--model-scale", type=float,
+                        help="只調整產出腳本的飛船模型大小（0.001~1000），可與 --from-mission 一起使用")
     # 執行期輸出的詳略（HAP-68）。預設終端機只印事件級摘要，完整 DEBUG 一律寫進
     # outputs/run.log，事後要追細節去撈那個檔就好。
     parser.add_argument(
@@ -168,19 +184,70 @@ def parse_args():
     )
     parser.add_argument(
         "-q", "--quiet", action="store_true",
-        help="終端機只印 WARNING 以上（適合排程/批次跑）；完整細節照樣寫進 outputs/run.log"
+        help="終端機只印 WARNING 以上（適合排程/批次跑）；完整細節照樣寫進本次目錄的 run.log"
     )
-    return parser.parse_args()
+    args = parser.parse_args(argv)
+    if args.model_scale is not None and not 0.001 <= args.model_scale <= 1000:
+        parser.error("--model-scale 必須介於 0.001 與 1000")
+    if args.model_scale is not None and (args.verify_script or args.stop_after == "solve"):
+        parser.error("--model-scale 只適用於產腳本階段")
+    if args.verify_script and (args.no_gmat or args.stop_after != "verify" or args.no_fixed_script):
+        parser.error("--verify-script 不可搭配停止/跳過驗證選項")
+    if args.no_gmat and args.stop_after == "verify":
+        args.stop_after = "export"
+    return args
 
 
-def run_gmat_verification(console_path: str, script_path: str, timeout_sec: float = 120.0):
+def run_gmat_verification(console_path: str, script_path: str, timeout_sec: float = 120.0,
+                          artifacts_dir=None):
+    """Verify an archived script copy with an isolated report destination.
+
+    Only Report_Intercept.Filename changes; mission commands stay byte-for-byte intact.
+    Each attempt keeps the exact executed script, stdout/stderr and result (including failure).
+    """
+    source = Path(script_path).resolve()
+    folder = create_run_dir(artifacts_dir) if artifacts_dir else create_run_dir()
+    report = folder / "GMAT_InterceptReport.txt"
+    original_bytes = source.read_bytes()
+    original = original_bytes.decode("ascii")
+    if any(c in str(report) for c in ("'", "\n", "\r")) or not str(report).isascii():
+        raise ValueError("GMAT 驗證輸出路徑須為 ASCII 且不可含單引號/換行。")
+    executed, count = re.subn(
+        r"(?m)^[ \t]*Report_Intercept\.Filename[ \t]*=[ \t]*'[^'\r\n]*'[ \t]*;",
+        lambda _: f"Report_Intercept.Filename = '{report.as_posix()}';", original)
+    if count != 1:
+        raise ValueError("腳本需包含唯一的 Report_Intercept.Filename（本工具報表格式）。")
+    script = folder / "executed.script"
+    script.write_bytes(executed.encode("ascii"))
+    started = time.perf_counter()
+    result = _run_gmat_verification(console_path, str(script), timeout_sec,
+                                    report_path=str(report), log_dir=folder)
+    requires_dc = bool(re.search(r"(?m)^[ \t]*Target[ \t]+", original))
+    checks_passed = bool(result and result["intercept_success"] and result["final_burn_legal"]
+                         and (not requires_dc or result["targeter_converged"]))
+    write_json(folder / "verification.json", {
+        "schema_version": 1, "stage": "verification",
+        "source_script": str(source), "source_sha256": hashlib.sha256(original_bytes).hexdigest(),
+        "executed_script": str(script), "executed_sha256": file_digest(script),
+        "console_path": str(Path(console_path).expanduser().resolve()),
+        "provenance": provenance(), "elapsed_sec": time.perf_counter() - started,
+        "status": "completed" if result is not None else "failed", "result": result,
+        "requires_dc": requires_dc, "checks_passed": checks_passed,
+    })
+    return result
+
+
+def _run_gmat_verification(console_path: str, script_path: str, timeout_sec: float = 120.0,
+                           *, report_path, log_dir):
     """
     呼叫 GmatConsole 用無頭批次模式 (--exit --run) 跑我們產生的 script，
     跑完直接讀回 GMAT 自己寫的 GMAT_InterceptReport.txt，回傳一個 dict。
     這一步失敗 (GMAT 沒裝/路徑不對/腳本有誤) 都不該讓整個程式當掉，只印警告後回傳 None，
     Python 端算出來的結果照樣有效、照樣會寫進 outputs/output.txt。
     """
-    console_path = os.path.expanduser(console_path)
+    console_path = os.path.abspath(os.path.expanduser(console_path))
+    (log_dir / "stdout.txt").write_text("", encoding="utf-8")
+    (log_dir / "stderr.txt").write_text("", encoding="utf-8")
     if not os.path.exists(console_path):
         log.warning(f"⚠️ 找不到 GmatConsole ({console_path})，略過自動 GMAT 驗證。"
                     f"每次都要打 --gmat-console 太麻煩的話，可以在 config.json 裡加："
@@ -190,7 +257,6 @@ def run_gmat_verification(console_path: str, script_path: str, timeout_sec: floa
         return None
 
     bin_dir = os.path.dirname(console_path)
-    report_path = os.path.normpath(os.path.join(bin_dir, "..", "output", "GMAT_InterceptReport.txt"))
 
     # 關鍵防護 (2026-08-14 抓到的真 bug)：GMAT 執行失敗時 (腳本解析錯誤、跑到一半
     # 崩潰...) 不一定會清掉舊的報表檔——如果上一次執行 (可能是完全不同的 config/
@@ -205,7 +271,8 @@ def run_gmat_verification(console_path: str, script_path: str, timeout_sec: floa
         try:
             os.remove(report_path)
         except OSError as exc:
-            log.warning(f"⚠️ 無法清除舊的報表檔 ({report_path}): {exc}，這次驗證結果可能不可靠。")
+            log.warning(f"⚠️ 無法清除舊的報表檔 ({report_path}): {exc}，中止本次驗證。")
+            return None
 
     log.info("\n🛰️  正在呼叫 GmatConsole 做無頭驗證...")
     try:
@@ -213,7 +280,11 @@ def run_gmat_verification(console_path: str, script_path: str, timeout_sec: floa
             [console_path, "--exit", "--run", os.path.abspath(script_path)],
             cwd=bin_dir, capture_output=True, text=True, timeout=timeout_sec
         )
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
+        for name, data in (("stdout", exc.stdout), ("stderr", exc.stderr)):
+            if isinstance(data, bytes):
+                data = data.decode("utf-8", errors="replace")
+            (log_dir / f"{name}.txt").write_text(data or "", encoding="utf-8")
         log.warning(f"⚠️ GmatConsole 超過 {timeout_sec} 秒沒結束，放棄這次驗證。")
         return None
     except Exception as exc:
@@ -221,6 +292,8 @@ def run_gmat_verification(console_path: str, script_path: str, timeout_sec: floa
         return None
 
     stdout = result.stdout or ""
+    (log_dir / "stdout.txt").write_text(stdout, encoding="utf-8")
+    (log_dir / "stderr.txt").write_text(result.stderr or "", encoding="utf-8")
     targeter_converged = "The Targeter converged!" in stdout
 
     # returncode 非 0 (腳本解析失敗、執行中崩潰...) 也要當失敗處理，不要只看報表
@@ -244,6 +317,8 @@ def run_gmat_verification(console_path: str, script_path: str, timeout_sec: floa
 
     try:
         t_team, miss_km, success_flag, final_dv_mps, final_dv_legal, e1, e2, e3 = lines[-1].split()
+        if not all(math.isfinite(float(v)) for v in lines[-1].split()):
+            raise ValueError("non-finite GMAT report")
         return {
             "t_team_sec": float(t_team),
             "miss_km": float(miss_km),
@@ -581,12 +656,12 @@ def save_winner_checkpoint(path, optimizer, burns, times, mission_info):
     接拆棒 + GMAT，幾分鐘一輪。存的 config 是**勝出那趟 optimizer 實際用的**（含 REVS 集成
     挑中的 LAMBERT_MAX_REVS、C2 重搜改過的 MAX_BURNS），重播才會跟原管線走同一條路。"""
     payload = {
+        "schema_version": 1, "stage": "presplit", "provenance": provenance(),
         "saved_at": datetime.datetime.now().isoformat(timespec="seconds"),
         "config": optimizer.config,
         "burns": burns, "times": times, "mission_info": mission_info,
     }
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(_to_jsonable(payload), f, ensure_ascii=False, indent=1)
+    write_json(path, _to_jsonable(payload))
     log.debug(f"💾 拆棒前贏家已存檔：{path}（可用 --from-winner 重播拆棒/GMAT）")
 
 
@@ -594,7 +669,10 @@ def load_winner_checkpoint(path):
     """讀回 `save_winner_checkpoint` 的存檔 → (config, burns, times, mission_info, optimizer)。"""
     with open(path, "r", encoding="utf-8") as f:
         p = json.load(f)
+    if p.get("stage", "presplit") != "presplit" or p.get("schema_version", 1) != 1:
+        raise ValueError("需要拆棒前 winner 存檔；拆棒後方案請用 --from-mission。")
     config = p["config"]
+    validate_config(config)
     mi = p["mission_info"]
     mi["x"] = np.asarray(mi["x"], dtype=np.float64)
     mi["aim_point"] = tuple(mi["aim_point"])
@@ -611,7 +689,7 @@ def _legalize_stage(config, burns, times, mi, opt):
     return burns, times, mi
 
 
-def _solve_pipeline(config):
+def _solve_pipeline(config, output_dir="outputs"):
     """一顆 SEED 的完整求解：搜尋 → C2 primer 條件式重搜 →（Earth-safe 時）拆棒合法化。
     回傳 (burns, times, mission_info, optimizer)；搜尋失敗回 (None, None, None, None)。
     **不印 Earth-safe 警告**——那只該對最終勝出解印一次（見 main / run_seed_portfolio），
@@ -627,15 +705,17 @@ def _solve_pipeline(config):
     seed = config.get("optimization", {}).get("SEED")
     try:
         save_winner_checkpoint(
-            os.path.join("outputs", f"winner_presplit_seed{'none' if seed is None else seed}.json"),
+            os.path.join(output_dir, f"winner_presplit_seed{'none' if seed is None else seed}.json"),
             opt, burns, times, mi)
     except (OSError, TypeError) as exc:            # 存檔失敗不該擋管線
         log.warning(f"⚠️ 拆棒前贏家存檔失敗（不影響本次結果）：{exc}")
     burns, times, mi = _legalize_stage(config, burns, times, mi, opt)
+    save_mission(os.path.join(output_dir, f"mission_seed{'none' if seed is None else seed}.json"),
+                 opt.config, burns, times, mi)
     return burns, times, mi, opt
 
 
-def run_seed_portfolio(config):
+def run_seed_portfolio(config, output_dir="outputs"):
     """Seed-portfolio 小模式（2026-09-22）：跑 N 顆 SEED 各自完整求解（含拆棒合法化），
     照規則§6 留**拆後**分最高的那顆。
 
@@ -648,7 +728,7 @@ def run_seed_portfolio(config):
     (burns, times, mission_info, optimizer)。"""
     N = max(1, int(config.get("strategy", {}).get("SEED_PORTFOLIO_N", 1)))
     if N == 1:
-        return _solve_pipeline(config)
+        return _solve_pipeline(config, output_dir)
 
     base = config.get("optimization", {}).get("SEED")
     base = 0 if base is None else int(base)
@@ -660,7 +740,7 @@ def run_seed_portfolio(config):
         cfg = copy.deepcopy(config)
         cfg.setdefault("optimization", {})["SEED"] = sd
         log.info(f"\n🎰 Seed-portfolio 第 {i + 1}/{N} 顆（SEED={sd}）")
-        b, t, mi, opt = _solve_pipeline(cfg)
+        b, t, mi, opt = _solve_pipeline(cfg, output_dir)
         if b is None or not isinstance(mi, dict):
             table.append(f"   {sd:>6}   （全軍覆沒，不列入挑選）")
             continue
@@ -678,74 +758,133 @@ def run_seed_portfolio(config):
     return best[2], best[3], best[4], best[5]
 
 
-def main():
-    # 效能分析器設定
-    if ENABLE_PROFILING:
-        profiler = cProfile.Profile()
-        profiler.enable()
-
+def main(argv=None):
     multiprocessing.freeze_support()
     warnings.filterwarnings("ignore")
-
-    args = parse_args()
-
-    # 執行期日誌（HAP-68）：終端機依 -v/-q 決定詳略，完整 DEBUG 一律落到 outputs/run.log
-    # （mode='w'，只留最新一次），終端機再怎麼精簡都追得回細節。
-    os.makedirs("outputs", exist_ok=True)
+    args = parse_args(argv)
+    run_dir = create_run_dir(args.run_dir)
     setup_logging(verbose=args.verbose, quiet=args.quiet,
-                  logfile=os.path.join("outputs", "run.log"))
-
-    config = load_or_create_config(args.config)
-
-    # GmatConsole 路徑解析順序：--gmat-console > config.json 的 local.gmat_console_path
-    # > 這裡寫死的最後備援值 (見 GMAT_CONSOLE_DEFAULT 的說明)。
-    gmat_console_path = (
-        args.gmat_console
-        or config.get("local", {}).get("gmat_console_path")
-        or GMAT_CONSOLE_DEFAULT
-    )
-
+                  logfile=str(run_dir / "run.log"))
+    log.info(f"📂 本次輸出：{run_dir}")
     start_time = time.perf_counter()
+    manifest = {"schema_version": 1, "status": "running", "arguments": vars(args).copy(),
+                "provenance": provenance(), "timings_sec": {}}
+    write_json(run_dir / "run.json", manifest)
+    profiler = cProfile.Profile() if ENABLE_PROFILING else None
+    if profiler:
+        profiler.enable()
+    try:
+        _run_stages(args, run_dir, manifest)
+        manifest["status"] = "completed"
+    except BaseException as exc:
+        manifest["status"] = "failed"
+        manifest["error"] = f"{type(exc).__name__}: {exc}"
+        raise
+    finally:
+        manifest["elapsed_sec"] = time.perf_counter() - start_time
+        write_json(run_dir / "run.json", manifest)
+        if profiler:
+            profiler.disable()
+            pstats.Stats(profiler).sort_stats("tottime").print_stats(20)
 
-    # 1. 啟動最佳化器（含 L-SHADE、NLP 微調、C2 primer 條件式重搜、拆棒合法化——整條
-    #    「一顆 SEED → 一個可交解」的求解流程包在 _solve_pipeline 裡）。外面再包一層
-    #    seed-portfolio：strategy.SEED_PORTFOLIO_N>1 時跑 N 顆 SEED、§6 留拆後分最高的
-    #    避開低籤（預設 1 = 關，行為與單跑相同）。內層每顆仍走 REVS 集成
-    #    (REVS_ENSEMBLE)。回傳的 optimizer 是勝出解的實例，後面產腳本/印拆解都用它。
-    if args.from_winner:
-        # 重播模式：搜尋結果取自存檔，只重跑拆棒之後的後處理。存檔 config 是勝出那趟實際用的，
-        # 軌道/規則/產腳本全用它；GmatConsole 路徑已在上面由 --config 那份解析好了。
+
+def _run_stages(args, run_dir, manifest):
+    # Replay needs no default config file. Explicit --config on replay supplies
+    # the local GMAT path only; physics always comes from the snapshot.
+    local_config = {}
+    if args.config:
+        if (args.from_winner or args.from_mission or args.verify_script) and not Path(args.config).is_file():
+            raise ValueError(f"找不到指定的本機設定檔：{args.config}")
+        local_config = load_or_create_config(args.config)
+    config = local_config
+    source_path = args.from_mission or args.from_winner or args.verify_script
+    source = ({"path": str(Path(source_path).resolve()), "sha256": file_digest(source_path)}
+              if source_path else None)
+    manifest["source"] = source
+    if args.verify_script:
+        console = (args.gmat_console or local_config.get("local", {}).get("gmat_console_path")
+                   or GMAT_CONSOLE_DEFAULT)
+        started = time.perf_counter()
+        result = run_gmat_verification(console, args.verify_script, artifacts_dir=run_dir / "gmat")
+        manifest["timings_sec"]["verify"] = time.perf_counter() - started
+        manifest["verification"] = result
+        if result is None:
+            raise RuntimeError("GMAT 執行失敗；詳見本次驗證目錄。")
+        evidence = json.loads((run_dir / "gmat" / "verification.json").read_text(encoding="utf-8"))
+        manifest["verification_status"] = "completed"
+        manifest["checks_passed"] = evidence["checks_passed"]
+        if evidence["checks_passed"]:
+            log.info("✅ GMAT 獨立驗證通過（命中、末棒合規及必要的 DC 收斂檢查）。")
+        else:
+            log.warning("⚠️ GMAT 已執行，但命中、末棒合規或 DC 收斂檢查未通過；詳見 verification.json。")
+        manifest["last_stage"] = "verify"
+        return
+
+    started = time.perf_counter()
+    if args.from_mission:
+        payload = load_mission(args.from_mission)
+        config = payload["config"]
+        burns, times, mission_info = payload["burns"], payload["times"], payload["mission_info"]
+        optimizer = MissionOptimizer(config)
+        source["artifact_id"] = payload["artifact_id"]
+        log.info("♻️ 讀取拆棒後方案：跳過搜尋與拆棒。")
+    elif args.from_winner:
         config, burns, times, mission_info, optimizer = load_winner_checkpoint(args.from_winner)
-        log.info(f"♻️ 從存檔重播（跳過搜尋）：{args.from_winner}"
-                 f"（拆棒前 {mission_info['score']:.4f}，{mission_info['num_burns']} 棒）")
+        log.info(f"♻️ 從拆棒前存檔重播：{args.from_winner}")
         burns, times, mission_info = _legalize_stage(config, burns, times, mission_info, optimizer)
     else:
-        burns, times, mission_info, optimizer = run_seed_portfolio(config)
+        if not args.config:
+            config = load_or_create_config(os.path.join("configs", "config.json"))
+        burns, times, mission_info, optimizer = run_seed_portfolio(config, output_dir=run_dir)
 
     if burns is None or times is None:
-        log.error("任務終止。")
+        raise RuntimeError("求解失敗，沒有可保存的方案。")
+    config = optimizer.config  # retain actual winning seed, REVS and primer settings
+    manifest["timings_sec"]["load_mission" if args.from_mission else "solve"] = time.perf_counter() - started
+    artifact_id = save_mission(run_dir / "mission.json", config, burns, times, mission_info, source)
+    manifest["mission_id"] = artifact_id
+    manifest["last_stage"] = "solve"
+    write_json(run_dir / "run.json", manifest)
+    log.info(f"💾 求解結果已保存：{run_dir / 'mission.json'}")
+    if args.stop_after == "solve":
         return
+    console = (args.gmat_console
+               or local_config.get("local", {}).get("gmat_console_path")
+               or config.get("local", {}).get("gmat_console_path")
+               or GMAT_CONSOLE_DEFAULT)
+    args.no_gmat = args.stop_after == "export"
+    export_config = copy.deepcopy(config)
+    if args.model_scale is not None:
+        export_config.setdefault("strategy", {})["GMAT_MODEL_SCALE"] = args.model_scale
+    run_output_stage(export_config, burns, times, mission_info, optimizer,
+                     args=args, run_dir=run_dir, gmat_console_path=console, manifest=manifest)
+
+
+def run_output_stage(config, burns, times, mission_info, optimizer, *, args, run_dir,
+                     gmat_console_path, manifest):
+    """Export/verify a solved mission without invoking search, primer or splitting."""
+    start_time = time.perf_counter()
 
     # Earth-safe 硬性閘門 (2026-09-09, HAP-48)：初賽證實「軌跡穿過地表」是官方失格線
     # (撞地球的隊伍被判 F)。搜尋端 (fast_fitness_evaluator) 本來就會避開撞地球的解，
     # 但當 T_max 內根本沒有 Earth-safe 合法解時，搜尋只能回報「最不爛」的違規解，那有
     # 可能是鑽地球的。這裡在繳交路徑上再擋一次（對最終勝出解印一次）：撞地球就不產生
     # 繳交腳本、大聲標記，避免重演「分數漂亮但物理不成立、送出去被失格」(見作廢的 99.996)。
-    earth_safe = bool(mission_info.get("earth_safe", True))
+    earth_safe = bool(mission_info.get("earth_safe", False))
     if not earth_safe:
         alt = mission_info.get("min_arc_radius_km", float("nan")) - 6378.137
         log.warning("\n" + "🔴" * 30
                     + f"\n  警告：這個解的軌跡會穿過地球 (全程最低高度 {alt:,.0f} km，低於地表)。"
                     + "\n  官方會判此類軌跡失格 (初賽已證實)，**不會產生繳交腳本，絕對不可繳交**。"
                     + "\n  通常代表 T_max 內沒有 Earth-safe 合法解 —— 用 feasibility.py 確認，"
-                    + "\n  或放寬 T_max / 調整棒數再重跑。仍會產出 outputs/output.txt 供診斷。"
+                    + f"\n  或放寬 T_max / 調整棒數再重跑。仍會產出 {run_dir / 'output.txt'} 供診斷。"
                     + "\n" + "🔴" * 30)
 
     # 分數拆解 + 交換率（純加印，不改計算；見 print_score_breakdown）
     print_score_breakdown(mission_info, optimizer)
 
     # 2. 產出 GMAT 腳本 (打靶邊界跟著規則的 ΔV_lim 走，避免 GMAT 端偷偷超標)
-    script_generator(
+    script_path = script_generator(
         config["orbit_A"]["SMA"], config["orbit_A"]["ECC"], config["orbit_A"]["INC"],
         config["orbit_A"]["RAAN"], config["orbit_A"]["AOP"], config["orbit_A"]["TA"],
         config["orbit_B"]["SMA"], config["orbit_B"]["ECC"], config["orbit_B"]["INC"],
@@ -753,20 +892,27 @@ def main():
         burns, times, aim_point=mission_info["aim_point"],
         max_dv=optimizer.MAX_DV, gravity_degree=optimizer.GRAVITY_DEGREE,
         model_scale=config.get("strategy", {}).get("GMAT_MODEL_SCALE", 0.5),
+        output_dir=run_dir,
     )
 
     end_time = time.perf_counter()
     execution_time = end_time - start_time
 
     minute_note = f" (約 {execution_time / 60:.2f} 分鐘)" if execution_time > 60 else ""
-    log.info(f"\n⏳ 總計算時間: {execution_time:.2f} 秒{minute_note}")
+    manifest["timings_sec"]["export"] = execution_time
+    manifest["last_stage"] = "export"
+    write_json(run_dir / "run.json", manifest)
+    log.info(f"\n⏳ 產腳本時間: {execution_time:.2f} 秒{minute_note}")
 
     # 3. 自動呼叫 GMAT 做無頭驗證，不用再手動開 GUI 點來點去
     gmat_result = None
     if args.no_gmat:
-        log.info("（跳過了 GMAT 驗證，記得手動開 GMAT 跑一次 outputs/output.txt 確認 InterceptSuccess）")
+        log.info(f"（尚未 GMAT 驗證；可用 --verify-script {script_path} 單獨執行）")
     else:
-        gmat_result = run_gmat_verification(gmat_console_path, os.path.join("outputs", "output.txt"))
+        started = time.perf_counter()
+        gmat_result = run_gmat_verification(gmat_console_path, script_path,
+                                             artifacts_dir=run_dir / "gmat_dc")
+        manifest["timings_sec"]["gmat_dc"] = time.perf_counter() - started
         if gmat_result:
             match = "✅" if gmat_result["intercept_success"] else "❌"
             dv_match = "✅" if gmat_result["final_burn_legal"] else "❌"
@@ -838,7 +984,7 @@ def main():
                         "沒有可信的燃燒值可以拿來當 fallback，先處理好再重跑。")
 
         if final_burn_vnb is not None:
-            script_generator(
+            fixed_path = script_generator(
                 config["orbit_A"]["SMA"], config["orbit_A"]["ECC"], config["orbit_A"]["INC"],
                 config["orbit_A"]["RAAN"], config["orbit_A"]["AOP"], config["orbit_A"]["TA"],
                 config["orbit_B"]["SMA"], config["orbit_B"]["ECC"], config["orbit_B"]["INC"],
@@ -848,10 +994,13 @@ def main():
                 final_burn_fixed_vnb=final_burn_vnb,
                 output_filename="output_submit.txt",
                 model_scale=config.get("strategy", {}).get("GMAT_MODEL_SCALE", 0.5),
+                output_dir=run_dir,
             )
+            started = time.perf_counter()
             fixed_script_result = run_gmat_verification(
-                gmat_console_path, os.path.join("outputs", "output_submit.txt")
+                gmat_console_path, fixed_path, artifacts_dir=run_dir / "gmat_fixed"
             )
+            manifest["timings_sec"]["gmat_fixed"] = time.perf_counter() - started
             if fixed_script_result:
                 fmatch = "✅" if fixed_script_result["intercept_success"] else "❌"
                 fdv_match = "✅" if fixed_script_result["final_burn_legal"] else "⚠️"
@@ -864,7 +1013,7 @@ def main():
                          f"   最後一棒 {fdv_match} {'合規' if fixed_script_result['final_burn_legal'] else '超過每棒上限'}"
                          f"   (Δr {fixed_script_result['miss_km']*1000:,.0f}m, "
                          f"Δv {fixed_script_result['final_burn_dv_mps']:,.0f} m/s)")
-                log.debug(f"  檔案：outputs/output_submit.txt　燃燒值來源：{src_label}")
+                log.debug(f"  檔案：{fixed_path}　燃燒值來源：{src_label}")
                 if fixed_script_result["intercept_success"] and fixed_script_result["final_burn_legal"]:
                     log.info("  👉 命中且合規，可以直接繳交。")
                 elif fixed_script_result["intercept_success"]:
@@ -876,16 +1025,18 @@ def main():
                 log.warning("  ⚠️ 固定版本沒有跑成功 (GMAT 呼叫失敗)。")
 
     # 4. 附加寫入執行紀錄，方便之後比較不同設定/軌道跑出來的分數
-    append_run_history(config, mission_info, execution_time,
+    append_run_history(config, mission_info, time.perf_counter() - start_time,
                         gmat_result=gmat_result, fixed_script_result=fixed_script_result,
-                        fixed_script_source=fixed_script_source)
-
-    # 輸出效能報告
-    if ENABLE_PROFILING:
-        profiler.disable()
-        stats = pstats.Stats(profiler).sort_stats('tottime')
-        print("\n--- 效能分析報告 (Top 20 最耗時函式) ---")
-        stats.print_stats(20)
+                        fixed_script_source=fixed_script_source,
+                        path=str(run_dir / "run_history.jsonl"))
+    manifest["verification"] = {"dc": gmat_result, "fixed": fixed_script_result,
+                                "fixed_source": fixed_script_source}
+    if not args.no_gmat:
+        manifest["last_stage"] = "verify"
+        manifest["verification_status"] = (
+            "completed" if gmat_result is not None and
+            (args.no_fixed_script or not earth_safe or fixed_script_result is not None)
+            else "failed")
 
 if __name__ == '__main__':
     main()
