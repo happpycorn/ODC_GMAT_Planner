@@ -4,7 +4,7 @@
 **怎麼用這個工具看 [README.md](README.md)；演算法/物理模型原理看 [METHODOLOGY.md](docs/METHODOLOGY.md)**；
 初賽的逐日開發日誌封存在 [docs/log/DEVLOG_prelim.md](docs/log/DEVLOG_prelim.md)；更細的技術決策看 commit log 跟程式碼註解。
 
-**最後更新：2026-09-12——初賽已結束；HAP-67 拆棒管線上線；雙曲線 A 端到端（含拆棒）重驗過（見下 P3）。**
+**最後更新：2026-09-23——C3：拆棒 SLSQP 跑到收斂，contest 同路線 98.3121 → 98.3174（GMAT 過，高於初賽冠軍 98.3162）；新增 `--from-winner` 重播。**
 
 ## 這是什麼
 
@@ -62,11 +62,20 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
   `_solve_pipeline()`。`strategy.SEED_PORTFOLIO_N>1` 時跑 N 顆 SEED（base..base+N-1）各自
   完整求解（含 C2 + 拆棒），照§6 留**拆後**分最高的那顆，避開單一 SEED 抽到低籤（本 session
   contest 分析：幾乎免費 +0.008）。預設 1 = 單跑、逐位元同舊行為。繳交前的品質旋鈕，成本 N 倍。
+  **⚠️ 2026-09-23 C3 查明**：那 +0.008 主要是替被截斷的拆棒 SLSQP 多抽幾次籤，A1 修掉後價值大減；
+  是否退役待量 A1 後的 SEED 間散布。
+- **拆棒跑到收斂 + 拆棒前贏家存檔/重播（C3，2026-09-23）**：拆後分數 0.01 級抖動的主因是
+  `joint_nlp_split` 的 SLSQP 被 maxiter=80 截斷（每次都 status=9），擦邊解被判不可行、退回 greedy
+  暖啟。A1：maxiter 預設 1000 + SLSQP 對略緊約束求解（cap −0.02 m/s、miss −5 m、近地點 +1 m），
+  feasible 仍用真實約束判。contest SEED=0 同一路線 **98.3121 → 98.3174**，GMAT 一般版/固定燃燒版
+  皆命中、收斂、合規。另：每次完整跑自動存 `outputs/winner_presplit_seed<SEED>.json`，
+  **`main.py --from-winner <檔>` 跳過搜尋、只重跑拆棒 + 產腳本 + GMAT（~4 分鐘）——改拆棒器時用它，
+  不要重跑整條管線**。完整診斷與數據見 [C3_CONVEX_SPLITTER_PLAN.md](docs/C3_CONVEX_SPLITTER_PLAN.md) §6。
 - **末端速度匹配審查（D2，2026-09-22，純審查無改動）**：確認全管線是**純位置攔截**、無
   rendezvous 末端速度匹配殘留——`_lam_best`/終端 Lambert 三處 `vref` 都是載具自身燒前速度
   （非目標速度），scorer 的 `k_v/C_v` 罰的是總Δv預算不是速度差。雙曲線下不會浪費燃料去匹配
   近地點高速。
-- 回歸：`uv run python run_regression.py`（8 支、~130s，動任何東西前先跑）。拆棒管線有
+- 回歸：`uv run python run_regression.py`（8 支、~6 分鐘——C3 後量到 364s，其中 `test_hyperbolic_e2e` 246s；動任何東西前先跑）。拆棒管線有
   `tests/test_burn_splitter.py`；**雙曲線 A 端到端有 `tests/test_hyperbolic_e2e.py`（2026-09-22 補，
   A5）**——結構煙霧（雙曲線輸入端＋種子產生器不炸）＋拆棒 e2e（違規→自動拆分→零違規/命中/
   Earth-safe），性質式斷言。這補上了 STATUS 舊列的 P3 缺口。
@@ -85,12 +94,22 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
   [SCENARIOS.md](docs/SCENARIOS.md)），只是那次在 HAP-67 拆棒管線之前，沒測到「贏家違規時
   自動拆分合法化」這條新路徑。09-12 用 `hyperbolic_test`（見 SCENARIOS.md 同節）逼 DE 交出
   違規解，確認 `AUTO_SPLIT_LEGALIZE` 在雙曲線幾何下正常拆成合法解、GMAT 一般版/固定燃燒版
-  都收斂命中。**仍缺的是回歸測試**——`run_regression.py`/`tests/` 沒有任何雙曲線案例，
-  下次動拆棒管線或雙曲線輸入端會沒有自動防護，得補一支 `tests/test_hyperbolic_e2e.py`。
+  都收斂命中。回歸測試已於 2026-09-22 補上（`tests/test_hyperbolic_e2e.py`，A5）。
 - ✅ **P4 雙曲線 A 的 TA 漸近線檢查已補（2026-09-22，A4）**：`config_validator._validate_orbit`
   對 ECC>1 檢查 `|TA| < arccos(−1/e)`（TA 折到 (−180,180] 再比，容 [0,360) 寫法），漸近線外
   直接報錯、不再拖到 poliastro 算位置才炸。回歸 `tests/test_hyperbolic_e2e.py`。
 - ⚠️ **計分參數與 A/B 六根數要等官方發題**（`k_t/C_t/k_v/C_v`）。
+
+**待辦（2026-09-23 整理，依優先序）**：
+1. **「前導 4 棒」路線家族拆後可能更高**：09-22 小預算煙霧經 C2 重搜 3→4 棒跳到另一條路線，舊拆棒器
+   （maxiter=80）就拆出 98.3190 > 現在的 98.3174。要：重現該路線存檔 → `--from-winner` 用 A1 重拆 +
+   GMAT → 若更高，查滿預算搜尋為何到不了（C2 讀拆**前**分數、看不到拆後差異）。見 C3 文件問題 ①。
+2. **量 A1 後的 SEED 間散布**（SEED 1/2 各 ~25 分鐘）→ 決定 seed-portfolio 退役、REVS 集成是否預設關。
+3. **繳交腳本剔除 Δv=0 機動**：A1 解有 2 發空燒（DE 留下的 + NLP 壓零的終端段），合規但會讓評審困惑；
+   剔除時 DC 打靶角色要移給最後一發實燒。
+4. 回歸變慢（~130s → ~364s，主要是 `test_hyperbolic_e2e`）：可讓該測試用較小 maxiter，或接受。
+5. 等官方：計分參數與六根數；雙曲線真題出來後重驗 SPLIT_AWARE / C2 在雙曲線下的行為；P2 Earth-safe。
+6. 凸拆棒器（C3 B 檔）擱置——A1 後散布已 1e-4 級，待 2 的數據再評估。
 
 ## 環境（本機、不進 git）
 
