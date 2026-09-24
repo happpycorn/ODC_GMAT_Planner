@@ -43,7 +43,68 @@
 | `hyperbolic_test` | **HAP-67 拆棒管線 × 雙曲線**：贏家違規時自動合法化這條新路徑沒測過 | ❌ 逼出違規解 | DE 違規解 87.56 → 自動拆 5 棒合法 96.81，GMAT 兩版都過 |
 | `hyper_far` | 雙曲線 + **能量門檻**（近地點 25,000km）| ❌ 下限 1,887 > 上限 | 2 棒 1,969.7 m/s，**離下限僅 4.4%**，GMAT 差 **0.203m** |
 | `hyper_fast` | 雙曲線 + **相位鎖死**：證明無解的情境長什麼樣 | ❌ 無解 | 任何解都違規；用來驗證「荒謬超標」警告 |
+| `contest` | **初賽正式題**（`configs/contest.json`；A 圓 7,100 km/INC 120°，B 6,800 km/INC 40°）| ❌ 終端需 ~4,691 m/s | 拆棒後 **98.3188～98.3191**（2026-09-23，GMAT ✅），見 [98.319 解](solutions/98.319_route4_split6.md) |
 | `config` | 預設檔（數字都是編的） | — | — |
+
+---
+
+## contest —— 初賽正式題（`configs/contest.json`）
+
+2026-09-24 補記：這組一直只存在本機 `configs/contest.json`，沒進這份目錄；遠端/換機器要照這裡重建。
+數值取自 `docs/solutions/checkpoints/` 的拆棒前存檔（與本機 contest.json 相同的軌道/規則；
+`optimization` 是滿預算設定）。`GRAVITY_DEGREE=0`：官方腳本是點質量（見 memory contest-gravity-model-mismatch）。
+
+```json
+{
+ "orbit_A": {
+  "SMA": 7099.999999999989,
+  "ECC": 3.014018116696737e-16,
+  "INC": 120.0,
+  "RAAN": 29.99999999999999,
+  "AOP": 0.0,
+  "TA": 305.349
+ },
+ "orbit_B": {
+  "SMA": 6799.999999999999,
+  "ECC": 1.302888025334762e-16,
+  "INC": 39.99999999999999,
+  "RAAN": 59.99999999999999,
+  "AOP": 0.0,
+  "TA": 179.6860000000047
+ },
+ "rules": {
+  "MAX_DV_MPS": 1500.0,
+  "MIN_MANEUVER_INTERVAL_SEC": 100.0,
+  "T_MAX_PERIOD_MULTIPLE": 4.0,
+  "k_t": 0.003982,
+  "C_t": 6505.65,
+  "k_v": 0.0011862,
+  "C_v": 9064.3
+ },
+ "strategy": {
+  "GRAVITY_DEGREE": 0,
+  "MISS_TOLERANCE_KM": 5.0
+ },
+ "optimization": {
+  "MAX_BURNS": [
+   1,
+   2,
+   3
+  ],
+  "MAXITER": 2000,
+  "POPSIZE": 50,
+  "NUM_THREADS": -1,
+  "MAX_EARLY_STOP": 60,
+  "TOL": 0.01,
+  "SEED": null
+ }
+}
+```
+
+- 現況最佳：預設管線 SEED 0 → 88.3219（1 次終端違規）→ 拆棒 **98.3188**（GMAT 一般版/固定燃燒版 ✅）。
+- 另一個家族：強制 4 棒 SEED 4 → 合法 89.25（Δv 4,480 m/s、T 6,430 s，晚到吃時間分）——
+  搜尋目前會偏好它勝過 88.32 家族，見 [C4 計畫](C4_TERMINAL_SPLIT_AWARE_PLAN.md)。
+- 本機加 GMAT 路徑：`"local": {"gmat_console_path": "<你的 GmatConsole>"}`。
 
 ---
 
