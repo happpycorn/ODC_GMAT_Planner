@@ -120,6 +120,20 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
 - ⚠️ **計分參數與 A/B 六根數要等官方發題**（`k_t/C_t/k_v/C_v`）。
 
 **待辦（2026-09-23 晚更新，依優先序）**：
+0. **🔜 下一步（2026-09-24，待在遠端機做）：搜尋改用「拆後估計分數」——終端棒可拆時不扣 10 分**。
+   - **問題**：搜尋目標函數（`optimizer.fast_fitness_evaluator`）對**終端棒**超標一律 `penalty_count += 1`（−10）。
+     但我們會拆它、代價只 ~0.003 分。所以 DE 看到 88.32 家族（拆後真實 98.32）＜ 合法的 89.25 家族
+     （省油 4,480 m/s 但晚到 T=6,430 s、時間分只 14.36），**會往錯的家族收斂**：強制 4 棒 SEED 4 就收在 89.25，
+     其他 4 棒 SEED 多停在「2 次違規 78.x」。預設 `MAX_BURNS=[1,2,3]` 目前沒出事只是沒有案例找到 89.25。
+   - 現有 `SPLIT_AWARE_SEARCH` 只處理**中間棒**（超標改預付時間 + `SPLIT_AWARE_DV_OVERHEAD`），終端棒沒處理。
+   - **設計**：(1) 新旗標 `strategy.SPLIT_AWARE_TERMINAL`（建議 `AUTO_SPLIT_LEGALIZE` 開時預設開）：終端棒超標且
+     ≤K×cap（K 可設，例如 5；contest 是 3.13×）時不計 penalty，改預付拆棒成本——實測 Δv 幾乎不增
+     （拆前 6,189 → 拆後 6,180～6,190），係數預設 1.00；抵達時刻不變（拆棒器鎖 A(T)），不加時間。
+     scalars 陣列加新索引（16），三處組 scalars 的地方（`optimizer.py` ~1601/1736/1827）同步。
+     (2) **挑贏家也要換尺**：`_pick_best_case`、`pick_best_across_revs`、C2 比較都用扣過罰分的真實分數，
+     要改成「加回可拆違規的罰分」的拆後估計分數。
+   - **驗收**：contest 預設管線仍 ~98.319（GMAT）；強制 4 棒搜尋不再收在 89.25/78.x；`test_hyperbolic_e2e` 過；
+     回歸全過。對照用 `docs/solutions/checkpoints/` 的兩個拆棒前存檔 + `--from-winner`。
 1. ~~拆後分數進路線選擇~~ → **已解（2026-09-23 晚）**：98.319 其實是拆棒器沒處理「貼 cap 的前導棒」，
    `_slot_after_capped` 補空位後**預設管線從頭跑就是 98.3188**（GMAT ✅）。多候選各拆暫不需要，雙曲線真題再評估。
 2. **測試 quick/full 分層**（[FLOW_EFFICIENCY_AUDIT](docs/FLOW_EFFICIENCY_AUDIT_20260923.md) P1）：`run_regression.py --quick`
