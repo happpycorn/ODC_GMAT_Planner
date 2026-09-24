@@ -265,6 +265,13 @@ def _validate_strategy(strategy_cfg, errors: list):
         errors.append("strategy.AUTO_SPLIT_LEGALIZE 必須是 true/false，但收到 "
                       f"{strategy_cfg['AUTO_SPLIT_LEGALIZE']!r}（低棒數 route-first 贏家的動態拆棒開關）")
 
+    if "SPLIT_AWARE_TERMINAL" in strategy_cfg and not isinstance(strategy_cfg["SPLIT_AWARE_TERMINAL"], bool):
+        errors.append("strategy.SPLIT_AWARE_TERMINAL 必須是 true/false，但收到 "
+                      f"{strategy_cfg['SPLIT_AWARE_TERMINAL']!r}（C4：終端棒可拆時搜尋改用拆後估計分數）")
+    for k in ("SPLIT_AWARE_TERMINAL_MAX_FACTOR", "SPLIT_AWARE_TERMINAL_DV_OVERHEAD"):
+        if k in strategy_cfg and (not _is_number(strategy_cfg[k]) or strategy_cfg[k] < 1.0):
+            errors.append(f"strategy.{k} 必須是 >=1 的數字，但收到 {strategy_cfg[k]!r}")
+
     if "MISS_TOLERANCE_KM" in strategy_cfg:
         v = strategy_cfg["MISS_TOLERANCE_KM"]
         if not _is_number(v) or v < 0:

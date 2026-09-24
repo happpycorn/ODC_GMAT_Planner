@@ -58,6 +58,16 @@ def fast_fitness_evaluator(
     # scalars 尾端 (索引 14/15)，既有索引不動。
     split_aware = scalars[14]
     dv_overhead = scalars[15]
+    # 終端棒拆後估計 (C4, 2026-09-24；0 = 關，等同舊行為)。索引 16/17/18 = 旗標、可拆上限
+    # 倍數 K、Δv 預付係數。舊呼叫端 (測試/scratch) 只給 16 格——numba 不做邊界檢查，
+    # 讀界外會拿到垃圾值，所以依長度判斷，不足就當關。
+    split_term = 0.0
+    term_max_factor = 1.0
+    term_overhead = 1.0
+    if scalars.shape[0] >= 19:
+        split_term = scalars[16]
+        term_max_factor = scalars[17]
+        term_overhead = scalars[18]
 
     A_r0 = vectors[0]
     A_v0 = vectors[1]
@@ -221,7 +231,15 @@ def fast_fitness_evaluator(
     total_dv += dv_final_mag
 
     if dv_final_mag > max_dv:
-        penalty_count += 1
+        if split_term > 0.5 and dv_final_mag <= term_max_factor * max_dv:
+            # 終端棒拆後估計 (C4)：這發會被拆棒器 (legalize_route) 拆成多發合法燒，實測
+            # 拆後分數只比「不扣罰分」少 ~0.003 分——照舊扣 10 分會讓搜尋拿錯的尺比家族
+            # (contest：88.32 家族拆後 98.32，卻輸給合法但晚到的 89.25 家族)。改成預付
+            # 拆棒的燃料代價；不加時間，拆棒器鎖定 A(T)，抵達時刻不變。超過 K 倍上限的
+            # 仍扣分：段數多時拆棒器的暖啟與 Earth-safe 越難保證。
+            total_dv += dv_final_mag * (term_overhead - 1.0)
+        else:
+            penalty_count += 1
 
     # 最終安檢：同上，只有最後這段轉移弧真的會經過近地點時才比近地點半徑。
     # 弧的終點是瞄準點 (在 A 附近，半徑已知安全)，所以不用再檢查終點。
@@ -429,6 +447,19 @@ class MissionOptimizer:
         # 為準；optimizer 也保存一份，讓 preflight 能正確解讀「低於直接合法棒數」的案例：
         # 開啟時它們不是該刪的浪費，而是刻意保留給後處理拆棒的路線候選。
         self.AUTO_SPLIT_LEGALIZE = bool(strategy.get("AUTO_SPLIT_LEGALIZE", True))
+        # 終端棒拆後估計 (C4, 2026-09-24；見 docs/C4_TERMINAL_SPLIT_AWARE_PLAN.md)。
+        # 開啟時：(1) fast_fitness_evaluator 對超標但 ≤ K×cap 的終端棒不扣 10 分，改預付
+        # 拆棒燃料；(2) 各棒數案例 / REVS 集成 / C2 挑贏家改比 score_split_est (拆後估計)。
+        # 只在 AUTO_SPLIT_LEGALIZE 也開時生效——不會拆，就不能拿拆後分數當尺。
+        self.SPLIT_AWARE_TERMINAL = (bool(strategy.get("SPLIT_AWARE_TERMINAL", False))
+                                     and self.AUTO_SPLIT_LEGALIZE)
+        self.SPLIT_AWARE_TERMINAL_MAX_FACTOR = max(
+            1.0, float(strategy.get("SPLIT_AWARE_TERMINAL_MAX_FACTOR", 5.0)))
+        self.SPLIT_AWARE_TERMINAL_DV_OVERHEAD = max(
+            1.0, float(strategy.get("SPLIT_AWARE_TERMINAL_DV_OVERHEAD", 1.0)))
+        # 2.3 退路：旗標開、贏家帶可拆終端違規時，run_study 記下「真實分數最高的零違規
+        # 候選」(未精修)，拆棒失敗時 main 改交它。見 _pick_best_case / main._legalize_stage。
+        self.legal_backup = None
 
         # 攔截容許範圍：規則只要求 Δr ≤ 這個值，超出的精準度不會多加分 (Δr_min 會被
         # 地板夾住)，開放讓最後一棒 Lambert 瞄準這個球內最省油的點，而不是死盯著 A
@@ -1300,8 +1331,10 @@ class MissionOptimizer:
         lb_arr, ub_arr = np.array(lb), np.array(ub)
         bounds = list(zip(lb, ub))
 
+        # C4：旗標開時精修目標跟搜尋同一把尺 (拆後估計)。
+        sc = "score_split_est" if self.SPLIT_AWARE_TERMINAL else "score"
         infeasible = {
-            "score": -1e6, "miss_km": 1e6, "dc_converged": False,
+            "score": -1e6, "score_split_est": -1e6, "miss_km": 1e6, "dc_converged": False,
             "earth_safe": False, "min_arc_radius_km": -1e6,
         }
 
@@ -1323,7 +1356,7 @@ class MissionOptimizer:
             return _cache[key]
 
         def objective(x):
-            return -cached_metrics(x)["score"]
+            return -cached_metrics(x)[sc]
 
         def constraint_fn(x):
             m = cached_metrics(x)
@@ -1336,7 +1369,7 @@ class MissionOptimizer:
 
         # 只挑分數最高的少數幾個 warm start，把總成本壓在「這個 num_burns 案例多花數十秒
         # 到一兩分鐘」的量級 (見上面 docstring 的效能小節)。
-        scored = [(safe_metrics(x)["score"], x) for x in base_candidates]
+        scored = [(safe_metrics(x)[sc], x) for x in base_candidates]
         scored.sort(key=lambda t: t[0], reverse=True)
         warm_starts = scored[:min(len(scored), 3)]
 
@@ -1350,7 +1383,7 @@ class MissionOptimizer:
             )
             x1 = np.clip(result.x, lb_arr, ub_arr)
             m1 = safe_metrics(x1)
-            if m1["earth_safe"] and m1["dc_converged"] and m1["score"] >= score0:
+            if m1["earth_safe"] and m1["dc_converged"] and m1[sc] >= score0:
                 refined.append(x1)
 
         return refined[:n_seeds]
@@ -1594,12 +1627,7 @@ class MissionOptimizer:
                 f"各 {self._maxiter_for(cases[0])} 代上限，{len(self.burns)} 個案例平行跑")
         self.preflight_report()
 
-        scalar_params = np.array([
-            self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL,
-            self.RE_VAL, self.MIN_PERIAPSIS, self.MAX_DV_SOFT, self.k_t, self.C_t, self.k_v, self.C_v,
-            float(self.LAMBERT_MAX_REVS),
-            float(self.SPLIT_AWARE_SEARCH), self.SPLIT_AWARE_DV_OVERHEAD
-        ], dtype=np.float64)
+        scalar_params = self._scalar_params()
         
         vector_params = np.vstack([
             self.A_r0, self.A_v0, self.B_r0, self.B_v0
@@ -1729,12 +1757,7 @@ class MissionOptimizer:
         # 唯一的實作，_optimize_burn_case 的種子精修現在也用同一套)。
         narrow_bounds = self._narrow_tolerance_bounds(initial_guess_x, bounds[0], bounds[1])
 
-        scalar_params = np.array([
-            self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL,
-            self.RE_VAL, self.MIN_PERIAPSIS, self.MAX_DV_SOFT, self.k_t, self.C_t, self.k_v, self.C_v,
-            float(self.LAMBERT_MAX_REVS),
-            float(self.SPLIT_AWARE_SEARCH), self.SPLIT_AWARE_DV_OVERHEAD
-        ], dtype=np.float64)
+        scalar_params = self._scalar_params()
         
         vector_params = np.vstack([
             self.A_r0, self.A_v0, self.B_r0, self.B_v0
@@ -1818,14 +1841,22 @@ class MissionOptimizer:
                         best_v, best_dv, retro = v1, d, (not prograde)
         return best_v, best_dv, retro
 
+    def _scalar_params(self):
+        """fast_fitness_evaluator 的 scalars 陣列。索引佈局要跟 evaluator 開頭逐格對齊：
+        0-12 環境/計分常數、13 lambert_max_revs、14/15 SPLIT_AWARE_SEARCH、16-18 C4 終端棒
+        拆後估計 (旗標、K、overhead)。只准在這裡組——原本三處各抄一份，改一處忘兩處。"""
+        return np.array([
+            self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL,
+            self.RE_VAL, self.MIN_PERIAPSIS, self.MAX_DV_SOFT, self.k_t, self.C_t, self.k_v, self.C_v,
+            float(self.LAMBERT_MAX_REVS),
+            float(self.SPLIT_AWARE_SEARCH), self.SPLIT_AWARE_DV_OVERHEAD,
+            float(self.SPLIT_AWARE_TERMINAL), self.SPLIT_AWARE_TERMINAL_MAX_FACTOR,
+            self.SPLIT_AWARE_TERMINAL_DV_OVERHEAD,
+        ], dtype=np.float64)
+
     def _fitness_wrapper(self, num_burns):
         """包一個給定燃燒次數的目標函式 (= -分數)，方便在最佳化流程外面單獨評估。"""
-        scalar_params = np.array([
-            self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL,
-            self.RE_VAL, self.MIN_PERIAPSIS, self.MAX_DV_SOFT,
-            self.k_t, self.C_t, self.k_v, self.C_v, float(self.LAMBERT_MAX_REVS),
-            float(self.SPLIT_AWARE_SEARCH), self.SPLIT_AWARE_DV_OVERHEAD
-        ], dtype=np.float64)
+        scalar_params = self._scalar_params()
         vector_params = np.vstack([self.A_r0, self.A_v0, self.B_r0, self.B_v0])
 
         def _f(solution):
@@ -1941,7 +1972,11 @@ class MissionOptimizer:
         # 實測過一次 playground：微調前 1 棒 3,499.9m / 2 棒 3,498.3m，用這 1.6 公尺
         # 的差距選了 2 棒 (而且那多出來的一棒很可能是 Δv≈0 的空燒)；微調後兩邊都會被
         # 壓到 0.1m 上下，那 1.6 公尺根本不存在。只在真的打平時才做，成本有上限。
-        pre_bucket = {b: round(metrics[b]["score"] / self.TIEBREAK_SCORE_EPS) for b in metrics}
+        # C4：SPLIT_AWARE_TERMINAL 開時，分桶與排名的 Score 改用拆後估計 (score_split_est)
+        # ——搜尋端已經用同一把尺，挑贏家不能又回到含 −10 的真實分數 (那會把拆後 98.32 的
+        # 88.32 家族排在合法 89.25 家族後面)。旗標關時就是真實分數，逐位元同舊行為。
+        sc_field = "score_split_est" if self.SPLIT_AWARE_TERMINAL else "score"
+        pre_bucket = {b: round(metrics[b][sc_field] / self.TIEBREAK_SCORE_EPS) for b in metrics}
         if len(set(pre_bucket.values())) < len(pre_bucket) and self.TIEBREAK_POLISH:
             top = max(pre_bucket.values())
             tied_pre = [k for k in sorted(metrics) if pre_bucket[k] == top]
@@ -1967,7 +2002,7 @@ class MissionOptimizer:
             # (effective_burns，不是名目棒數——多棒解很常退化成中間棒 Δv=0 的空燒)。
             # 這一項不在規則裡，純粹是為了讓結果可重現，而且棒數少的 GMAT 腳本比較
             # 好收斂；只有在規則管不到的地方才會生效。
-            return tiebreak_rank_key(m["score"], m["miss_km"], m["dv_mps"],
+            return tiebreak_rank_key(m[sc_field], m["miss_km"], m["dv_mps"],
                                      m["t_team"], floor_miss=floor_miss,
                                      eps=self.TIEBREAK_SCORE_EPS) + (
                                          effective_burns(b, viable[b]["best_x"]), b)
@@ -1977,13 +2012,13 @@ class MissionOptimizer:
         best_overall_score = viable[best_burns_count]["fitness"]
 
         # 有沒有真的動用到平手判定？(不只一個候選落在同一個分數桶)
-        bucket = {b: round(metrics[b]["score"] / self.TIEBREAK_SCORE_EPS) for b in metrics}
+        bucket = {b: round(metrics[b][sc_field] / self.TIEBREAK_SCORE_EPS) for b in metrics}
         top_bucket = max(bucket.values())
         tied = sorted(b for b in metrics if bucket[b] == top_bucket)
         if len(tied) > 1:
             # 事件濃縮成一行（報告層級）：打平 → 採用哪個。逐項比對表是細節 → DEBUG/log 檔。
             log.log(self._report_level,
-                    f"⚖️ 推進 {tied} 次打平(Score {metrics[tied[0]]['score']:.4f}) → 依§6"
+                    f"⚖️ 推進 {tied} 次打平(Score {metrics[tied[0]][sc_field]:.4f}) → 依§6"
                     f"(Δr→ΔV→T)採用 {best_burns_count} 棒")
             log.debug(f"     {'棒數':<6}{'Δr_min (m)':>14}{'ΔV_team (m/s)':>16}{'T_team (s)':>14}")
             for b in tied:
@@ -2017,12 +2052,54 @@ class MissionOptimizer:
                       f"{fitness_best}棒 代理{-viable[fitness_best]['fitness']:.4f}/真實{metrics[fitness_best]['score']:.4f}；"
                       f"{best_burns_count}棒 代理{-viable[best_burns_count]['fitness']:.4f}/真實{metrics[best_burns_count]['score']:.4f}")
 
+        # C4 退路 (2.3)：記下真實分數最高的零違規、Earth-safe 候選 (未精修)。拆後估計只是
+        # 估計——拆棒真的失敗時，main 拿它跟違規解比真實分數，交好的那個。
+        self.legal_backup = None
+        if self.SPLIT_AWARE_TERMINAL:
+            legal = [b for b in metrics
+                     if metrics[b]["penalty_count"] == 0 and metrics[b]["earth_safe"]]
+            if legal:
+                bk = min(legal, key=lambda b: tiebreak_rank_key(
+                    metrics[b]["score"], metrics[b]["miss_km"], metrics[b]["dv_mps"],
+                    metrics[b]["t_team"], eps=self.TIEBREAK_SCORE_EPS) + (b,))
+                self.legal_backup = {"opt": self, "burns": bk, "x": viable[bk]["best_x"],
+                                     "fitness": viable[bk]["fitness"],
+                                     "score": metrics[bk]["score"]}
+            if metrics[best_burns_count]["split_terminal_count"]:
+                log.log(self._report_level,
+                        f"✂️ 採用的 {best_burns_count} 棒解終端棒超標、可拆：真實 "
+                        f"{metrics[best_burns_count]['score']:.4f} → 拆後估計 "
+                        f"{metrics[best_burns_count]['score_split_est']:.4f}"
+                        + (f"（合法備胎：{self.legal_backup['burns']} 棒 "
+                           f"{self.legal_backup['score']:.4f}）" if self.legal_backup else
+                           "（沒有零違規備胎）"))
+
         m = metrics[best_burns_count]
         log.log(self._report_level,
                 f"✅ 最佳化完成！採用推進 {best_burns_count} 次的方案 "
                 f"(目標值 {best_overall_score:.4f}，Δr_min {m['miss_km']*1000:,.1f} m，"
                 f"ΔV_team {m['dv_mps']:,.1f} m/s，T_team {m['t_team']:,.1f} s)")
         return best_burns_count, best_overall_params, best_overall_score
+
+    def split_est_score(self, burn_logs, miss_km, t_team, earth_safe) -> tuple:
+        """C4 拆後估計：(score_split_est, 可拆的終端違規數)。
+
+        終端棒超標、但 ≤ SPLIT_AWARE_TERMINAL_MAX_FACTOR × cap、且全程 Earth-safe (撞地球
+        的解本來就不拆，見 HAP-48 閘門) 時，把那 −10 分加回來、改扣預付的拆棒燃料——跟
+        fast_fitness_evaluator 旗標開時的算法一致。中間棒違規不算在內 (那是
+        SPLIT_AWARE_SEARCH 的事)。不看旗標，永遠算得出來；用不用由呼叫端依旗標決定。"""
+        total_dv = sum(bl['dv_mag'] for bl in burn_logs)
+        penalty_count = sum(1 for bl in burn_logs if bl['dv_mag'] > self.MAX_DV)
+        term = burn_logs[-1]['dv_mag']
+        n_split = int(bool(earth_safe) and term > self.MAX_DV
+                      and term <= self.SPLIT_AWARE_TERMINAL_MAX_FACTOR * self.MAX_DV_SOFT)
+        if n_split:
+            total_dv += term * (self.SPLIT_AWARE_TERMINAL_DV_OVERHEAD - 1.0)
+        est = calculate_score(
+            min_distance_km=miss_km, total_time_sec=t_team,
+            total_dv_mps=total_dv * 1000.0, penalty_count=penalty_count - n_split,
+            k_t=self.k_t, C_t=self.C_t, k_v=self.k_v, C_v=self.C_v)
+        return float(est), n_split
 
     def mission_metrics(self, x, num_burns) -> dict:
         """安靜地把一組決策向量換算成官方成績的三個數字 + 分數，一個字都不印。
@@ -2052,8 +2129,11 @@ class MissionOptimizer:
             penalty_count=penalty_count,
             k_t=self.k_t, C_t=self.C_t, k_v=self.k_v, C_v=self.C_v
         )
+        score_split_est, n_split = self.split_est_score(burn_logs, miss_km, t_team, earth_safe)
         return {
             "score": float(score),
+            "score_split_est": score_split_est,
+            "split_terminal_count": n_split,
             "miss_km": float(miss_km),
             "dv_mps": float(total_dv * 1000.0),
             "t_team": t_team,
@@ -2119,6 +2199,10 @@ class MissionOptimizer:
                   f"  違規次數   {penalty_count:>12d}"
                   + ("   ⚠️ 依規則第 5 節每次扣 10 分" if penalty_count else ""),
                   f"  Score      {final_score:>12.2f} / 100"]
+        score_split_est, n_split = self.split_est_score(burn_logs, miss_km, intercept_time, earth_safe)
+        if n_split:
+            lines.append(f"  拆後估計   {score_split_est:>12.2f} / 100   (終端棒可拆，"
+                         f"{'搜尋/挑贏家用這個' if self.SPLIT_AWARE_TERMINAL else 'SPLIT_AWARE_TERMINAL 關，僅供參考'})")
 
         # Earth-safe 判定 (2026-09-09, HAP-48)：跟 fast_fitness_evaluator 一致的碰撞
         # 判定。初賽證實「軌跡穿過地表」是官方失格線,所以這條一定要印清楚、撞到就大聲擋。
@@ -2156,6 +2240,8 @@ class MissionOptimizer:
             "x": x, "num_burns": num_burns,
             "score": final_score, "miss_km": miss_km,
             "total_dv_mps": total_dv * 1000.0, "T_team": intercept_time,
+            # C4 拆後估計 (見 split_est_score)。SPLIT_AWARE_TERMINAL 開時 REVS 集成 / C2 比這個。
+            "score_split_est": score_split_est, "split_terminal_count": n_split,
             "penalty_count": penalty_count, "dc_converged": dc_converged,
             # GMAT script 的打靶目標要瞄準這個點 (EarthMJ2000Eq, km)，不是 ShipA 的
             # 真實位置，不然 GMAT 自己的 DC 會把刻意換來的省油設計修正掉。
@@ -2174,16 +2260,25 @@ class MissionOptimizer:
         return burns, times_diff, mission_info
 
 
-def _mission_rank_key(mission_info, floor_miss=False, eps=None):
+def mission_rank_score(mission_info, split_est=False):
+    """挑贏家用的分數：split_est=True (SPLIT_AWARE_TERMINAL 開) 時用拆後估計
+    score_split_est，否則用真實分數。舊的 mission_info 沒有這個欄位就退回 score。"""
+    if split_est:
+        return float(mission_info.get("score_split_est", mission_info["score"]))
+    return float(mission_info["score"])
+
+
+def _mission_rank_key(mission_info, floor_miss=False, eps=None, split_est=False):
     """把 refine_trajectory 交回的 mission_info 轉成規則第 6 節的排名鍵（越小越前面）。
-    欄位對照：score / miss_km(Δr_min) / total_dv_mps(ΔV_team) / T_team。"""
+    欄位對照：score / miss_km(Δr_min) / total_dv_mps(ΔV_team) / T_team。
+    split_est=True 時 score 換成拆後估計（C4，見 mission_rank_score）。"""
     return tiebreak_rank_key(
-        float(mission_info["score"]), float(mission_info["miss_km"]),
+        mission_rank_score(mission_info, split_est), float(mission_info["miss_km"]),
         float(mission_info["total_dv_mps"]), float(mission_info["T_team"]),
         floor_miss=floor_miss, eps=eps)
 
 
-def pick_best_across_revs(candidates, eps=None):
+def pick_best_across_revs(candidates, eps=None, split_est=False):
     """從多趟 run_study() 的結果裡照規則第 6 節挑一趟交出去。
 
     candidates: 依序 [(revs, burns, times, mission_info), ...]。成功的那趟 burns/times
@@ -2206,8 +2301,10 @@ def pick_best_across_revs(candidates, eps=None):
     if not viable:
         return len(candidates) - 1, False
 
-    best = min(viable, key=lambda i: _mission_rank_key(candidates[i][3], eps=eps))
-    alt = min(viable, key=lambda i: _mission_rank_key(candidates[i][3], floor_miss=True, eps=eps))
+    best = min(viable, key=lambda i: _mission_rank_key(candidates[i][3], eps=eps,
+                                                       split_est=split_est))
+    alt = min(viable, key=lambda i: _mission_rank_key(candidates[i][3], floor_miss=True, eps=eps,
+                                                      split_est=split_est))
     return best, (alt != best)
 
 
@@ -2289,16 +2386,26 @@ def run_study_over_revs(config, external_seeds=None):
         _, burns, times, mission_info = candidates[0]
         return burns, times, mission_info, optimizers[0]
 
+    split_est = optimizers[0].SPLIT_AWARE_TERMINAL
     best_i, floor_disagrees = pick_best_across_revs(
-        candidates, eps=optimizers[0].TIEBREAK_SCORE_EPS)
+        candidates, eps=optimizers[0].TIEBREAK_SCORE_EPS, split_est=split_est)
+
+    # C4 退路：各趟的「最佳零違規候選」取真實分數最高的，掛到勝出那趟 optimizer 上
+    # （備胎自己帶著它的 optimizer，拆棒失敗時用它自己的 REVS 精修）。
+    backups = [o.legal_backup for o in optimizers if o.legal_backup is not None]
+    if backups:
+        optimizers[best_i].legal_backup = max(backups, key=lambda bk: bk["score"])
 
     # 集成對照表：把每趟的成績並排攤開，選了誰、差多少都講白（這是集成的決策，留 INFO）。
-    table = [f"\n🏁 REVS 集成結果（規則第 6 節：Score → Δr_min → ΔV_team → T_team）",
-             f"   {'REVS':>5}{'Score':>10}{'Δr_min(m)':>13}{'ΔV_team(m/s)':>15}{'T_team(s)':>13}"]
+    est_hdr = f"{'拆後估計':>10}" if split_est else ""
+    table = [f"\n🏁 REVS 集成結果（規則第 6 節：Score → Δr_min → ΔV_team → T_team"
+             f"{'；Score 用拆後估計' if split_est else ''}）",
+             f"   {'REVS':>5}{'Score':>10}{est_hdr}{'Δr_min(m)':>13}{'ΔV_team(m/s)':>15}{'T_team(s)':>13}"]
     for i, (revs, _b, _t, mi) in enumerate(candidates):
         if isinstance(mi, dict):
             mark = "  ← 採用" if i == best_i else ""
-            table.append(f"   {revs:>5}{mi['score']:>10.4f}{mi['miss_km'] * 1000:>13,.1f}"
+            est_col = f"{mission_rank_score(mi, True):>10.4f}" if split_est else ""
+            table.append(f"   {revs:>5}{mi['score']:>10.4f}{est_col}{mi['miss_km'] * 1000:>13,.1f}"
                          f"{mi['total_dv_mps']:>15,.1f}{mi['T_team']:>13,.1f}{mark}")
         else:
             table.append(f"   {revs:>5}   （這趟全軍覆沒，不列入挑選）")

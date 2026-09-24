@@ -20,7 +20,7 @@ from src.pipeline_artifacts import (create_run_dir, save_mission, load_mission,
 # 引入重構後的新模組
 import numpy as np
 from src.optimizer import (MissionOptimizer, run_study_over_revs,
-                           reconstruct_mission_logs, tiebreak_rank_key)
+                           reconstruct_mission_logs, tiebreak_rank_key, _mission_rank_key)
 from src.primer import intercept_primer_profile, insert_node_seed
 from src.script_generator import script_generator
 from src.config_validator import validate_config, ConfigValidationError
@@ -536,10 +536,10 @@ def primer_guided_research(config, burns, times, mission_info, optimizer):
         return None
 
     eps = optimizer.TIEBREAK_SCORE_EPS
-    key_old = tiebreak_rank_key(mission_info["score"], mission_info["miss_km"],
-                                mission_info["total_dv_mps"], mission_info["T_team"], eps=eps)
-    key_new = tiebreak_rank_key(mi2["score"], mi2["miss_km"],
-                                mi2["total_dv_mps"], mi2["T_team"], eps=eps)
+    # C4：SPLIT_AWARE_TERMINAL 開時新舊都比拆後估計（同一把尺），關時就是真實分數。
+    se = optimizer.SPLIT_AWARE_TERMINAL
+    key_old = _mission_rank_key(mission_info, eps=eps, split_est=se)
+    key_new = _mission_rank_key(mi2, eps=eps, split_est=se)
     if key_new < key_old:
         log.info(f"🧭 primer 重搜勝出：{mission_info['score']:.4f} → {mi2['score']:.4f}"
                  f"（{N} → {N + 1} 棒，Δv {mission_info['total_dv_mps']:,.0f} → "
@@ -700,6 +700,36 @@ def _legalize_stage(config, burns, times, mi, opt):
     return burns, times, mi
 
 
+def _fallback_to_legal_backup(burns, times, mi, opt):
+    """C4 退路（2.3）：拆後估計落空時——贏家仍有違規（段數上限內拆不出、或拆後不 Earth-safe）——
+    把搜尋時記下的「最佳零違規候選」（`optimizer.legal_backup`，未精修）精修出來，跟違規解比
+    **真實分數**（§6），交好的那個。沒有備胎、贏家已合法、或旗標關時原樣回傳。
+
+    回傳 (burns, times, mission_info, optimizer)：備胎可能來自 REVS 集成的另一趟，要換成它自己
+    的 optimizer（LAMBERT_MAX_REVS 不同），產腳本/存檔才對得上。"""
+    if not getattr(opt, "SPLIT_AWARE_TERMINAL", False) or int(mi.get("penalty_count", 0)) <= 0:
+        return burns, times, mi, opt
+    bk = getattr(opt, "legal_backup", None)
+    if bk is None:
+        log.warning("⚠️ C4：拆後估計落空（贏家仍有違規），且搜尋中沒有零違規備胎——照舊交違規解。")
+        return burns, times, mi, opt
+    b_opt = bk["opt"]
+    b_burns, b_times, b_mi = b_opt.refine_trajectory(bk["x"], bk["burns"], bk["fitness"])
+    if b_burns is None or not isinstance(b_mi, dict) or int(b_mi.get("penalty_count", 0)) > 0 \
+            or not bool(b_mi.get("earth_safe", True)):
+        log.warning("⚠️ C4：拆後估計落空，合法備胎精修後也不合法——照舊交違規解。")
+        return burns, times, mi, opt
+    eps = opt.TIEBREAK_SCORE_EPS
+    use_backup = (not bool(mi.get("earth_safe", True))
+                  or _mission_rank_key(b_mi, eps=eps) < _mission_rank_key(mi, eps=eps))
+    log.warning(f"⚠️ C4：拆後估計落空——違規解真實 {mi['score']:.4f}（{mi['penalty_count']} 次違規）"
+                f" vs 合法備胎 {b_mi['score']:.4f}（{b_mi['num_burns']} 棒）→ 交"
+                f"{'合法備胎' if use_backup else '違規解（備胎更差）'}。")
+    if use_backup:
+        return b_burns, b_times, b_mi, b_opt
+    return burns, times, mi, opt
+
+
 def _solve_pipeline(config, output_dir="outputs"):
     """一顆 SEED 的完整求解：搜尋 → C2 primer 條件式重搜 →（Earth-safe 時）拆棒合法化。
     回傳 (burns, times, mission_info, optimizer)；搜尋失敗回 (None, None, None, None)。
@@ -721,6 +751,7 @@ def _solve_pipeline(config, output_dir="outputs"):
     except (OSError, TypeError) as exc:            # 存檔失敗不該擋管線
         log.warning(f"⚠️ 拆棒前贏家存檔失敗（不影響本次結果）：{exc}")
     burns, times, mi = _legalize_stage(config, burns, times, mi, opt)
+    burns, times, mi, opt = _fallback_to_legal_backup(burns, times, mi, opt)
     save_mission(os.path.join(output_dir, f"mission_seed{'none' if seed is None else seed}.json"),
                  opt.config, burns, times, mi)
     return burns, times, mi, opt
