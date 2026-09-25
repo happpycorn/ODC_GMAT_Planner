@@ -147,24 +147,64 @@ def fake_opt(backup_mi, flag=True):
 
 
 legal = dict(_mi(89.25, 89.25, 0), earth_safe=True, num_burns=3)
+CFG = {"strategy": {"SPLIT_AWARE_TERMINAL": True}}
 opt_, b_opt = fake_opt(legal)
-r = app._fallback_to_legal_backup("b", "t", viol, opt_)
+r = app._fallback_to_legal_backup(CFG, "b", "t", viol, opt_)
 check("拆棒失敗 → 交真實分數較好的合法備胎", r[2] is legal and r[3] is b_opt)
 
 worse = dict(_mi(50.0, 50.0, 0), earth_safe=True, num_burns=3)
 opt_, _ = fake_opt(worse)
-r = app._fallback_to_legal_backup("b", "t", viol, opt_)
+r = app._fallback_to_legal_backup(CFG, "b", "t", viol, opt_)
 check("備胎真實分數更差 → 照舊交違規解", r[2] is viol and r[3] is opt_)
 
-opt_, _ = fake_opt(None)
-check("沒有備胎 → 原樣", app._fallback_to_legal_backup("b", "t", viol, opt_)[2] is viol)
-
 opt_, _ = fake_opt(legal, flag=False)
-check("旗標關 → 不動", app._fallback_to_legal_backup("b", "t", viol, opt_)[2] is viol)
+check("旗標關 → 不動", app._fallback_to_legal_backup(CFG, "b", "t", viol, opt_)[2] is viol)
 
 ok_mi = dict(_mi(98.3, 98.3, 0), earth_safe=True, num_burns=6)
 opt_, _ = fake_opt(legal)
-check("拆棒成功（零違規）→ 不動", app._fallback_to_legal_backup("b", "t", ok_mi, opt_)[2] is ok_mi)
+check("拆棒成功（零違規）→ 不動", app._fallback_to_legal_backup(CFG, "b", "t", ok_mi, opt_)[2] is ok_mi)
+
+# 沒有備胎（或備胎精修後不合法）→ 用旗標關重跑一輪搜尋 + 拆棒當退路
+print("\n── 4. 退路：沒有備胎時旗標關重搜 ──")
+seen = {}
+
+
+def fake_search(result_mi):
+    def _search(cfg):
+        seen["flag"] = cfg["strategy"]["SPLIT_AWARE_TERMINAL"]
+        if result_mi is None:
+            return None, None, None, None
+        return "RB", "RT", result_mi, SimpleNamespace(tag="rerun")
+    return _search
+
+
+def run_fb(opt_, result_mi):
+    seen.clear()
+    with patch.object(app, "_search_stage", side_effect=fake_search(result_mi)), \
+         patch.object(app, "_legalize_stage", side_effect=lambda cfg, b, t, mi, o: (b, t, mi)):
+        return app._fallback_to_legal_backup(CFG, "b", "t", viol, opt_)
+
+
+opt_, _ = fake_opt(None)
+rer = dict(_mi(89.25, 89.25, 0), earth_safe=True, num_burns=4)   # 真實分數勝過違規解的 88.32
+r = run_fb(opt_, rer)
+check("沒有備胎 → 旗標關重搜（重搜設定的旗標是關的）", seen.get("flag") is False)
+check("重搜解真實分數較好 → 交重搜解與它的 optimizer", r[2] is rer and getattr(r[3], "tag", None) == "rerun")
+check("重搜不改呼叫端的 config", CFG["strategy"]["SPLIT_AWARE_TERMINAL"] is True)
+
+r = run_fb(opt_, dict(_mi(50.0, 50.0, 0), earth_safe=True, num_burns=4))
+check("重搜解更差 → 照舊交違規解", r[2] is viol and r[3] is opt_)
+
+r = run_fb(opt_, None)
+check("重搜失敗 → 照舊交違規解", r[2] is viol and r[3] is opt_)
+
+r = run_fb(opt_, dict(_mi(95.0, 95.0, 0), earth_safe=False, num_burns=4))
+check("重搜解不 Earth-safe → 不採用", r[2] is viol)
+
+bad_bk = dict(_mi(89.25, 89.25, 1), earth_safe=True, num_burns=3)   # 精修後反而有違規
+opt_, _ = fake_opt(bad_bk)
+r = run_fb(opt_, rer)
+check("備胎精修後不合法 → 改走重搜", "flag" in seen and r[2] is rer)
 
 print()
 if FAILS:

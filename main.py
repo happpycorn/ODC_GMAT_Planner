@@ -700,33 +700,63 @@ def _legalize_stage(config, burns, times, mi, opt):
     return burns, times, mi
 
 
-def _fallback_to_legal_backup(burns, times, mi, opt):
-    """C4 退路（2.3）：拆後估計落空時——贏家仍有違規（段數上限內拆不出、或拆後不 Earth-safe）——
-    把搜尋時記下的「最佳零違規候選」（`optimizer.legal_backup`，未精修）精修出來，跟違規解比
-    **真實分數**（§6），交好的那個。沒有備胎、贏家已合法、或旗標關時原樣回傳。
+def _search_stage(config):
+    """搜尋 + C2 primer 條件式重搜（拆棒之前的部分）。回傳 (burns, times, mission_info, optimizer)；
+    搜尋失敗回 (None, None, None, None)。`_solve_pipeline` 與 C4 退路重搜共用。"""
+    burns, times, mi, opt = run_study_over_revs(config)
+    if burns is None or times is None:
+        return None, None, None, None
+    _c2 = primer_guided_research(config, burns, times, mi, opt)
+    if _c2 is not None:
+        burns, times, mi, opt = _c2
+    return burns, times, mi, opt
 
-    回傳 (burns, times, mission_info, optimizer)：備胎可能來自 REVS 集成的另一趟，要換成它自己
-    的 optimizer（LAMBERT_MAX_REVS 不同），產腳本/存檔才對得上。"""
+
+def _fallback_to_legal_backup(config, burns, times, mi, opt):
+    """C4 退路（2.3）：拆後估計落空時——贏家仍有違規（段數上限內拆不出、或拆後不 Earth-safe）——
+    找一個替代解，跟違規解比**真實分數**（§6），交好的那個。沒違規、或旗標關時原樣回傳。
+
+    替代解依序：
+    1. 搜尋時記下的「最佳零違規候選」（`optimizer.legal_backup`，未精修）精修出來，要合法才算。
+    2. 沒有備胎（旗標開時搜尋不懲罰終端超標，各案例贏家常全是違規解——C4 E4 `hyper_far` 就是這樣）
+       或備胎精修後不合法：**用旗標關重跑一輪搜尋 + 拆棒**。同 SEED 下它就是旗標關的結果，所以
+       退路保證不比旗標關差；代價是拆棒失敗時多一輪搜尋，正常路徑不花時間。
+
+    回傳 (burns, times, mission_info, optimizer)：替代解可能來自 REVS 集成的另一趟或重搜，要換成
+    它自己的 optimizer（LAMBERT_MAX_REVS／旗標不同），產腳本/存檔才對得上。"""
     if not getattr(opt, "SPLIT_AWARE_TERMINAL", False) or int(mi.get("penalty_count", 0)) <= 0:
         return burns, times, mi, opt
+    cand, src = None, None
     bk = getattr(opt, "legal_backup", None)
-    if bk is None:
-        log.warning("⚠️ C4：拆後估計落空（贏家仍有違規），且搜尋中沒有零違規備胎——照舊交違規解。")
+    if bk is not None:
+        b_opt = bk["opt"]
+        b_burns, b_times, b_mi = b_opt.refine_trajectory(bk["x"], bk["burns"], bk["fitness"])
+        if b_burns is not None and isinstance(b_mi, dict) and int(b_mi.get("penalty_count", 0)) <= 0 \
+                and bool(b_mi.get("earth_safe", True)):
+            cand, src = (b_burns, b_times, b_mi, b_opt), "合法備胎"
+        else:
+            log.warning("⚠️ C4：拆後估計落空，合法備胎精修後也不合法。")
+    if cand is None:
+        log.warning("⚠️ C4：拆後估計落空且沒有可用的零違規備胎——改用旗標關重跑一輪搜尋當退路。")
+        cfg_off = copy.deepcopy(config)
+        cfg_off.setdefault("strategy", {})["SPLIT_AWARE_TERMINAL"] = False
+        r_burns, r_times, r_mi, r_opt = _search_stage(cfg_off)
+        if r_burns is not None:
+            r_burns, r_times, r_mi = _legalize_stage(cfg_off, r_burns, r_times, r_mi, r_opt)
+            if bool(r_mi.get("earth_safe", True)):
+                cand, src = (r_burns, r_times, r_mi, r_opt), "旗標關重搜"
+    if cand is None:
+        log.warning("⚠️ C4：退路也沒有可用的替代解——照舊交違規解。")
         return burns, times, mi, opt
-    b_opt = bk["opt"]
-    b_burns, b_times, b_mi = b_opt.refine_trajectory(bk["x"], bk["burns"], bk["fitness"])
-    if b_burns is None or not isinstance(b_mi, dict) or int(b_mi.get("penalty_count", 0)) > 0 \
-            or not bool(b_mi.get("earth_safe", True)):
-        log.warning("⚠️ C4：拆後估計落空，合法備胎精修後也不合法——照舊交違規解。")
-        return burns, times, mi, opt
+    c_burns, c_times, c_mi, c_opt = cand
     eps = opt.TIEBREAK_SCORE_EPS
-    use_backup = (not bool(mi.get("earth_safe", True))
-                  or _mission_rank_key(b_mi, eps=eps) < _mission_rank_key(mi, eps=eps))
+    use_cand = (not bool(mi.get("earth_safe", True))
+                or _mission_rank_key(c_mi, eps=eps) < _mission_rank_key(mi, eps=eps))
     log.warning(f"⚠️ C4：拆後估計落空——違規解真實 {mi['score']:.4f}（{mi['penalty_count']} 次違規）"
-                f" vs 合法備胎 {b_mi['score']:.4f}（{b_mi['num_burns']} 棒）→ 交"
-                f"{'合法備胎' if use_backup else '違規解（備胎更差）'}。")
-    if use_backup:
-        return b_burns, b_times, b_mi, b_opt
+                f" vs {src} {c_mi['score']:.4f}（{c_mi['num_burns']} 棒、{int(c_mi.get('penalty_count', 0))} 次違規）"
+                f"→ 交{src if use_cand else f'違規解（{src}更差）'}。")
+    if use_cand:
+        return c_burns, c_times, c_mi, c_opt
     return burns, times, mi, opt
 
 
@@ -737,12 +767,9 @@ def _solve_pipeline(config, output_dir="outputs"):
     不然 seed-portfolio 會對每顆中間候選都吼一次。
 
     拆棒前的贏家會存到本次執行目錄的 `winner_presplit_seed<SEED>.json`（見 save_winner_checkpoint）。"""
-    burns, times, mi, opt = run_study_over_revs(config)
+    burns, times, mi, opt = _search_stage(config)
     if burns is None or times is None:
         return None, None, None, None
-    _c2 = primer_guided_research(config, burns, times, mi, opt)
-    if _c2 is not None:
-        burns, times, mi, opt = _c2
     seed = config.get("optimization", {}).get("SEED")
     try:
         save_winner_checkpoint(
@@ -751,7 +778,7 @@ def _solve_pipeline(config, output_dir="outputs"):
     except (OSError, TypeError) as exc:            # 存檔失敗不該擋管線
         log.warning(f"⚠️ 拆棒前贏家存檔失敗（不影響本次結果）：{exc}")
     burns, times, mi = _legalize_stage(config, burns, times, mi, opt)
-    burns, times, mi, opt = _fallback_to_legal_backup(burns, times, mi, opt)
+    burns, times, mi, opt = _fallback_to_legal_backup(config, burns, times, mi, opt)
     save_mission(os.path.join(output_dir, f"mission_seed{'none' if seed is None else seed}.json"),
                  opt.config, burns, times, mi)
     return burns, times, mi, opt
@@ -874,6 +901,9 @@ def _run_stages(args, run_dir, manifest):
         config, burns, times, mission_info, optimizer = load_winner_checkpoint(args.from_winner)
         log.info(f"♻️ 從拆棒前存檔重播：{args.from_winner}")
         burns, times, mission_info = _legalize_stage(config, burns, times, mission_info, optimizer)
+        # 存檔不含搜尋時的合法備胎，拆不出時退路會直接走「旗標關重搜」（一輪完整搜尋）
+        burns, times, mission_info, optimizer = _fallback_to_legal_backup(
+            config, burns, times, mission_info, optimizer)
     else:
         if not args.config:
             config = load_or_create_config(os.path.join("configs", "config.json"))
