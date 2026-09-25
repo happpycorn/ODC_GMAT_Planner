@@ -9,6 +9,7 @@ import datetime
 import subprocess
 import multiprocessing
 import copy
+import contextlib
 import cProfile
 import pstats
 import re
@@ -19,6 +20,7 @@ from src.pipeline_artifacts import (create_run_dir, save_mission, load_mission,
 
 # 引入重構後的新模組
 import numpy as np
+from threadpoolctl import threadpool_limits
 from src.optimizer import (MissionOptimizer, run_study_over_revs,
                            reconstruct_mission_logs, tiebreak_rank_key, _mission_rank_key)
 from src.primer import intercept_primer_profile, insert_node_seed
@@ -89,6 +91,8 @@ DEFAULT_CONFIG = {
                                     # 彈性調小 (甚至設 0 退回精準瞄準)，讓最後一棒 Lambert
                                     # 在容許範圍內找最省油的落點，而不是死盯著 A 的精確位置
         "AUTO_SPLIT_LEGALIZE": True,  # 低邏輯棒數先找 route，若贏家超標再動態拆成合法多棒解
+        "SPLIT_AWARE_TERMINAL": True,  # C4：終端棒超標但拆得掉時，搜尋/挑贏家用「拆後估計分數」
+                                       # 不扣 10 分；拆不出來會自動用 false 重搜當退路
         "REVS_ENSEMBLE": True,  # 預設在 REVS=0 與 REVS=LAMBERT_MAX_REVS 各跑一次完整搜尋、
                                 # 取規則§6 較好的那趟 (換掉 seed×REVS 相依脆弱性，成本約
                                 # 1.8×)。設 false 只跑一次 (用 LAMBERT_MAX_REVS)——T_max
@@ -692,9 +696,15 @@ def load_winner_checkpoint(path):
 
 
 def _legalize_stage(config, burns, times, mi, opt):
-    """拆棒合法化那一段（Earth-safe 才拆）。`_solve_pipeline` 與 `--from-winner` 重播共用。"""
+    """拆棒合法化那一段（Earth-safe 才拆）。`_solve_pipeline` 與 `--from-winner` 重播共用。
+
+    設了 SEED 時跟搜尋階段一樣把 BLAS 鎖單執行緒（見 run_study_over_revs 的重現性說明）：
+    joint NLP（SLSQP）在父行程跑、原本沒鎖，多執行緒 BLAS 讓同一個拆棒前贏家拆出不同結果
+    （2026-09-25 實測 contest：鎖 98.319106／7 棒 vs 不鎖 98.318995／6 棒）。"""
     if bool(mi.get("earth_safe", True)):
-        _legal = legalize_violating_winner(config, burns, times, mi, opt)
+        seed_set = config.get("optimization", {}).get("SEED") is not None
+        with (threadpool_limits(limits=1, user_api="blas") if seed_set else contextlib.nullcontext()):
+            _legal = legalize_violating_winner(config, burns, times, mi, opt)
         if _legal is not None:
             burns, times, mi = _legal
     return burns, times, mi

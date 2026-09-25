@@ -451,7 +451,8 @@ class MissionOptimizer:
         # 開啟時：(1) fast_fitness_evaluator 對超標但 ≤ K×cap 的終端棒不扣 10 分，改預付
         # 拆棒燃料；(2) 各棒數案例 / REVS 集成 / C2 挑贏家改比 score_split_est (拆後估計)。
         # 只在 AUTO_SPLIT_LEGALIZE 也開時生效——不會拆，就不能拿拆後分數當尺。
-        self.SPLIT_AWARE_TERMINAL = (bool(strategy.get("SPLIT_AWARE_TERMINAL", False))
+        # 2026-09-25 起預設開（E1–E4 通過、拆棒器攝動 shooting、退路重搜；見計劃書 §6.5–6.7）。
+        self.SPLIT_AWARE_TERMINAL = (bool(strategy.get("SPLIT_AWARE_TERMINAL", True))
                                      and self.AUTO_SPLIT_LEGALIZE)
         self.SPLIT_AWARE_TERMINAL_MAX_FACTOR = max(
             1.0, float(strategy.get("SPLIT_AWARE_TERMINAL_MAX_FACTOR", 5.0)))
@@ -1975,8 +1976,9 @@ class MissionOptimizer:
         # C4：SPLIT_AWARE_TERMINAL 開時，分桶與排名的 Score 改用拆後估計 (score_split_est)
         # ——搜尋端已經用同一把尺，挑贏家不能又回到含 −10 的真實分數 (那會把拆後 98.32 的
         # 88.32 家族排在合法 89.25 家族後面)。旗標關時就是真實分數，逐位元同舊行為。
-        sc_field = "score_split_est" if self.SPLIT_AWARE_TERMINAL else "score"
-        pre_bucket = {b: round(metrics[b][sc_field] / self.TIEBREAK_SCORE_EPS) for b in metrics}
+        def _sc(m):  # 跟 mission_rank_score 同規則：沒有拆後估計欄位就退回真實分數
+            return mission_rank_score(m, split_est=self.SPLIT_AWARE_TERMINAL)
+        pre_bucket = {b: round(_sc(metrics[b]) / self.TIEBREAK_SCORE_EPS) for b in metrics}
         if len(set(pre_bucket.values())) < len(pre_bucket) and self.TIEBREAK_POLISH:
             top = max(pre_bucket.values())
             tied_pre = [k for k in sorted(metrics) if pre_bucket[k] == top]
@@ -2002,7 +2004,7 @@ class MissionOptimizer:
             # (effective_burns，不是名目棒數——多棒解很常退化成中間棒 Δv=0 的空燒)。
             # 這一項不在規則裡，純粹是為了讓結果可重現，而且棒數少的 GMAT 腳本比較
             # 好收斂；只有在規則管不到的地方才會生效。
-            return tiebreak_rank_key(m[sc_field], m["miss_km"], m["dv_mps"],
+            return tiebreak_rank_key(_sc(m), m["miss_km"], m["dv_mps"],
                                      m["t_team"], floor_miss=floor_miss,
                                      eps=self.TIEBREAK_SCORE_EPS) + (
                                          effective_burns(b, viable[b]["best_x"]), b)
@@ -2012,13 +2014,13 @@ class MissionOptimizer:
         best_overall_score = viable[best_burns_count]["fitness"]
 
         # 有沒有真的動用到平手判定？(不只一個候選落在同一個分數桶)
-        bucket = {b: round(metrics[b][sc_field] / self.TIEBREAK_SCORE_EPS) for b in metrics}
+        bucket = {b: round(_sc(metrics[b]) / self.TIEBREAK_SCORE_EPS) for b in metrics}
         top_bucket = max(bucket.values())
         tied = sorted(b for b in metrics if bucket[b] == top_bucket)
         if len(tied) > 1:
             # 事件濃縮成一行（報告層級）：打平 → 採用哪個。逐項比對表是細節 → DEBUG/log 檔。
             log.log(self._report_level,
-                    f"⚖️ 推進 {tied} 次打平(Score {metrics[tied[0]][sc_field]:.4f}) → 依§6"
+                    f"⚖️ 推進 {tied} 次打平(Score {_sc(metrics[tied[0]]):.4f}) → 依§6"
                     f"(Δr→ΔV→T)採用 {best_burns_count} 棒")
             log.debug(f"     {'棒數':<6}{'Δr_min (m)':>14}{'ΔV_team (m/s)':>16}{'T_team (s)':>14}")
             for b in tied:

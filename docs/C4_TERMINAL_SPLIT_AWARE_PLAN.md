@@ -199,3 +199,21 @@ J2–J4 情境全部重跑（`outputs/c4fix/`，同設定同 SEED）：
 - 端到端（`outputs/c4fix/FB_hyper_far_forced_fail`）：hyper_far 開旗標存檔，執行期把 `_shoot_final` 換成不修正
   （= 修正前的拆棒器）→ 拆不出 → 退路重搜 → **82.2953（4 棒零違規）**，與旗標關 run 逐位元相同（GMAT DC Δr
   38.2 m 同值），GMAT DC/定燒 ✅✅。多花 ~20 分鐘。
+
+### 6.7 翻成預設開 + 拆棒階段鎖 BLAS（2026-09-25）
+
+- **`SPLIT_AWARE_TERMINAL` 預設改為開**（`optimizer.py` 預設值、`main.DEFAULT_CONFIG`、README 開關表）。依據：
+  E1–E4 通過（E4 靠 6.5 的 shooting）、E2 9/9 ≥98.316、退路最差 = 旗標關（6.6）。E5 分數不退步、非逐位元相同，
+  視為可接受（旗標改變超標候選的目標值，搜尋路徑本來就會變）。
+- `_pick_best_case` 取分數改走 `mission_rank_score`（缺 `score_split_est` 時退回 `score`，與 REVS 挑選同規則）；
+  `test_tiebreak` 的假 metrics 補齊 `earth_safe` / `split_terminal_count`（真實 `mission_metrics` 一定有）。
+- **重現性漏洞**：驗證時發現同一個拆棒前贏家拆出不同結果（E1_on 98.3191/7 棒 vs E3_on 98.3190/6 棒，兩者都是
+  `a4b4bec`、拆棒前 x 逐位元相同）。原因：BLAS 只在搜尋階段鎖單執行緒，拆棒 joint NLP 在父行程沒鎖。重播 3 次：
+  不鎖 ×2 = 98.318995／6 棒，鎖 = 98.319106／7 棒。修法：`main._legalize_stage` 設了 SEED 時包
+  `threadpool_limits(1, "blas")`（同搜尋階段）。修後重播 ×2 都是 98.319106／7 棒。
+- **E6：contest 設定不寫旗標（= 預設）完整管線** → **98.3191**（7 棒零違規），GMAT DC/定燒 ✅✅，
+  `output_submit.txt` 與 E1 旗標開 **md5 相同**。回歸 10/10。
+
+**C4 結案。** 後續可做（未排）：中間棒超標（`SPLIT_AWARE_SEARCH` 開時）也納入拆後估計——目前 E2 這類
+「中間 + 終端都超標」的解拆前估計低 10 分（例 88.26 → 實拆 98.32），不影響最終結果但挑贏家時被低估；
+預付成本依幾何校正（6.3，`hyperbolic_test` 低估 0.435）；izzo 例外記憶體洩漏（6.3）。

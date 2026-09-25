@@ -96,7 +96,7 @@ def pick(fake_metrics, fitness=None):
     }
     opt.mission_metrics = lambda x, b: dict(
         zip(("score", "miss_km", "dv_mps", "t_team"), fake_metrics[b]),
-        penalty_count=0, dc_converged=True)
+        penalty_count=0, dc_converged=True, earth_safe=True, split_terminal_count=0)
     out = opt._pick_best_case()
     return None if out is None else out[0]
 

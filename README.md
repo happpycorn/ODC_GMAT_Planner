@@ -198,6 +198,7 @@ uv run sweep_burns.py --config configs/x.json --burns 2-8
 | `LAMBERT_MAX_REVS` | `4` | 最後一棒 Lambert 要考慮的**最大圈數**。規則的 `T_max` 是 A 的四個週期，所以最多也就塞得下約 4 圈。對**單點評估**是嚴格更大的搜尋空間、不可能讓那一點變差（分支選擇是在固定的抵達時間下取最省的那條，時間分不變、燃料只會更好），成本 1.01 倍。但對**搜尋結果**不成立——L-SHADE 偶爾會收斂到更差的盆地（見 HAP-42），所以預設 `REVS_ENSEMBLE=true` 會額外跑一次 `REVS=0` 取兩者較好的，見 `run_study_over_revs`。設 `0` 可退回 2026-08-28 之前的行為（也讓 REVS_ENSEMBLE 自動退成單跑）。 |
 | `MAX_DV_MARGIN_MPS` | `2.0` | 搜尋階段每棒 Δv 上限往內縮多少（安全邊界，見 METHODOLOGY 第 6 節）。最佳解有棒數頂到上限時調小可以白賺幾 m/s，**調完要確認違規次數還是 0**。 |
 | `TIEBREAK_POLISH` | `true` | 規則第 6 節優先序 1 的收尾微調，見下面〈平手判定〉。 |
+| `SPLIT_AWARE_TERMINAL` | `true` | 終端棒超標但拆得掉（≤ `SPLIT_AWARE_TERMINAL_MAX_FACTOR`×上限，預設 5）時，搜尋與挑贏家改用「拆後估計分數」、不扣 10 分，避免收斂到省油但晚到的合法家族。拆棒真的失敗會自動用 `false` 重跑一輪搜尋當退路（最差 = 關閉時的結果，但多花一輪搜尋時間）。只在 `AUTO_SPLIT_LEGALIZE=true` 時生效。見 [docs/C4_TERMINAL_SPLIT_AWARE_PLAN.md](docs/C4_TERMINAL_SPLIT_AWARE_PLAN.md)。 |
 | `TIEBREAK_SCORE_EPS` | `1e-9` | 「分數差多少以內算打平」，見下面〈平手判定〉。 |
 
 ### 測試

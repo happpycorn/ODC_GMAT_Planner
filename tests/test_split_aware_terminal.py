@@ -56,8 +56,9 @@ def score(opt, x=X, n=N):
 
 
 print("── 1. 目標函數（fast_fitness_evaluator）──")
-off = make_opt()
+off = make_opt(SPLIT_AWARE_TERMINAL=False)
 on = make_opt(SPLIT_AWARE_TERMINAL=True)
+check("預設開（沒寫旗標 = 開）", make_opt().SPLIT_AWARE_TERMINAL is True)
 s_off, s_on = score(off), score(on)
 check(f"旗標關：終端超標照扣 10 分（{s_off:.4f} < 90）", s_off < 90.0)
 check(f"旗標開、overhead=1.00：分數差正好 10（{s_on - s_off:.6f}）", abs((s_on - s_off) - 10.0) < 1e-9)
@@ -116,12 +117,12 @@ def pick(opt):
         return opt._pick_best_case()[0]
 
 
-check("_pick_best_case 旗標關：選合法 89.25（3 棒）", pick(make_opt()) == 3)
+check("_pick_best_case 旗標關：選合法 89.25（3 棒）", pick(make_opt(SPLIT_AWARE_TERMINAL=False)) == 3)
 o = make_opt(SPLIT_AWARE_TERMINAL=True)
 check("_pick_best_case 旗標開：選可拆 88.32 → 98.32（2 棒）", pick(o) == 2)
 check("旗標開時記下合法備胎（3 棒 89.25）",
       o.legal_backup is not None and o.legal_backup["burns"] == 3 and o.legal_backup["score"] == 89.25)
-check("旗標關時不記備胎", make_opt().legal_backup is None)
+check("旗標關時不記備胎", make_opt(SPLIT_AWARE_TERMINAL=False).legal_backup is None)
 
 
 def _mi(score, est, pen):
