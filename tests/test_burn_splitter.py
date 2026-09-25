@@ -20,7 +20,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.optimizer import MissionOptimizer
 from src.core_math import propagate_dop853, fast_norm
-from src.burn_splitter import legalize_intercept, legalize_route, _lam_best, drop_null_burns, prune_null_burns, _simulate_free, _slot_after_capped
+from src.burn_splitter import (legalize_intercept, legalize_route, _lam_best, drop_null_burns, prune_null_burns,
+                               _simulate_free, _slot_after_capped, _shoot_final, split_intercept)
 
 _FAILED = []
 
@@ -148,6 +149,33 @@ def main():
     check("緊跟 cap 棒的空燒（100.4 s）保留為空位、遠處空燒併掉",
           out is not None and len(out[0]) == 2 and abs(out[1][0] - 100.4) < 1e-9
           and abs(sum(out[1]) - 2386.6) < 1e-9)
+
+    # C4 E4：J2–J4 + 長終端段。二體 Lambert 瞄準、攝動傳播會偏幾百 km；終端段 shooting 修正後
+    # 貪婪拆棒要能命中（修正前 hyper_far 每個段數都被命中驗證拒掉）。
+    print("\n── J2–J4 長終端段：shooting 修正後拆得出 ──")
+    cfg4 = json.loads(json.dumps(cfg))
+    cfg4["strategy"]["GRAVITY_DEGREE"] = 4
+    o4 = MissionOptimizer(cfg4)
+    g2, g3, g4 = o4.J2_VAL, o4.J3_VAL, o4.J4_VAL
+    check("GRAVITY_DEGREE 4 時 J2 非零", g2 != 0.0)
+    r0, v0 = propagate_dop853(opt.B_r0, opt.B_v0, 0.0, 60.0, mu, g2, g3, g4, re)
+    kick = v0 / fast_norm(v0) * (1.2 * cap)          # 順向 1.2× cap：需要拆成 2 段
+    tof = 30000.0                                    # ~8.3 h，跟 hyper_far 終端段同量級
+    tgt, _ = propagate_dop853(r0, v0 + kick, tof, 60.0, mu, g2, g3, g4, re)
+    vk, _ = _lam_best(r0, tgt, tof, v0, mu, mr)
+    miss_2body = fast_norm(propagate_dop853(r0, vk, tof, 60.0, mu, g2, g3, g4, re)[0] - tgt)
+    check(f"二體 Lambert 在 J2–J4 下確實偏很多（{miss_2body:.1f} km > 10 km，案例有意義）", miss_2body > 10.0)
+    vs, miss_s = _shoot_final(r0, vk, tgt, tof, mu, g2, g3, g4, re)
+    check(f"_shoot_final 修到 < 1 m（{miss_s * 1000:.3f} m）", miss_s < 1e-3)
+    out = split_intercept(r0, v0, 0.0, tgt, tof, 2, cap=cap, min_coast=mc, mu=mu, j2=g2, j3=g3, j4=g4,
+                          re=re, min_periapsis=mp, max_revs=mr, miss_tol=opt.MISS_TOLERANCE_SOFT)
+    check("J2–J4 下 2 段貪婪拆棒成功", out is not None)
+    if out is not None:
+        kicks, coasts = out
+        check("每段 ≤ cap", max(fast_norm(k) for k in kicks) <= cap + 1e-9)
+        r, v = propagate_dop853(r0, v0 + kicks[0], coasts[0], 60.0, mu, g2, g3, g4, re)
+        r_end, _ = propagate_dop853(r, v + kicks[1], tof - coasts[0], 60.0, mu, g2, g3, g4, re)
+        check("J2–J4 傳播命中 ≤ 容許", fast_norm(r_end - tgt) <= opt.MISS_TOLERANCE_SOFT)
 
     print("\n── 收工 ──")
     if _FAILED:

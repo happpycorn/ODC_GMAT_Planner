@@ -123,7 +123,9 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
 0. **C4 已實作並驗證（2026-09-24，`a4b4bec`，`SPLIT_AWARE_TERMINAL` 維持預設關）**：二體情境全過、強制 4 棒 SEED 0–8
    開旗標 9/9 ∈ [98.316, 98.319]（關：82.27、89.25 各一）；但 **E4 `hyper_far`（J2–J4）開旗標 72.69 vs 關 82.30**——
    貪婪拆棒器終端段用二體 Lambert、J2–J4 傳播 8.4 h 後偏 ~350 km 被拒，退路也沒有合法備胎。
-   **下一步：拆棒器終端段加 shooting 修正**，修完重跑 E4。完整數據與建議見計劃書 §6。
+   **2026-09-25 已修**：`burn_splitter._shoot_final`（攝動時終端段 Newton 修到命中）→ `hyper_far` 開旗標
+   **82.6904 合法、GMAT ✅✅**（關 82.2953）；其他 J2–J4 情境不變。E1–E4 全過、E5 分數不退步但非逐位元相同。
+   **待決定：是否翻成預設開**（退路仍無合法備胎、預付成本在 hyperbolic_test 低估 0.435）。見計劃書 §6.5。
    另：搜尋 worker 記憶體暴漲根因是 numba 內接 `izzo` 例外（REVS>0 才漏），見計劃書 §6.3。
    （以下為原計劃摘要）
    **完整計劃書：[docs/C4_TERMINAL_SPLIT_AWARE_PLAN.md](docs/C4_TERMINAL_SPLIT_AWARE_PLAN.md)**（以下為摘要）。

@@ -46,6 +46,48 @@ def _lam_best(r0, r1, tof, vref, mu, max_revs):
     return bv, best
 
 
+def _shoot_final(r, v_guess, target, tof, mu, j2, j3, j4, re,
+                 tol_km=1e-4, max_iter=12, h=1e-5):
+    """終端段 shooting 修正：從 Lambert 的二體猜測 `v_guess` 出發，用 Newton（有限差分 Jacobian）
+    修正燒後速度，讓 J2–J4 傳播 `tof` 秒後真的落在 `target`。回傳 (v, miss_km)。
+
+    C4 E4 發現（docs/C4_TERMINAL_SPLIT_AWARE_PLAN.md §6.2）：`hyper_far` 終端段 ~8.4 h，二體 Lambert
+    瞄準、J2–J4 傳播會偏 338～377 km，貪婪拆棒每個段數都被命中驗證拒掉。不拆的單棒解靠 GMAT DC
+    修這個偏差，拆棒器這裡做同一件事。只在有攝動時呼叫——二體時 Lambert 本來就精確命中。
+    每步做回溯線搜尋（miss 沒變小就步長減半），避免長弧的非線性讓 Newton 發散。
+    """
+    def end_pos(vv):
+        return propagate_dop853(r, vv, float(tof), 60.0, mu, j2, j3, j4, re)[0]
+
+    v = np.array(v_guess, dtype=np.float64)
+    err = end_pos(v) - target
+    miss = fast_norm(err)
+    for _ in range(max_iter):
+        if miss <= tol_km:
+            break
+        J = np.empty((3, 3))
+        for k in range(3):
+            dv = np.zeros(3)
+            dv[k] = h
+            J[:, k] = (end_pos(v + dv) - target - err) / h
+        try:
+            step = np.linalg.solve(J, err)
+        except np.linalg.LinAlgError:
+            break
+        alpha, improved = 1.0, False
+        for _ls in range(6):
+            v_try = v - alpha * step
+            err_try = end_pos(v_try) - target
+            miss_try = fast_norm(err_try)
+            if miss_try < miss:
+                v, err, miss, improved = v_try, err_try, miss_try, True
+                break
+            alpha *= 0.5
+        if not improved:
+            break
+    return v, miss
+
+
 def _arc_safe(r, v, dtt, mu, j2, j3, j4, re, min_periapsis):
     """一段「從 (r,v) 滑行 dtt」的弧安不安全，判定邏輯跟 fast_fitness_evaluator 一致：
     弧內真的會經過近地點才比近地點半徑，否則檢查兩端取小。"""
@@ -93,7 +135,14 @@ def split_intercept(r0, v0, t0, target, T, nseg, *, cap, min_coast,
         if fast_norm(r) < min_periapsis:
             return None
     vd, dvm = _lam_best(r, target, T - t, v, mu, max_revs)
-    if vd is None or dvm > cap or not _arc_safe(r, vd, T - t, mu, j2, j3, j4, re, min_periapsis):
+    if vd is None:
+        return None
+    if j2 != 0.0 or j3 != 0.0 or j4 != 0.0:
+        # 攝動下二體 Lambert 會偏（長終端段可達數百 km），先 shooting 修正再驗 (見 _shoot_final)。
+        # 二體時完全不走這裡，結果與修正前逐位元相同。
+        vd, _ = _shoot_final(r, vd, target, T - t, mu, j2, j3, j4, re)
+        dvm = fast_norm(vd - v)
+    if dvm > cap or not _arc_safe(r, vd, T - t, mu, j2, j3, j4, re, min_periapsis):
         return None
     # 命中驗證：最後一段打完真的落在 target 容許球內才算數 (見 docstring)。
     r_end, _ = propagate_dop853(r, vd, float(T - t), 60.0, mu, j2, j3, j4, re)
