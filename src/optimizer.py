@@ -20,7 +20,8 @@ from mealpy.evolutionary_based.SHADE import L_SHADE
 from src.propagator import get_r0_v0
 from src.scorer import calculate_score
 from src.core_math import (propagate_dop853, check_constraints, fast_norm,
-                           to_vnb_frame, reaches_perigee, lambert_izzo)
+                           to_vnb_frame, reaches_perigee, lambert_izzo,
+                           izzo_max_revs)
 from src.runlog import log, is_verbose
 import numba as nb
 from tqdm import tqdm
@@ -203,11 +204,18 @@ def fast_fitness_evaluator(
     v1_req = np.zeros(3, dtype=np.float64)
     best_req_dv = 1.0e18
     found_any = False
+    # 先算每個方向最多能繞幾圈，跳過 izzo 一定會丟 "No feasible solution" 的分支——numba 內
+    # raise+catch 每次漏 ~1.8 KB (REVS=4 時 contest 單 run ~1.5 GB/min)，見 core_math.izzo_max_revs。
+    # 預檢只跳「一定會丟」的分支 (拿不準就照呼叫)，跳過的全是原本會進 except 的，結果不變。
+    m_max_pro = izzo_max_revs(mu, r_curr, r_aim, t_final_leg, True, 35, 1e-8)
+    m_max_retro = izzo_max_revs(mu, r_curr, r_aim, t_final_leg, False, 35, 1e-8)
     for m_rev in range(0, lambert_max_revs + 1):
         for lp in range(0, 2):
             if m_rev == 0 and lp == 1:
                 continue                      # M=0 只有一組解，不用算兩次
             for pg in range(0, 2):
+                if m_rev > (m_max_pro if pg == 0 else m_max_retro):
+                    continue
                 try:
                     v_try, _ = izzo(
                         mu, r_curr, r_aim, t_final_leg,

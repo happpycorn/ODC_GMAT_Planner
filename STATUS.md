@@ -94,7 +94,7 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
   rendezvous 末端速度匹配殘留——`_lam_best`/終端 Lambert 三處 `vref` 都是載具自身燒前速度
   （非目標速度），scorer 的 `k_v/C_v` 罰的是總Δv預算不是速度差。雙曲線下不會浪費燃料去匹配
   近地點高速。
-- 回歸：`uv run python run_regression.py`（8 支、~6 分鐘——C3 後量到 364s，其中 `test_hyperbolic_e2e` 246s；動任何東西前先跑）。拆棒管線有
+- 回歸：`uv run python run_regression.py`（11 支、~6 分鐘——2026-09-26 量到 370s，其中 `test_hyperbolic_e2e` 278s；動任何東西前先跑）。拆棒管線有
   `tests/test_burn_splitter.py`；**雙曲線 A 端到端有 `tests/test_hyperbolic_e2e.py`（2026-09-22 補，
   A5）**——結構煙霧（雙曲線輸入端＋種子產生器不炸）＋拆棒 e2e（違規→自動拆分→零違規/命中/
   Earth-safe），性質式斷言。這補上了 STATUS 舊列的 P3 缺口。
@@ -119,7 +119,25 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
   直接報錯、不再拖到 poliastro 算位置才炸。回歸 `tests/test_hyperbolic_e2e.py`。
 - ⚠️ **計分參數與 A/B 六根數要等官方發題**（`k_t/C_t/k_v/C_v`）。
 
-**待辦（2026-09-23 晚更新，依優先序）**：
+**待辦（2026-09-26 更新，依優先序）**：
+A. **✅ izzo 例外記憶體洩漏已修（2026-09-26）**：`core_math.izzo_max_revs` 在 `fast_fitness_evaluator` 呼叫 izzo 前
+   預檢 M_max，跳過「飛行時間不夠繞 M 圈」必丟 ValueError 的分支（numba 內 raise+catch 每次漏 ~1.8 KB）。
+   洩漏 1.85 → 0.03 KB/eval、評估速度不變；E3（contest 4 棒、2000 代）系統用量修前 6 分鐘吃滿 12 GB 進 swap，
+   修後搜尋全程持平。**大 run 不必再限一次一個。**
+   - 預檢**刻意保守**（邊界放寬 1e-9、近共線回「不確定」交給 izzo）：izzo 自己的兩種編譯特化在退化幾何上丟不丟
+     就不一致，求逐位元一致的第一版在 run_regression 底下翻車。`tests/test_izzo_max_revs.py` 對兩種特化驗「誤跳 0 次」。
+   - 逐位元驗證：隨機 ~10 萬點（6 組情境）修前修後相同；E3 搜尋實錄 280 萬次評估，新程式在**同樣快取狀態**下逐位元相同。
+   - **⚠️ 順帶查出：同 SEED 的可重現性還綁 numba 快取冷熱。** `fast_fitness_evaluator` 冷編譯 vs 讀快取，同輸入最後
+     一位不同（1 ulp，改前的舊程式本身就這樣），DE 軌跡隨之分岔——E3 同 SEED 一次採 3 棒一次採 4 棒（拆後 98.3191 vs
+     98.3190）。之前「修前修後逐位元比對」都隱含這個前提。**參數實驗與任何 before/after 對照要先固定快取狀態**
+     （例如先暖快取、或各自指定乾淨 `NUMBA_CACHE_DIR`）。根因（冷熱為何連結到不同浮點行為）未查。
+B. **參數正式實驗**（2026-09-26 新增；現行 MAXITER/POPSIZE 等是憑感覺設的）。參數分四類、調法不同：
+   規則（照題目填）／安全餘量（`MISS_TOLERANCE_KM`、`MAX_DV_MARGIN_MPS`、拆棒 `_NLP_*_MARGIN`——**不拿分數調**，
+   放寬必加分但踩失格線，只看 GMAT 驗證失敗率）／搜尋預算（MAXITER、POPSIZE、MAX_EARLY_STOP、TOL、MAX_BURNS——
+   目標是「限時內分數」不是最高分）／演算法開關（REVS 集成、種子雙重精修——即待辦 3，併進來做消融）。
+   做法：先寫掃描工具（情境 × SEED × 參數組 → jsonl），情境要涵蓋圓軌道／換面／雙曲線、至少兩組計分權重（計分參數
+   是佔位值，只調 contest.json 會過擬合），每組 ≥5 顆 SEED 看中位數與最差值。先粗掃再細掃，粗估兩晚批次。
+C. C4 後續：中間棒超標也納入拆後估計；預付拆棒成本依幾何校正（`hyperbolic_test` 低估 0.435）。
 0. **✅ C4 結案（2026-09-25）：`SPLIT_AWARE_TERMINAL` 已改為預設開**；contest 預設管線 98.3191 GMAT ✅✅（與旗標開逐位元相同），
    拆棒階段補鎖 BLAS（同 SEED 拆出不同結果的漏洞），見計劃書 §6.7。以下為過程紀錄。
    2026-09-24 初次驗證（`a4b4bec`，當時維持預設關）：二體情境全過、強制 4 棒 SEED 0–8
@@ -128,7 +146,7 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
    **2026-09-25 已修**：`burn_splitter._shoot_final`（攝動時終端段 Newton 修到命中）→ `hyper_far` 開旗標
    **82.6904 合法、GMAT ✅✅**（關 82.2953）；其他 J2–J4 情境不變。E1–E4 全過、E5 分數不退步但非逐位元相同。
    退路已補（拆不出且無合法備胎 → 旗標關重搜，最差 = 旗標關；端到端驗過）。見計劃書 §6.5–6.6。
-   另：搜尋 worker 記憶體暴漲根因是 numba 內接 `izzo` 例外（REVS>0 才漏），見計劃書 §6.3。
+   另：搜尋 worker 記憶體暴漲根因是 numba 內接 `izzo` 例外（REVS>0 才漏），見計劃書 §6.3——**2026-09-26 已修**（待辦 A）。
    （以下為原計劃摘要）
    **完整計劃書：[docs/C4_TERMINAL_SPLIT_AWARE_PLAN.md](docs/C4_TERMINAL_SPLIT_AWARE_PLAN.md)**（以下為摘要）。
    - **問題**：搜尋目標函數（`optimizer.fast_fitness_evaluator`）對**終端棒**超標一律 `penalty_count += 1`（−10）。

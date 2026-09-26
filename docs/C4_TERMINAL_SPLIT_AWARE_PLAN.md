@@ -153,6 +153,9 @@ E2 逐 SEED（最終拆後分數；括號 = 拆前真實分數）：
   時間不夠時丟 ValueError/RuntimeError），numba nopython 的 raise+catch 會漏記憶體。直接迴圈呼叫 30k 次：
   `LAMBERT_MAX_REVS=0` RSS 325→325 MB、`=4` 325→378 MB（~1.8 KB/次）；contest `[1,2,3,4]` 單 run 約 1.5 GB/min。
   只影響牆鐘不影響分數。本輪驗證改成一次只跑一個大 run（`c4_runner.py --slots 4`）。
+  **2026-09-26 已修**：`core_math.izzo_max_revs` 呼叫前預檢 M_max，跳過必丟分支（保守判定，拿不準照呼叫）。
+  E3 單 run 系統用量：修前 2 分鐘 1.5→4.7 GB、6 分鐘吃滿 12 GB 進 swap（峰值 swap 7.7 GB）；修後搜尋期間持平。
+  逐位元驗證與 numba 快取的插曲見 STATUS 待辦 A。
 
 ### 6.4 建議下一步（待討論）
 
@@ -216,4 +219,4 @@ J2–J4 情境全部重跑（`outputs/c4fix/`，同設定同 SEED）：
 
 **C4 結案。** 後續可做（未排）：中間棒超標（`SPLIT_AWARE_SEARCH` 開時）也納入拆後估計——目前 E2 這類
 「中間 + 終端都超標」的解拆前估計低 10 分（例 88.26 → 實拆 98.32），不影響最終結果但挑贏家時被低估；
-預付成本依幾何校正（6.3，`hyperbolic_test` 低估 0.435）；izzo 例外記憶體洩漏（6.3）。
+預付成本依幾何校正（6.3，`hyperbolic_test` 低估 0.435）；~~izzo 例外記憶體洩漏（6.3）~~ 2026-09-26 已修。

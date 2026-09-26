@@ -3,6 +3,10 @@ import math
 import numpy as np
 from numba import njit
 from poliastro.core.iod import izzo as _izzo
+from poliastro.core.iod import (_compute_y as _izzo_compute_y, _tof_equation as _izzo_tof,
+                                _tof_equation_p as _izzo_tof_p, _tof_equation_p2 as _izzo_tof_p2,
+                                _tof_equation_p3 as _izzo_tof_p3)
+from poliastro._math.linalg import norm as _izzo_norm
 from scipy.integrate._ivp.dop853_coefficients import A as _DOP853_A_FULL, C as _DOP853_C_FULL, E3 as _DOP853_E3, E5 as _DOP853_E5, N_STAGES as _DOP853_N_STAGES
 
 # DOP853 (Hairer 版 8 階 Dormand-Prince，scipy 的 solve_ivp(method='DOP853') 用的
@@ -387,3 +391,80 @@ def lambert_izzo(mu, r0, r1, tof, M, prograde, lowpath):
     結果不再隨快取狀態漂。
     """
     return _izzo(mu, r0, r1, tof, M, prograde, lowpath, 35, 1e-8)
+
+
+@njit
+def _izzo_halley_noraise(p0, T0, ll, tol, maxiter):
+    """poliastro `iod._halley` 的逐行拷貝，差別只在失敗時回傳 (False, nan) 而不是 raise。"""
+    for ii in range(maxiter):
+        y = _izzo_compute_y(p0, ll)
+        fder = _izzo_tof_p(p0, y, T0, ll)
+        fder2 = _izzo_tof_p2(p0, y, T0, fder, ll)
+        if fder2 == 0:
+            return False, np.nan
+        fder3 = _izzo_tof_p3(p0, y, T0, fder, fder2, ll)
+        p = p0 - 2 * fder * fder2 / (2 * fder2**2 - fder * fder3)
+        if abs(p - p0) < tol:
+            return True, p
+        p0 = p
+    return False, np.nan
+
+
+IZZO_M_UNKNOWN = 1 << 30   # izzo_max_revs「不確定」時的回傳值：任何 M 都照樣呼叫 izzo
+_IZZO_PRECHECK_REL = 1e-9  # 邊界判定的相對餘量，遠大於不同編譯特化間的浮點差 (~1e-15)
+
+
+@njit
+def _izzo_m_max_for_ll(ll, T, numiter, rtol):
+    """照 poliastro `_find_xy` 算 M_max，但所有浮點邊界都往「可行」那側放寬 (見 izzo_max_revs)。"""
+    if not abs(ll) < 1:
+        return IZZO_M_UNKNOWN
+    M_max = np.floor(T / np.pi * (1.0 + _IZZO_PRECHECK_REL))
+    T_00 = np.arccos(ll) + ll * np.sqrt(1 - ll**2)
+    if T < T_00 + M_max * np.pi and M_max > 0:
+        ok, x_T_min = _izzo_halley_noraise(0.1, _izzo_tof(0.1, 0.0, ll, M_max), ll, rtol, numiter)
+        if ok and T < _izzo_tof(x_T_min, 0.0, ll, M_max) * (1.0 - _IZZO_PRECHECK_REL):
+            M_max -= 1
+    return int(M_max)
+
+
+@njit
+def izzo_max_revs(k, r1, r2, tof, prograde, numiter, rtol):
+    """izzo(k, r1, r2, tof, M, prograde, ...) 在 M > 回傳值時**一定**丟 "No feasible solution"，
+    呼叫端可以放心跳過；M <= 回傳值照常呼叫 (仍可能丟別的例外，要 try)。
+
+    為什麼要有這支：numba nopython 裡 raise+catch 會漏記憶體（每次 ~1.8 KB）。多圈 Lambert
+    在飛行時間不夠繞 M 圈時 izzo 一律丟 ValueError，`fast_fitness_evaluator` 在
+    LAMBERT_MAX_REVS=4 時大半的 izzo 呼叫都走這條，contest 4 棒單 run 漲 ~1.5 GB/min。
+
+    做法是照抄 izzo 前半段（幾何、無因次時間）與 `_find_xy` 的 M_max 判定 (poliastro 0.17)。
+    **刻意只做保守判定、不求與 izzo 逐位元相同**：izzo 本身依編譯特化 (numiter 是 Literal[35]
+    還是 int64、快取冷熱) 浮點結果就有微差 (見 lambert_izzo)，在退化幾何 (r1、r2 近共線、
+    T 剛好落在 M 圈邊界) 上同一組輸入會一下丟一下不丟。所以所有邊界都往「可行」放寬
+    _IZZO_PRECHECK_REL，近共線、軌道面方向不定、Halley 失敗等拿不準的情況回 IZZO_M_UNKNOWN
+    交給 izzo 自己決定。代價只是這些罕見情況照舊漏一點；好處是永遠不會跳掉 izzo 解得出來的
+    分支——那會讓搜尋悄悄變差、而且不報錯。驗證見 tests/test_izzo_max_revs.py。
+    """
+    if not (tof > 0 and k > 0):
+        return IZZO_M_UNKNOWN                 # izzo 的 assert，交給它丟
+    c = r2 - r1
+    c_norm, r1_norm, r2_norm = _izzo_norm(c), _izzo_norm(r1), _izzo_norm(r2)
+    i_h = np.cross(r1 / r1_norm, r2 / r2_norm)
+    h_norm = _izzo_norm(i_h)
+    if not h_norm > 1e-7:
+        return IZZO_M_UNKNOWN                 # 近共線：izzo 丟不丟看浮點運氣
+    s = (r1_norm + r2_norm + c_norm) * 0.5
+    T = np.sqrt(2 * k / s**3) * tof
+    if not T > 0:
+        return IZZO_M_UNKNOWN
+    ll = np.sqrt(1 - min(1.0, c_norm / s))
+    hz = i_h[2] / h_norm
+    if abs(hz) < 1e-9:
+        # 軌道面法向量幾乎躺在 xy 平面，izzo 的 ll 取正取負看浮點運氣——兩種都算、取寬的
+        return max(_izzo_m_max_for_ll(ll, T, numiter, rtol),
+                   _izzo_m_max_for_ll(-ll, T, numiter, rtol))
+    if hz < 0:
+        ll = -ll
+    if not prograde:
+        ll = -ll
+    return _izzo_m_max_for_ll(ll, T, numiter, rtol)
