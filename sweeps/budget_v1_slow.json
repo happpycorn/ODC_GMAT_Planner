@@ -1,0 +1,33 @@
+{
+  "name": "budget_v1_slow",
+  "_說明": "budget_v1 的慢情境版（每次評估 ~30ms 級）：只跑 POPSIZE=20 的三個預算等級 × 3 SEED。",
+  "scenarios": [
+    {
+      "name": "weird_test",
+      "config": "configs/weird_test.json"
+    },
+    {
+      "name": "hard_mode",
+      "config": "configs/hard_mode_test.json"
+    }
+  ],
+  "seeds": [
+    0,
+    1,
+    2
+  ],
+  "variants": {
+    "B1/3_pop20": {
+      "optimization.MAXITER": 200,
+      "optimization.POPSIZE": 20
+    },
+    "B1_pop20": {
+      "optimization.MAXITER": 600,
+      "optimization.POPSIZE": 20
+    },
+    "B3_pop20": {
+      "optimization.MAXITER": 1800,
+      "optimization.POPSIZE": 20
+    }
+  }
+}
