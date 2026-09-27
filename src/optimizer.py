@@ -497,6 +497,9 @@ class MissionOptimizer:
         # 一棒省下來」這種貼邊解 (HAP47_SPLIT_ALGORITHM_RESEARCH.md §7.1 GMAT 驗證過確實
         # 比 split_even 均分多省一點)。預設開；沒經過大規模場景驗證，留關掉的口子。
         self.ENABLE_NLP_SPLIT_REFINE = bool(strategy.get("ENABLE_NLP_SPLIT_REFINE", True))
+        # 每個棒數案例 DE 跑完後，對每顆種子再單獨跑一次 L-BFGS-B (見 _optimize_burn_case)。
+        # 跟上面的 SLSQP 部分重疊 (審計 P4)，留開關給消融用；預設開 = 舊行為。
+        self.SEED_LBFGS_POLISH = bool(strategy.get("SEED_LBFGS_POLISH", True))
 
         # 最後一棒 Lambert 要考慮的最大圈數。規則的 T_max = 4 x A 的週期，所以最多
         # 也就塞得下約 4 圈，預設就取 4（2026-08-29 從 0 改過來）。
@@ -1563,7 +1566,7 @@ class MissionOptimizer:
         # refine_trajectory() 對最終贏家做的事同一招，只是這裡對每個種子各做一次，
         # 而且要在這裡 (子行程) 做，不能留到外層 (run_study 只會對最終贏家精修一次，
         # 其他燃燒次數案例自己的種子沒有第二次機會)。
-        for seed_x in seed_candidates:
+        for seed_x in (seed_candidates if self.SEED_LBFGS_POLISH else []):
             # 2026-08-15：改用共用的 _narrow_tolerance_bounds (跟 refine_trajectory()
             # 同一套規則)，正確處理多棒種子的完整陣列結構 (原本這裡寫死只認識單棒
             # 的 5 元素陣列，多棒種子索引會對不上、精修會用錯容忍度)。
@@ -1590,7 +1593,8 @@ class MissionOptimizer:
         if self.seed is not None:
             note += "，單執行緒 (seed 已設定)"
         if seed_candidates:
-            note += f"，{len(seed_candidates)} 個種子已獨立精修"
+            note += (f"，{len(seed_candidates)} 個種子已獨立精修" if self.SEED_LBFGS_POLISH
+                     else f"，{len(seed_candidates)} 個種子（未獨立精修）")
 
         # note 回傳給主行程印，不在這裡印 (見函式開頭的說明)
         return current_burns, current_best_x, current_best_score, epochs_run, note

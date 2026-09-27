@@ -261,6 +261,10 @@ def _validate_strategy(strategy_cfg, errors: list):
         errors.append("strategy.ENABLE_NLP_SPLIT_REFINE 必須是 true/false，但收到 "
                       f"{strategy_cfg['ENABLE_NLP_SPLIT_REFINE']!r}")
 
+    if "SEED_LBFGS_POLISH" in strategy_cfg and not isinstance(strategy_cfg["SEED_LBFGS_POLISH"], bool):
+        errors.append("strategy.SEED_LBFGS_POLISH 必須是 true/false，但收到 "
+                      f"{strategy_cfg['SEED_LBFGS_POLISH']!r}")
+
     if "AUTO_SPLIT_LEGALIZE" in strategy_cfg and not isinstance(strategy_cfg["AUTO_SPLIT_LEGALIZE"], bool):
         errors.append("strategy.AUTO_SPLIT_LEGALIZE 必須是 true/false，但收到 "
                       f"{strategy_cfg['AUTO_SPLIT_LEGALIZE']!r}（低棒數 route-first 贏家的動態拆棒開關）")

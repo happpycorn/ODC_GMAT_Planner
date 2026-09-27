@@ -1,0 +1,70 @@
+{
+  "name": "ablation_v1",
+  "_說明": "REVS 集成（審計 P2）與種子雙重局部精修（審計 P4）消融。搜尋預算固定現行 600×20（budget_v1 結論）。all_on = 現行預設，應與 budget_v1 的 B1_pop20 逐位元相同（同 SEED、暖快取）——順便驗新開關預設不改行為。見 STATUS 待辦 3。",
+  "scenarios": [
+    {
+      "name": "contest",
+      "config": "configs/contest.json",
+      "overrides": {
+        "optimization.MAX_BURNS": [
+          1,
+          2,
+          3
+        ]
+      }
+    },
+    {
+      "name": "contest_fastT",
+      "config": "configs/contest.json",
+      "overrides": {
+        "optimization.MAX_BURNS": [
+          1,
+          2,
+          3
+        ],
+        "rules.C_t": 5000.0
+      },
+      "_說明": "同幾何、時間項收緊（C_t 6505→5000）：現行路線時間分 24.1→1.6，測結論換權重還成不成立"
+    },
+    {
+      "name": "official_sample",
+      "config": "configs/official_sample.json"
+    },
+    {
+      "name": "hyper_far",
+      "config": "configs/hyper_far.json"
+    }
+  ],
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "base": {
+    "optimization.MAXITER": 600,
+    "optimization.POPSIZE": 20
+  },
+  "variants": {
+    "all_on": {},
+    "ens_off_revs4": {
+      "strategy.REVS_ENSEMBLE": false,
+      "strategy.LAMBERT_MAX_REVS": 4
+    },
+    "ens_off_revs0": {
+      "strategy.REVS_ENSEMBLE": false,
+      "strategy.LAMBERT_MAX_REVS": 0
+    },
+    "seed_none": {
+      "strategy.ENABLE_NLP_SPLIT_REFINE": false,
+      "strategy.SEED_LBFGS_POLISH": false
+    },
+    "seed_slsqp_only": {
+      "strategy.SEED_LBFGS_POLISH": false
+    },
+    "seed_lbfgs_only": {
+      "strategy.ENABLE_NLP_SPLIT_REFINE": false
+    }
+  }
+}

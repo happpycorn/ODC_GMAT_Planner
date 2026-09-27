@@ -151,6 +151,10 @@ strategy_errors = []
 _validate_strategy({**PREFLIGHT_CFG["strategy"], "AUTO_SPLIT_LEGALIZE": "false"}, strategy_errors)
 check("AUTO_SPLIT_LEGALIZE 字串 false 會被 validator 擋下（避免 bool('false') 誤判為開啟）",
       any("AUTO_SPLIT_LEGALIZE" in error for error in strategy_errors))
+strategy_errors = []
+_validate_strategy({**PREFLIGHT_CFG["strategy"], "SEED_LBFGS_POLISH": "false"}, strategy_errors)
+check("SEED_LBFGS_POLISH 字串 false 會被 validator 擋下",
+      any("SEED_LBFGS_POLISH" in error for error in strategy_errors))
 
 
 # ────────────────────────────────────────────────────────────────────────
