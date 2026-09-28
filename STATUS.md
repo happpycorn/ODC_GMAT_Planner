@@ -191,7 +191,23 @@ C. C4 後續：中間棒超標也納入拆後估計；預付拆棒成本依幾�
    `_slot_after_capped` 補空位後**預設管線從頭跑就是 98.3188**（GMAT ✅）。多候選各拆暫不需要，雙曲線真題再評估。
 2. **測試 quick/full 分層**（[FLOW_EFFICIENCY_AUDIT](docs/FLOW_EFFICIENCY_AUDIT_20260923.md) P1）：`run_regression.py --quick`
    排除 slow e2e；`test_hyperbolic_e2e` 拆結構煙霧／e2e 兩支。
-3. **REVS 集成消融**（審計 P2，~1.8× 成本）與**種子雙重局部精修消融**（審計 P4）：固定 SEED 多情境跑數據再決定預設。
+3. **✅ REVS 集成與種子雙重精修消融完成（2026-09-28，`sweeps/ablation_v1.json`，4 快情境 × 6 組 × 5 SEED = 120 次全 ok）**。
+   all_on（現行預設）與 budget_v1 的 600×20 **20 組逐位元相同**（新開關 `SEED_LBFGS_POLISH` 預設不改行為；暖快取下隔天重跑可重現）。
+   逐 run 對 all_on：
+
+   | 組別 | 同分 / 較好 / 較差 | 最差差距 | CPU 比例 |
+   |---|---|---|---|
+   | ens_off_revs4（只跑 REVS=4） | 10 / 2 / 8 | **−1.7264**（contest_fastT 掉家族） | 0.63 |
+   | ens_off_revs0（只跑 REVS=0） | 10 / 0 / 10 | **−0.1197**（hyper_far 5/5 都掉，丟了多圈解） | 0.63 |
+   | seed_slsqp_only（關 L-BFGS-B） | 19 / 1 / 0 | 0 | 0.99 |
+   | seed_lbfgs_only（關 SLSQP） | 1 / 8 / 11 | −0.0070 | 1.00 |
+   | seed_none（兩層都關） | 1 / 8 / 11 | −0.0070 | 0.95 |
+
+   **結論：預設全部維持。** (1) **REVS 集成值得**：單跑 REVS=4 或 REVS=0 各有一個情境會掉分（−1.73 / −0.12），集成兩邊都
+   接住，代價 ~1.6× CPU——跟 memory「REVS 單調性脆弱」一致。要省時間該做的是審計 P2 的第 3 點（兩趟改成案例統一排程，
+   省牆鐘不省 CPU），不是關掉集成。(2) **種子兩層精修都不影響結果、也幾乎不花成本**：關 L-BFGS-B 19/20 同分、CPU 省 1%；
+   關 SLSQP 會改變軌跡但只在同盆地內 ±0.007 抖動、沒有系統性好壞。沒有改的理由，審計 P4 結案。
+   注意這輪沒含 weird_test/hard_mode（太慢）；contest/hard_mode 在 budget_v1 已顯示對搜尋設定不敏感。
 4. seed-portfolio 定位改為「探索不同盆地」（同盆地散布已 1e-4）；預設維持 1。
 5. 等官方：計分參數與六根數；雙曲線真題出來後重驗 SPLIT_AWARE / C2；P2 Earth-safe（攝動開時數值取樣）。
 6. 凸拆棒器（C3 B 檔）擱置——拆棒雜訊已 1e-4。
