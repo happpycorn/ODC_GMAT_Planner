@@ -119,7 +119,10 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
   直接報錯、不再拖到 poliastro 算位置才炸。回歸 `tests/test_hyperbolic_e2e.py`。
 - ⚠️ **計分參數與 A/B 六根數要等官方發題**（`k_t/C_t/k_v/C_v`）。
 
-**待辦（2026-09-26 更新，依優先序）**：
+**待辦（2026-09-28 更新，依優先序）**——**下一步的詳細清單見 [HANDOFF_20260928.md](docs/HANDOFF_20260928.md)**：
+- 🔴 **新發現：提早停止（`MAX_EARLY_STOP`/`TOL`）從來沒生效過。** `L_SHADE(termination=...)` 傳給建構子，但 mealpy 的
+  `solve()` 開頭用自己的 `termination=None` 把它蓋掉，所以每次都跑滿 MAXITER。修法要先決定（會改變搜尋行為），見交接文件任務 2。
+- 下一個工作：回歸測試分 quick/full（交接文件任務 1、下方待辦 2）。
 A. **✅ izzo 例外記憶體洩漏已修（2026-09-26）**：`core_math.izzo_max_revs` 在 `fast_fitness_evaluator` 呼叫 izzo 前
    預檢 M_max，跳過「飛行時間不夠繞 M 圈」必丟 ValueError 的分支（numba 內 raise+catch 每次漏 ~1.8 KB）。
    洩漏 1.85 → 0.03 KB/eval、評估速度不變；E3（contest 4 棒、2000 代）系統用量修前 6 分鐘吃滿 12 GB 進 swap，
