@@ -55,6 +55,7 @@ config 分四大塊 + 一塊選填，各自對應「誰決定這個數字」：`
 | `strategy.MISS_TOLERANCE_KM` | 規則只要求 Δr ≤ 這個值 (預設對齊規則的 5km)，可以彈性調小 (甚至設 0 退回精準瞄準)，讓最後一棒 Lambert 在容許範圍內找最省油的落點，而不是死盯著 A 的精確位置 |
 | `optimization.MAX_BURNS` | 要嘗試的燃燒次數列表，例如 `[1, 2, 3]` 會三種都跑，選分數最高的 |
 | `optimization.MAXITER` / `POPSIZE` | 搜尋精細度。`POPSIZE` 是「每個決策變數維度分配幾個個體」(族群大小 = 維度數 × POPSIZE)，不是總數，越大越準但越久 |
+| `optimization.EARLY_STOP_ENABLED`（選填，預設 `false`） | 啟用後才會使用 `MAX_EARLY_STOP` 與 `TOL` 提早停止搜尋；`TOL` 是分數單位。2026-09-29 消融發現多個情境明顯掉分，維持關閉較穩妥。見 [實驗結果](docs/EARLY_STOP_ABLATION_20260929.md) |
 | `local.gmat_console_path`（選填） | 這台機器上 `GmatConsole` 的路徑。不填就用 `--gmat-console` 參數，或 `main.py` 裡寫死的最後備援值（那是我這台機器的路徑，換一台機器大概率對不上）。優先順序：`--gmat-console` > 這個欄位 > 寫死的備援值。config.json 本來就被 `.gitignore` 排除，填在這裡不會跟著 git 到處跑，換電腦/換人開發各自維護自己的這一項就好，不用每次執行都手動打 `--gmat-console` |
 | `optimization.NUM_THREADS` | 每個燃燒次數案例要用幾條執行緒平行評估族群；設 `-1` 或 0 以下會自動用「可用核心數 ÷ 燃燒次數案例數」估一個合理值 |
 | `optimization.SEED` | 設一個整數可以讓同一組設定每次重現一模一樣的結果，方便比較「改了東西到底有沒有用」。**注意：設了 SEED 會自動退回單執行緒**（多執行緒下亂數搶用有 race condition，seed 保證不了重現性），犧牲速度換可重現性；不設 (`null`，預設) 就照樣用多執行緒換速度，兩者只能選一個 |
@@ -195,7 +196,7 @@ uv run sweep_burns.py --config configs/x.json --burns 2-8
 
 | 欄位 | 預設 | 什麼時候調 |
 |---|---|---|
-| `LAMBERT_MAX_REVS` | `4` | 最後一棒 Lambert 要考慮的**最大圈數**。規則的 `T_max` 是 A 的四個週期，所以最多也就塞得下約 4 圈。對**單點評估**是嚴格更大的搜尋空間、不可能讓那一點變差（分支選擇是在固定的抵達時間下取最省的那條，時間分不變、燃料只會更好），成本 1.01 倍。但對**搜尋結果**不成立——L-SHADE 偶爾會收斂到更差的盆地（見 HAP-42），所以預設 `REVS_ENSEMBLE=true` 會額外跑一次 `REVS=0` 取兩者較好的，見 `run_study_over_revs`。設 `0` 可退回 2026-08-28 之前的行為（也讓 REVS_ENSEMBLE 自動退成單跑）。 |
+| `LAMBERT_MAX_REVS` | `4` | 最後一棒 Lambert 要考慮的**最大圈數**。規則的 `T_max` 是 A 的四個週期，所以最多也就塞得下約 4 圈。對**單點評估**是嚴格更大的搜尋空間、不可能讓那一點變差（分支選擇是在固定的抵達時間下取最省的那條，時間分不變、燃料只會更好），成本 1.01 倍。但對**搜尋結果**不成立——L-SHADE 偶爾會收斂到更差的盆地（見 HAP-42），所以預設 `REVS_ENSEMBLE=true` 會同時排程 `REVS=0` 和 `REVS=4` 的燃燒案例、取兩者較好者，見 [排程驗證](docs/REVS_SCHEDULING_20260929.md)。設 `0` 可退回 2026-08-28 之前的行為（也讓 REVS_ENSEMBLE 自動退成單跑）。 |
 | `MAX_DV_MARGIN_MPS` | `2.0` | 搜尋階段每棒 Δv 上限往內縮多少（安全邊界，見 METHODOLOGY 第 6 節）。最佳解有棒數頂到上限時調小可以白賺幾 m/s，**調完要確認違規次數還是 0**。 |
 | `TIEBREAK_POLISH` | `true` | 規則第 6 節優先序 1 的收尾微調，見下面〈平手判定〉。 |
 | `SPLIT_AWARE_TERMINAL` | `true` | 終端棒超標但拆得掉（≤ `SPLIT_AWARE_TERMINAL_MAX_FACTOR`×上限，預設 5）時，搜尋與挑贏家改用「拆後估計分數」、不扣 10 分，避免收斂到省油但晚到的合法家族。拆棒真的失敗會自動用 `false` 重跑一輪搜尋當退路（最差 = 關閉時的結果，但多花一輪搜尋時間）。只在 `AUTO_SPLIT_LEGALIZE=true` 時生效。見 [docs/C4_TERMINAL_SPLIT_AWARE_PLAN.md](docs/C4_TERMINAL_SPLIT_AWARE_PLAN.md)。 |

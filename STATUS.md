@@ -94,10 +94,13 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
   rendezvous 末端速度匹配殘留——`_lam_best`/終端 Lambert 三處 `vref` 都是載具自身燒前速度
   （非目標速度），scorer 的 `k_v/C_v` 罰的是總Δv預算不是速度差。雙曲線下不會浪費燃料去匹配
   近地點高速。
-- 回歸：`uv run python run_regression.py`（11 支、~6 分鐘——2026-09-26 量到 370s，其中 `test_hyperbolic_e2e` 278s；動任何東西前先跑）。拆棒管線有
-  `tests/test_burn_splitter.py`；**雙曲線 A 端到端有 `tests/test_hyperbolic_e2e.py`（2026-09-22 補，
-  A5）**——結構煙霧（雙曲線輸入端＋種子產生器不炸）＋拆棒 e2e（違規→自動拆分→零違規/命中/
-  Earth-safe），性質式斷言。這補上了 STATUS 舊列的 P3 缺口。
+- 回歸：平常 `uv run python run_regression.py --quick`（10 支，實測 58.4 秒）；commit 前
+  `uv run python run_regression.py` 跑 full（14 支，2026-09-29 實測 422.2 秒；新增 `test_revs_schedule.py` 為 slow）。動程式前後都要跑。
+  測試檔頂以 `SLOW = True` 標記慢測試，runner 只解析文字、不 import；目前 slow 為
+  `test_hyperbolic_e2e`、`test_burn_splitter`、`test_nlp_split_refine`、`test_revs_schedule`。
+  **雙曲線 A**：`tests/test_hyperbolic_smoke.py` 守輸入、種子產生器與 TA 漸近線驗證（quick 包含）；
+  `tests/test_hyperbolic_e2e.py` 守拆棒 e2e（違規→自動拆分→零違規/命中/Earth-safe）。
+  兩支共用 `tests/hyperbolic_fixture.py` 的內建設定。
 - **可重現性（2026-09-22 修）**：管線設了 SEED 現在**真的**可重現了。原本 `seed→單執行緒` 只鎖
   mealpy 的 RNG，沒鎖 scipy SLSQP 種子精修走的**多執行緒 BLAS**——多執行緒 BLAS 浮點歸約
   run-to-run 順序不同，會讓種子/DE 在臨界點翻盤（2 vs 3 棒、分數 ±1）。修法：`run_study_over_revs`
@@ -116,13 +119,16 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
   都收斂命中。回歸測試已於 2026-09-22 補上（`tests/test_hyperbolic_e2e.py`，A5）。
 - ✅ **P4 雙曲線 A 的 TA 漸近線檢查已補（2026-09-22，A4）**：`config_validator._validate_orbit`
   對 ECC>1 檢查 `|TA| < arccos(−1/e)`（TA 折到 (−180,180] 再比，容 [0,360) 寫法），漸近線外
-  直接報錯、不再拖到 poliastro 算位置才炸。回歸 `tests/test_hyperbolic_e2e.py`。
+  直接報錯、不再拖到 poliastro 算位置才炸。回歸 `tests/test_hyperbolic_smoke.py`。
 - ⚠️ **計分參數與 A/B 六根數要等官方發題**（`k_t/C_t/k_v/C_v`）。
 
-**待辦（2026-09-28 更新，依優先序）**——**下一步的詳細清單見 [HANDOFF_20260928.md](docs/HANDOFF_20260928.md)**：
-- 🔴 **新發現：提早停止（`MAX_EARLY_STOP`/`TOL`）從來沒生效過。** `L_SHADE(termination=...)` 傳給建構子，但 mealpy 的
-  `solve()` 開頭用自己的 `termination=None` 把它蓋掉，所以每次都跑滿 MAXITER。修法要先決定（會改變搜尋行為），見交接文件任務 2。
-- 下一個工作：回歸測試分 quick/full（交接文件任務 1、下方待辦 2）。
+**待辦（2026-09-29 更新，依優先序）**——**下一步的詳細清單見 [HANDOFF_20260928.md](docs/HANDOFF_20260928.md)**：
+- ✅ **提早停止已修、預設關閉（2026-09-29）。** `optimization.EARLY_STOP_ENABLED=true` 才把 `MAX_EARLY_STOP`/`TOL`
+  傳給 mealpy 的 `solve()`；省 CPU 但多個情境掉分，維持預設 `false`。40 筆快情境＋3 筆 weird_test 的
+  [消融結果](docs/EARLY_STOP_ABLATION_20260929.md) 顯示最差分別掉 1.7269／1.9547 分。
+- ✅ **REVS 案例統一排程（2026-09-29）**：REVS=0/4 × 棒數共用一個行程池；固定 SEED 的兩種幾何
+  回傳值逐位元相同，600 代 contest 拆前／拆後結果與舊版相同。獨立基準的牆鐘少 31%–36%，
+  詳見 [REVS 排程驗證](docs/REVS_SCHEDULING_20260929.md)。真題校正待官方發題。
 A. **✅ izzo 例外記憶體洩漏已修（2026-09-26）**：`core_math.izzo_max_revs` 在 `fast_fitness_evaluator` 呼叫 izzo 前
    預檢 M_max，跳過「飛行時間不夠繞 M 圈」必丟 ValueError 的分支（numba 內 raise+catch 每次漏 ~1.8 KB）。
    洩漏 1.85 → 0.03 KB/eval、評估速度不變；E3（contest 4 棒、2000 代）系統用量修前 6 分鐘吃滿 12 GB 進 swap，
@@ -163,8 +169,8 @@ B. **參數正式實驗**（2026-09-26 新增；現行 MAXITER/POPSIZE 等是憑
      **結論：維持 MAXITER=600、POPSIZE=20，不改預設。** 砍到 1/3 在 6 情境中 3 個掉分（最多 1.7）；加到 3 倍只有
      hyper_far +0.09。跨情境平均名次 600×20 與 3 倍並列第一。**同預算不要加大族群**：POPSIZE 40（代數跟著少）在低、中
      預算都較差（official_sample B1_pop40 中位數掉到 90.21）——代數比族群重要。
-     **提早停止（MAX_EARLY_STOP/TOL）在 198 次裡一次都沒觸發**，每次都跑滿 MAXITER：這兩個參數目前形同虛設，
-     排比賽時間要假設跑滿。註：牆鐘是設 SEED 的單執行緒數字，比賽當天（不設 SEED、多執行緒）搜尋段會快很多。
+     **歷史 198 次的提早停止設定從未生效**，因為當時 mealpy `solve()` 覆蓋了建構子的 termination；
+     2026-09-29 已修好，但預設關閉，排比賽時間仍假設跑滿。註：牆鐘是設 SEED 的單執行緒數字，比賽當天（不設 SEED、多執行緒）搜尋段會快很多。
 C. C4 後續：中間棒超標也納入拆後估計；預付拆棒成本依幾何校正（`hyperbolic_test` 低估 0.435）。
 0. **✅ C4 結案（2026-09-25）：`SPLIT_AWARE_TERMINAL` 已改為預設開**；contest 預設管線 98.3191 GMAT ✅✅（與旗標開逐位元相同），
    拆棒階段補鎖 BLAS（同 SEED 拆出不同結果的漏洞），見計劃書 §6.7。以下為過程紀錄。
@@ -192,8 +198,9 @@ C. C4 後續：中間棒超標也納入拆後估計；預付拆棒成本依幾�
      回歸全過。對照用 `docs/solutions/checkpoints/` 的兩個拆棒前存檔 + `--from-winner`。
 1. ~~拆後分數進路線選擇~~ → **已解（2026-09-23 晚）**：98.319 其實是拆棒器沒處理「貼 cap 的前導棒」，
    `_slot_after_capped` 補空位後**預設管線從頭跑就是 98.3188**（GMAT ✅）。多候選各拆暫不需要，雙曲線真題再評估。
-2. **測試 quick/full 分層**（[FLOW_EFFICIENCY_AUDIT](docs/FLOW_EFFICIENCY_AUDIT_20260923.md) P1）：`run_regression.py --quick`
-   排除 slow e2e；`test_hyperbolic_e2e` 拆結構煙霧／e2e 兩支。
+2. **✅ 測試 quick/full 分層完成（2026-09-29）**（[FLOW_EFFICIENCY_AUDIT](docs/FLOW_EFFICIENCY_AUDIT_20260923.md) P1）：`run_regression.py --quick`
+   排除三支 slow；雙曲線拆成結構煙霧／e2e 兩支，保留全部檢查。
+   驗收：quick 10/10（58.4s）、full 13/13（387.8s）；拆分前後 189 checks，雙曲線 19 checks 輸出一致。
 3. **✅ REVS 集成與種子雙重精修消融完成（2026-09-28，`sweeps/ablation_v1.json`，4 快情境 × 6 組 × 5 SEED = 120 次全 ok）**。
    all_on（現行預設）與 budget_v1 的 600×20 **20 組逐位元相同**（新開關 `SEED_LBFGS_POLISH` 預設不改行為；暖快取下隔天重跑可重現）。
    逐 run 對 all_on：
@@ -207,8 +214,8 @@ C. C4 後續：中間棒超標也納入拆後估計；預付拆棒成本依幾�
    | seed_none（兩層都關） | 1 / 8 / 11 | −0.0070 | 0.95 |
 
    **結論：預設全部維持。** (1) **REVS 集成值得**：單跑 REVS=4 或 REVS=0 各有一個情境會掉分（−1.73 / −0.12），集成兩邊都
-   接住，代價 ~1.6× CPU——跟 memory「REVS 單調性脆弱」一致。要省時間該做的是審計 P2 的第 3 點（兩趟改成案例統一排程，
-   省牆鐘不省 CPU），不是關掉集成。(2) **種子兩層精修都不影響結果、也幾乎不花成本**：關 L-BFGS-B 19/20 同分、CPU 省 1%；
+   接住，代價 ~1.6× CPU——跟 memory「REVS 單調性脆弱」一致。案例統一排程已於 2026-09-29 實作，
+   用同一個行程池縮短牆鐘、保留兩趟集成。(2) **種子兩層精修都不影響結果、也幾乎不花成本**：關 L-BFGS-B 19/20 同分、CPU 省 1%；
    關 SLSQP 會改變軌跡但只在同盆地內 ±0.007 抖動、沒有系統性好壞。沒有改的理由，審計 P4 結案。
    注意這輪沒含 weird_test/hard_mode（太慢）；contest/hard_mode 在 budget_v1 已顯示對搜尋設定不敏感。
 4. seed-portfolio 定位改為「探索不同盆地」（同盆地散布已 1e-4）；預設維持 1。

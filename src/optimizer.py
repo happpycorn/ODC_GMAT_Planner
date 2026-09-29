@@ -557,6 +557,8 @@ class MissionOptimizer:
         self.num_threads = config["optimization"]["NUM_THREADS"]
         self.mes = config["optimization"]["MAX_EARLY_STOP"]
         self.tol = config["optimization"]["TOL"]
+        # 預設跑滿 MAXITER，維持既有搜尋行為；只有明確啟用才套用早停條件。
+        self.early_stop_enabled = config["optimization"].get("EARLY_STOP_ENABLED", False)
         # 固定隨機種子讓同一組設定可以重現一樣的結果，方便比較「改了東西到底有沒有用」。
         # 不設 (null/None) 就維持每次隨機，想探索不同解可以拿掉這個欄位。
         self.seed = config["optimization"].get("SEED")
@@ -1449,7 +1451,8 @@ class MissionOptimizer:
 
         model.track_optimize_step = _wrapped_track_step
 
-    def _optimize_burn_case(self, current_burns, scalar_params, vector_params, progress_queue=None):
+    def _optimize_burn_case(self, current_burns, scalar_params, vector_params, progress_queue=None,
+                            parallel_case_slots=None, progress_case_id=None):
         """
         獨立的工作包：負責在單一核心上，執行特定推進次數的最佳化。
 
@@ -1519,21 +1522,28 @@ class MissionOptimizer:
         }
 
         case_maxiter = self._maxiter_for(current_burns)
-        term_dict = {"max_early_stop": self.mes, "epsilon": self.tol}
-        model = L_SHADE(epoch=case_maxiter, pop_size=pop_size, termination=term_dict)
+        # mealpy 會在 solve() 開始時以其 termination 參數覆蓋建構子的設定。
+        termination = ({"max_early_stop": self.mes, "epsilon": self.tol}
+                       if self.early_stop_enabled else None)
+        model = L_SHADE(epoch=case_maxiter, pop_size=pop_size)
         if progress_queue is not None:
-            self._attach_progress_reporting(model, progress_queue, current_burns)
+            self._attach_progress_reporting(
+                model, progress_queue,
+                current_burns if progress_case_id is None else progress_case_id)
 
-        # 外層已經用 ProcessPoolExecutor 依燃燒次數分配了核心 (num_cases 個 process)，
+        # 外層已經用 ProcessPoolExecutor 分配案例；集成時案例包含 (REVS, burn_count)。
         # 這裡再把剩餘核心切給 mealpy 的 'thread' 模式，讓每一代的族群評估也平行跑。
         # fast_fitness_evaluator 已標記 nogil=True，thread 真的能吃到多核而不是被 GIL 卡住。
         # NUM_THREADS 設為正整數可強制指定每個 process 用幾條 thread；<=0 (含預設 -1) 則自動
-        # 用 (可用核心數 / 燃燒次數情境數) 估一個合理值。
-        num_cases = max(1, len(self.burns))
+        # 用 (可用核心數 / 同時執行的案例數) 估一個合理值；共用池也會限制明確指定的配額。
+        num_cases = max(1, parallel_case_slots or len(self.burns))
+        thread_cap = max(2, (os.cpu_count() or 4) // num_cases)
         if isinstance(self.num_threads, int) and self.num_threads > 0:
             n_workers = max(2, self.num_threads)
+            if parallel_case_slots is not None:
+                n_workers = min(n_workers, thread_cap)
         else:
-            n_workers = max(2, (os.cpu_count() or 4) // num_cases)
+            n_workers = thread_cap
         # mealpy 的 seed= 只會種到它自己建立的 np.random.default_rng(seed) 那個 generator，
         # 但 L_SHADE.evolve() 算突變參數 F 用的是 scipy.stats.cauchy.rvs(...)，沒有帶
         # random_state，實際上是從 numpy 的「全域」隨機狀態拿亂數，完全不受 seed= 控制。
@@ -1546,10 +1556,11 @@ class MissionOptimizer:
         # 單執行緒換取重現性；沒設 seed (預設) 就照樣用多執行緒換速度，兩者只能選一個。
         if self.seed is not None:
             np.random.seed(self.seed)
-            g_best = model.solve(problem, seed=self.seed, starting_solutions=starting_solutions)
+            g_best = model.solve(problem, seed=self.seed, starting_solutions=starting_solutions,
+                                 termination=termination)
         else:
             g_best = model.solve(problem, mode="thread", n_workers=n_workers, seed=self.seed,
-                                  starting_solutions=starting_solutions)
+                                  starting_solutions=starting_solutions, termination=termination)
 
         current_best_x = g_best.solution
         raw_fitness = g_best.target.fitness
@@ -2322,8 +2333,90 @@ def pick_best_across_revs(candidates, eps=None, split_est=False):
     return best, (alt != best)
 
 
+def _run_studies_unified(revs_values, optimizers, seed_set):
+    """把所有 (REVS, burn_count) 案例放進同一個行程池，依 REVS 順序收尾。"""
+    jobs = [(revs, opt, b) for revs, opt in zip(revs_values, optimizers)
+            for b in sorted(opt.burns, reverse=True)]
+    cores = os.cpu_count() or 4
+    # 未設 SEED 時每個案例還會使用 mealpy thread 模式，至少留兩核心給每個行程。
+    worker_slots = min(len(jobs), max(1, cores if seed_set else cores // 2))
+    for opt in optimizers:
+        log.log(opt._report_level,
+                f"🚀 L-SHADE 軌道最佳化：REVS={opt.LAMBERT_MAX_REVS}，"
+                f"推進次數 {sorted(opt.burns)}，{len(opt.burns)} 個案例進共用行程池")
+        opt.preflight_report()
+
+    budgets = {(revs, b): opt._maxiter_for(b) for revs, opt, b in jobs}
+    pbar = tqdm(total=sum(budgets.values()), desc="REVS 集成搜尋世代進度", unit="gen")
+    case_progress = {}
+    progress_lock = threading.Lock()
+    stop_draining = threading.Event()
+
+    def bump(case_id, epoch):
+        with progress_lock:
+            epoch = min(epoch, budgets[case_id])
+            delta = epoch - case_progress.get(case_id, 0)
+            if delta > 0:
+                pbar.update(delta)
+                case_progress[case_id] = epoch
+
+    def drain(progress_queue):
+        while not stop_draining.is_set():
+            try:
+                case_id, epoch = progress_queue.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            except (EOFError, OSError, BrokenPipeError):
+                break
+            bump(case_id, epoch)
+
+    try:
+        with multiprocessing.Manager() as manager:
+            progress_queue = manager.Queue()
+            drain_thread = threading.Thread(target=drain, args=(progress_queue,), daemon=True)
+            drain_thread.start()
+            try:
+                with concurrent.futures.ProcessPoolExecutor(max_workers=worker_slots) as executor:
+                    futures = {}
+                    for revs, opt, b in jobs:
+                        scalars = opt._scalar_params()
+                        vectors = np.vstack([opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0])
+                        future = executor.submit(opt._optimize_burn_case, b, scalars, vectors,
+                                                 progress_queue, worker_slots, (revs, b))
+                        futures[future] = (revs, opt, b)
+                    for future in concurrent.futures.as_completed(futures):
+                        revs, opt, b = futures[future]
+                        try:
+                            b_count, best_x, best_score, epochs_run, note = future.result()
+                            log.info(f"✅ REVS={revs} 推進 {b_count} 次完成：目標值 {best_score:.4f}，"
+                                     f"跑了 {epochs_run}/{opt._maxiter_for(b_count)} 代{note}")
+                            opt.burn_case_results[b_count] = {
+                                "fitness": best_score, "epochs_run": epochs_run,
+                                "note": note, "best_x": best_x,
+                            }
+                        except Exception as exc:
+                            log.error(f"❌ [核心錯誤] REVS={revs} 推進 {b} 次案例崩潰: {exc}")
+                        finally:
+                            bump((revs, b), budgets[(revs, b)])
+            finally:
+                stop_draining.set()
+                drain_thread.join(timeout=2.0)
+    finally:
+        pbar.close()
+
+    results = []
+    for opt in optimizers:
+        picked = opt._pick_best_case()
+        if picked is None:
+            results.append((None, None, (None, None)))
+        else:
+            b, best_x, fitness = picked
+            results.append(opt.refine_trajectory(best_x, b, fitness))
+    return results
+
+
 def run_study_over_revs(config, external_seeds=None):
-    """（決策 3 / 2026-09-03）在多個 LAMBERT_MAX_REVS 值上各跑一次完整 run_study()，
+    """（決策 3 / 2026-09-03）在多個 LAMBERT_MAX_REVS 值上搜尋，
     照規則第 6 節挑最好的那趟交出去，換掉 seed×REVS 相依的搜尋脆弱性。
 
     為什麼：多圈 Lambert（REVS>0）對**單點**評估是嚴格更大的搜尋空間、不可能更差，
@@ -2331,11 +2424,10 @@ def run_study_over_revs(config, external_seeds=None):
     下 REVS=4 的最佳解比 REVS=0 少 1.45 分、完整 600 代救不回（scratch_overnight/
     tools/monotonicity_harness.py），porkchop 對拍又獨立看到 3/8 幾何 REVS=0 贏 REVS=4。
     同 SEED 各跑 REVS=0 與 REVS=LAMBERT_MAX_REVS 再取兩者較好的，就把這條脆弱性換成
-    約 1.8 倍搜尋時間（REVS=0 那趟約 0.83×，見 CONTEST_DAY §4.1）。
+    額外搜尋成本。早期串行兩趟約需單趟的 1.8 倍時間；共用案例池縮短牆鐘，CPU 工作量仍相近。
 
-    這是**外層**做法：run_study()／_pick_best_case／mission_metrics 一個字都沒動，
-    每趟內部都自洽用單一 REVS（決策 3 選的低風險方向；把 REVS 摺進平行案例格
-    以壓到 ~1.16× 的版本另開卡追蹤）。
+    每趟內部仍自洽用單一 REVS；集成時把 (REVS, burn_count) 案例放進同一個行程池，
+    全部搜尋完後依原本 REVS 順序挑選與精修。
 
     退回單跑：strategy.REVS_ENSEMBLE=false → 只用 strategy.LAMBERT_MAX_REVS
     （預設 4）跑一次。這是大 SMA／高離心率（T_max 天級）跑不完 90 分鐘時降級的
@@ -2357,7 +2449,7 @@ def run_study_over_revs(config, external_seeds=None):
     # 兩層都要 pin，缺一不可（實測過）：
     #   1. env 設在 spawn「之前」→ 子行程（_optimize_burn_case：種子生成＋DE 都在裡面）繼承、
     #      重新 import numpy 時吃到單執行緒 BLAS。
-    #   2. threadpool_limits 包住父行程的 run_study()（收子行程結果後還會做 tiebreak/L-BFGS-B
+    #   2. threadpool_limits 包住父行程的搜尋與收尾（收子行程結果後還會做 tiebreak/L-BFGS-B
     #      polish，那段在父行程跑）——父行程的 numpy/BLAS 早在本函式被呼叫前就 import 了，env
     #      這時才設已經來不及，只能用 threadpoolctl 在 runtime 重新限制已載入的 BLAS。
     seed_set = config.get("optimization", {}).get("SEED") is not None
@@ -2366,7 +2458,7 @@ def run_study_over_revs(config, external_seeds=None):
             os.environ[_v] = "1"
 
     def _blas_ctx():
-        # 每趟開一個新的 context（不重用同一個物件），seed 沒設就不限制、保留多核。
+        # 搜尋與兩趟收尾共用一個 context；seed 沒設就不限制、保留多核。
         return threadpool_limits(limits=1, user_api="blas") if seed_set else contextlib.nullcontext()
 
     strategy = config.get("strategy", {})
@@ -2375,13 +2467,13 @@ def run_study_over_revs(config, external_seeds=None):
 
     revs_values = [high_revs] if (not ensemble or high_revs == 0) else sorted({0, high_revs})
 
-    candidates = []   # [(revs, burns, times, mission_info)]
-    optimizers = []   # 對齊 candidates，保留每趟的 optimizer 實例給呼叫端用
+    optimizers = []   # 保留每趟的 optimizer 實例給呼叫端用
     multi = len(revs_values) > 1
     for idx, revs in enumerate(revs_values):
         if multi:
-            log.info(f"\n🎲 REVS 集成 第 {idx + 1}/{len(revs_values)} 趟："
-                     f"LAMBERT_MAX_REVS={revs}（同 SEED，只差這個）")
+            random_note = "同 SEED，只差這個" if seed_set else "各自隨機探索"
+            log.info(f"\n🎲 REVS 集成 案例組 {idx + 1}/{len(revs_values)}："
+                     f"LAMBERT_MAX_REVS={revs}（{random_note}）")
         cfg = copy.deepcopy(config)
         cfg.setdefault("strategy", {})["LAMBERT_MAX_REVS"] = revs
         opt = MissionOptimizer(cfg)
@@ -2391,10 +2483,14 @@ def run_study_over_revs(config, external_seeds=None):
         # 避免同一份報告在 console 上印每一趟——只在下面把勝出趟以 INFO 重印一次。
         if multi:
             opt._report_level = logging.DEBUG
-        with _blas_ctx():
-            burns, times, mission_info = opt.run_study()
-        candidates.append((revs, burns, times, mission_info))
         optimizers.append(opt)
+
+    with _blas_ctx():
+        if multi:
+            results = _run_studies_unified(revs_values, optimizers, seed_set)
+        else:
+            results = [optimizers[0].run_study()]
+    candidates = [(revs, *result) for revs, result in zip(revs_values, results)]
 
     if len(candidates) == 1:
         _, burns, times, mission_info = candidates[0]

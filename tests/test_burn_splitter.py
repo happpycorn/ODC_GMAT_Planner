@@ -9,6 +9,8 @@
 
 被 run_regression.py 自動發現（tests/test_*.py）。全過 exit 0，任一不過 exit 1。
 """
+SLOW = True  # 約 20 秒；quick 保留在 60 秒左右，完整回歸仍執行。
+
 import os
 import sys
 import json

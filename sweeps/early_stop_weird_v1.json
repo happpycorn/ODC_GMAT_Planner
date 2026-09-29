@@ -1,0 +1,24 @@
+{
+  "name": "early_stop_weird_v1",
+  "_說明": "窄窗 weird_test 三顆 SEED，600×20 早停啟用；關閉組使用 outputs/sweeps/budget_v1_slow 的 B1_pop20 暖快取歷史結果比較。",
+  "scenarios": [
+    {
+      "name": "weird_test",
+      "config": "configs/weird_test.json"
+    }
+  ],
+  "seeds": [
+    0,
+    1,
+    2
+  ],
+  "variants": {
+    "on": {
+      "optimization.EARLY_STOP_ENABLED": true
+    }
+  },
+  "base": {
+    "optimization.MAXITER": 600,
+    "optimization.POPSIZE": 20
+  }
+}

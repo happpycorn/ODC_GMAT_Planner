@@ -1,0 +1,25 @@
+{
+  "name": "revs_unified_v1",
+  "_說明": "REVS 共用案例排程後，contest 600×20 SEED0 與 early_stop_v1 off 完整求解比較。",
+  "scenarios": [
+    {
+      "name": "contest",
+      "config": "configs/contest.json",
+      "overrides": {
+        "optimization.MAX_BURNS": [
+          1,
+          2,
+          3
+        ]
+      }
+    }
+  ],
+  "seeds": [
+    0
+  ],
+  "base": {
+    "optimization.MAXITER": 600,
+    "optimization.POPSIZE": 20,
+    "optimization.EARLY_STOP_ENABLED": false
+  }
+}

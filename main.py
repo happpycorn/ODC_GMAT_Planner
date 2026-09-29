@@ -104,7 +104,8 @@ DEFAULT_CONFIG = {
         "POPSIZE": 10,  # 每個決策變數維度分配幾個個體 (族群大小 = 維度數 * POPSIZE)
         "NUM_THREADS": -1, # <=0 自動用「可用核心數 / 燃燒次數案例數」估合理的執行緒數
         "MAX_EARLY_STOP": 30,
-        "TOL": 0.02,  # Score 是 0~100 分量表，這個值要跟這個量表相稱，太小早停形同虛設
+        "TOL": 0.02,  # Score 是 0~100 分量表；只有啟用早停時才套用
+        "EARLY_STOP_ENABLED": False,  # 預設跑滿 MAXITER；實驗確認品質後才考慮啟用
         "SEED": None,  # 設一個整數可以讓同一組設定每次重現一樣的結果，方便比較改動
     },
 }

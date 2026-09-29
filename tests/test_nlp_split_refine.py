@@ -7,6 +7,8 @@
 `reconstruct_mission_logs` 本身（那兩個已經有別的測試/PoC 的 GMAT 驗證覆蓋），這裡只信任
 它們、不重複驗證。
 """
+SLOW = True  # 約 20 秒；quick 保留在 60 秒左右，完整回歸仍執行。
+
 
 import os
 import sys

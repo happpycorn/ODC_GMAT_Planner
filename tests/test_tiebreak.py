@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.optimizer import (MissionOptimizer, tiebreak_rank_key,
                            decision_variable_dims, pick_best_across_revs)
-from src.config_validator import _validate_strategy
+from src.config_validator import _validate_strategy, _validate_optimization
 
 FAILS = []
 
@@ -155,6 +155,12 @@ strategy_errors = []
 _validate_strategy({**PREFLIGHT_CFG["strategy"], "SEED_LBFGS_POLISH": "false"}, strategy_errors)
 check("SEED_LBFGS_POLISH 字串 false 會被 validator 擋下",
       any("SEED_LBFGS_POLISH" in error for error in strategy_errors))
+
+optimization_errors = []
+_validate_optimization({**PREFLIGHT_CFG["optimization"], "EARLY_STOP_ENABLED": "false"},
+                       optimization_errors)
+check("EARLY_STOP_ENABLED 字串 false 會被 validator 擋下",
+      any("EARLY_STOP_ENABLED" in error for error in optimization_errors))
 
 
 # ────────────────────────────────────────────────────────────────────────

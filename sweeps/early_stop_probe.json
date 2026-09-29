@@ -1,0 +1,31 @@
+{
+  "name": "early_stop_probe",
+  "_說明": "確認同一 SEED 下 enabled 會提前終止、disabled 會跑滿。",
+  "scenarios": [
+    {
+      "name": "official_sample",
+      "config": "configs/official_sample.json"
+    }
+  ],
+  "seeds": [
+    0
+  ],
+  "base": {
+    "optimization.MAX_BURNS": [
+      1
+    ],
+    "optimization.MAXITER": 8,
+    "optimization.POPSIZE": 5,
+    "optimization.MAX_EARLY_STOP": 2,
+    "optimization.TOL": 1000.0,
+    "strategy.REVS_ENSEMBLE": false
+  },
+  "variants": {
+    "off": {
+      "optimization.EARLY_STOP_ENABLED": false
+    },
+    "on": {
+      "optimization.EARLY_STOP_ENABLED": true
+    }
+  }
+}

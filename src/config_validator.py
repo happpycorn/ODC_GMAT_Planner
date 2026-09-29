@@ -367,6 +367,10 @@ def _validate_optimization(opt_cfg, errors: list):
         if not _is_number(v) or v < 0:
             errors.append(f"optimization.TOL 必須是 >=0 的數字，但收到 {v!r}")
 
+    if "EARLY_STOP_ENABLED" in opt_cfg and not isinstance(opt_cfg["EARLY_STOP_ENABLED"], bool):
+        errors.append("optimization.EARLY_STOP_ENABLED 必須是 true/false，但收到 "
+                      f"{opt_cfg['EARLY_STOP_ENABLED']!r}")
+
     if "SEED" in opt_cfg:
         v = opt_cfg["SEED"]
         if v is not None and not _is_int(v):

@@ -1,5 +1,5 @@
 """一鍵賽前回歸（HAP-37）：把 tests/ 底下所有 test_*.py 一次跑完，給一個乾淨的
-PASS/FAIL 總結。比賽當天在動任何東西前先跑這個，30 秒內確認地基沒被自己弄壞。
+PASS/FAIL 總結。平常用 --quick（約 60 秒），commit 前跑 full（約 6 分鐘）。
 
 為什麼用子行程一支一支跑，而不是 import 進來呼叫 main()
 ──────────────────────────────────────────────────────
@@ -10,10 +10,13 @@ PASS/FAIL 總結。比賽當天在動任何東西前先跑這個，30 秒內確�
 
 跑法：
   uv run python run_regression.py            # 跑全部
+  uv run python run_regression.py --quick    # 跳過檔頂標記 SLOW = True 的測試
   uv run python run_regression.py -q         # 只印每支的 PASS/FAIL 一行，不印內文
   uv run python run_regression.py test_rotation_invariance   # 只跑名字含這個字串的
 """
 
+import argparse
+import ast
 import glob
 import os
 import subprocess
@@ -24,10 +27,25 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 TESTS_DIR = os.path.join(ROOT, "tests")
 
 
-def discover(filters):
+def is_slow(path):
+    """只解析檔案頂層的 SLOW = True，不 import 或執行測試。"""
+    with open(path, encoding="utf-8") as source:
+        module = ast.parse(source.read(), filename=path)
+    return any(
+        isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "SLOW" for target in node.targets)
+        and isinstance(node.value, ast.Constant)
+        and node.value.value is True
+        for node in module.body
+    )
+
+
+def discover(filters, quick=False):
     paths = sorted(glob.glob(os.path.join(TESTS_DIR, "test_*.py")))
     if filters:
         paths = [p for p in paths if any(f in os.path.basename(p) for f in filters)]
+    if quick:
+        paths = [p for p in paths if not is_slow(p)]
     return paths
 
 
@@ -44,16 +62,20 @@ def run_one(path, quiet):
 
 
 def main():
-    args = [a for a in sys.argv[1:]]
-    quiet = "-q" in args
-    filters = [a for a in args if not a.startswith("-")]
+    parser = argparse.ArgumentParser(description="賽前回歸：預設 full，平常可用 --quick。")
+    parser.add_argument("--quick", action="store_true", help="跳過標記 SLOW = True 的測試")
+    parser.add_argument("-q", action="store_true", dest="quiet", help="只印每支 PASS/FAIL，失敗仍印輸出")
+    parser.add_argument("filters", nargs="*", help="只跑檔名含任一字串的測試")
+    args = parser.parse_args()
+    quiet = args.quiet
 
-    paths = discover(filters)
+    paths = discover(args.filters, quick=args.quick)
     if not paths:
-        print("找不到符合的測試（tests/test_*.py）。")
+        print("找不到符合的測試（tests/test_*.py；--quick 會排除 slow）。")
         sys.exit(2)
 
-    print(f"=== 賽前回歸：{len(paths)} 支測試 ===\n")
+    mode = "quick" if args.quick else "full"
+    print(f"=== 賽前回歸（{mode}）：{len(paths)} 支測試 ===\n")
     results = []
     for path in paths:
         name = os.path.basename(path)
