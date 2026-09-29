@@ -4,7 +4,7 @@
   "scenarios": [
     {
       "name": "contest",
-      "config": "configs/contest.json",
+      "config": "configs/shared/contest.json",
       "overrides": {
         "optimization.MAX_BURNS": [
           1,

@@ -12,6 +12,7 @@ GMAT 的腳本語言是純 ASCII。非 ASCII 字元（設定名稱帶中文、�
 
 import os
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -36,25 +37,21 @@ def main():
     check("純 ASCII 內容原樣放行", _require_ascii("Create Spacecraft ShipA;\nx = 1.0;") is not None)
 
     # ── 官方範例真的走一遍 script_generator，必須無錯且寫出的檔是 ASCII ──
-    path = script_generator(
-        6978.0, 0.0, 45.0, 0.0, 0.0, 0.0,
-        6878.0, 0.0, 135.0, 30.0, 0.0, 60.0,
-        burns=[(0.1, 0.0, 0.0)], times=[3000.0], aim_point=(6978.0, 0.0, 0.0),
-        max_dv=1.5, gravity_degree=4, output_filename="_test_ascii_official.txt",
-    )
-    raw = open(path, "rb").read()
+    with tempfile.TemporaryDirectory() as output_dir:
+        path = script_generator(
+            6978.0, 0.0, 45.0, 0.0, 0.0, 0.0,
+            6878.0, 0.0, 135.0, 30.0, 0.0, 60.0,
+            burns=[(0.1, 0.0, 0.0)], times=[3000.0], aim_point=(6978.0, 0.0, 0.0),
+            max_dv=1.5, gravity_degree=4, output_filename="_test_ascii_official.txt",
+            output_dir=output_dir,
+        )
+        raw = open(path, "rb").read()
     is_ascii = True
     try:
         raw.decode("ascii")
     except UnicodeDecodeError:
         is_ascii = False
     check("官方範例照常產生、且寫出的檔是純 ASCII", is_ascii and len(raw) > 0)
-    # 收尾：這是測試產物，不留在 outputs/
-    try:
-        os.remove(path)
-    except OSError:
-        pass
-
     # ── 各類非 ASCII 都要被擋，且訊息指出正確行號 ──
     for label, text, want_line in [
         ("中文字元", "line1\nName = '目標';\nline3", 2),

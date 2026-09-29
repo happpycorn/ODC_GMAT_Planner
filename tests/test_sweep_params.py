@@ -9,13 +9,17 @@
 """
 
 import json
+import fcntl
 import os
+from pathlib import Path
 import sys
 import tempfile
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import sweep_params as sp
+from scripts.generate_c4_configs import build_configs
 
 FAILS = []
 
@@ -90,6 +94,110 @@ with tempfile.TemporaryDirectory() as d:
     check("搜尋秒數跨午夜 = 20", r["search_sec"] == 20)
     check("拆棒秒數 = 90", r["split_sec"] == 90)
     check("沒有 mission.json 時 final 為 None（呼叫端判 no_result）", r["final"] is None)
+
+# ── 版控中的 sweep 規格應能直接讀取共用情境 ──
+sweep_dir = Path(sp.ROOT) / "sweeps"
+specs = sorted(sweep_dir.glob("*.json"))
+broken = []
+checked = 0
+for spec_path in specs:
+    with spec_path.open(encoding="utf-8") as f:
+        sweep_spec = json.load(f)
+    if "scenarios" not in sweep_spec:
+        continue  # C4 uses generated groups, checked below.
+    checked += 1
+    for scenario in sweep_spec["scenarios"]:
+        relative = scenario["config"]
+        config_path = Path(sp.ROOT) / relative
+        if not relative.startswith("configs/shared/") or not config_path.is_file():
+            broken.append(f"{spec_path.name}: {relative} 未納入共用情境")
+            continue
+        with config_path.open(encoding="utf-8") as f:
+            shared_config = json.load(f)
+        if "local" in shared_config:
+            broken.append(f"{relative}: 含本機設定 local")
+        try:
+            sp.validate_config(shared_config)
+        except sp.ConfigValidationError as exc:
+            broken.append(f"{relative}: {exc}")
+check(f"{checked} 份 sweep 規格的情境都可從版控讀取且有效", checked > 0 and not broken)
+for problem in broken:
+    print("  ❌ " + problem)
+
+c4_jobs = build_configs()
+c4_broken = []
+for name, config in c4_jobs.items():
+    if "local" in config:
+        c4_broken.append(f"{name}: 含本機設定 local")
+    try:
+        sp.validate_config(config)
+    except sp.ConfigValidationError as exc:
+        c4_broken.append(f"{name}: {exc}")
+check("C4 規格可從共用情境產生 33 份有效設定", len(c4_jobs) == 33 and not c4_broken)
+for problem in c4_broken:
+    print("  ❌ " + problem)
+
+# ── GMAT 路徑與封存鎖 ──
+with tempfile.TemporaryDirectory() as d:
+    name = "retry_case"
+    run_dir = Path(d) / "runs" / name
+    config_dir = Path(d) / "configs"
+    run_dir.mkdir(parents=True)
+    config_dir.mkdir()
+    (run_dir / "run.json").write_text("old run", encoding="utf-8")
+    (config_dir / f"{name}.json").write_text("old config", encoding="utf-8")
+    (config_dir / f"{name}.console.log").write_text("old failure", encoding="utf-8")
+    stale = Path(sp.preserve_previous_job(d, name))
+    check("重跑時舊 run、設定與 console 一起保存在 stale 目錄",
+          (stale / "run.json").read_text() == "old run"
+          and (stale / "config.json").read_text() == "old config"
+          and (stale / "console.log").read_text() == "old failure"
+          and not run_dir.exists())
+    (config_dir / f"{name}.console.log").write_text("failure before run dir", encoding="utf-8")
+    stale_only = Path(sp.preserve_previous_job(d, name))
+    check("只有 console、尚未建立 run 目錄時也保存錯誤訊息",
+          stale_only != stale and (stale_only / "console.log").read_text() == "failure before run dir")
+
+with tempfile.TemporaryDirectory() as d:
+    job = {"scenario": "official_sample", "variant": "base", "seed": 0,
+           "config": "configs/shared/official_sample.json", "overrides": {}}
+    with patch.object(sp.subprocess, "Popen") as popen:
+        running = sp.start_job(job, d, gmat=True, gmat_console="/tmp/GmatConsole")
+        gmat_command = popen.call_args.args[0]
+        running.console.close()
+        running = sp.start_job(job, d, gmat=False, gmat_console="/tmp/GmatConsole")
+        solve_command = popen.call_args.args[0]
+        running.console.close()
+    check("GMAT sweep 將指定的 GmatConsole 路徑交給 main.py",
+          gmat_command[-2:] == ["--gmat-console", "/tmp/GmatConsole"]
+          and "--stop-after" not in gmat_command)
+    check("只求解的 sweep 保留原本模式，不傳 GMAT 路徑",
+          solve_command[-2:] == ["--stop-after", "solve"]
+          and "--gmat-console" not in solve_command)
+
+lock_path = Path(sp.ROOT) / "outputs/sweeps/.archive.lock"
+def inspect_sweep_lock(*_args):
+    with lock_path.open("a+") as other:
+        try:
+            fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        finally:
+            fcntl.flock(other, fcntl.LOCK_UN)
+    return False
+
+with patch.object(sp, "_run_sweep", side_effect=inspect_sweep_lock):
+    lock_held = sp.run_sweep({}, "unused", 1, 0, False, False, False)
+with lock_path.open("a+") as after:
+    try:
+        fcntl.flock(after, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        lock_released = True
+    except BlockingIOError:
+        lock_released = False
+    finally:
+        if lock_released:
+            fcntl.flock(after, fcntl.LOCK_UN)
+check("執行 sweep 時禁止封存，結束後釋放鎖", lock_held and lock_released)
 
 print()
 if FAILS:

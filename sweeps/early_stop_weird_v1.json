@@ -4,7 +4,7 @@
   "scenarios": [
     {
       "name": "weird_test",
-      "config": "configs/weird_test.json"
+      "config": "configs/shared/weird_test.json"
     }
   ],
   "seeds": [

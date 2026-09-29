@@ -1,10 +1,18 @@
 # 專案狀態筆記（交接用）
 
 給下一個 session（不管是我自己回來還是你自己看）快速抓回上下文用的：「現在做到哪、還缺什麼、為什麼」。
-**怎麼用這個工具看 [README.md](README.md)；演算法/物理模型原理看 [METHODOLOGY.md](docs/METHODOLOGY.md)**；
+**怎麼用這個工具看 [README.md](README.md)；演算法/物理模型原理看 [METHODOLOGY.md](docs/METHODOLOGY.md)；其餘資料看 [文件導覽](docs/README.md)**；
 初賽的逐日開發日誌封存在 [docs/log/DEVLOG_prelim.md](docs/log/DEVLOG_prelim.md)；更細的技術決策看 commit log 跟程式碼註解。
 
-**最後更新：2026-09-23（晚）——contest 幾何新高 98.3190（4 棒路線家族 + A1 拆棒，GMAT 驗證）；繳交腳本剔除空燒；修 numba 快取非確定性；併入 Codex 分段管線。**
+**最後整理：2026-09-29。** 以下快照是目前入口；後面的詳細條目保留各次實驗與實作過程，日期性文件以自身日期為準。
+
+## 目前狀態（2026-09-29）
+
+- **運作方式**：`main.py` 可一次求解並產生 GMAT 腳本，也可分段保存 `mission.json`、重產腳本或重驗腳本；新執行各用獨立的 `outputs/runs/<id>/`。正式繳交前仍須確認固定燃燒腳本的 GMAT 驗證結果。指令和產物見 [README](README.md#分段執行修改後不用每次從搜尋重跑)。
+- **已完成的近期工作**：提早停止開關已接通，但消融顯示多個情境掉分，預設維持關閉；REVS=0/4 案例已共用行程池，保留集成結果並縮短實測牆鐘；Numba 中 Izzo 例外造成的記憶體洩漏已修。實驗見 [提早停止](docs/EARLY_STOP_ABLATION_20260929.md)與 [REVS 排程](docs/REVS_SCHEDULING_20260929.md)。
+- **回歸與搜尋預算**：日常跑 `uv run python run_regression.py --quick`，完整跑 `uv run python run_regression.py`；2026-09-29 完整回歸為 14/14。搜尋預算維持 `MAXITER=600`、`POPSIZE=20`，`SEED_PORTFOLIO_N=1`，兩層種子精修與 REVS 集成保留。
+- **資料與文件**：常用情境在版控的 `configs/shared/`；七份 sweep 規格與 C4 實驗規格可由這些情境重建。`outputs/` 保留本機原始成果，可用 `scripts/output_inventory.py index` 產生索引；文件入口見 [docs/README.md](docs/README.md)。
+- **下一步**：待官方公布下一輪軌道與計分參數後，以真題重新檢查預算、雙曲線拆棒與安全判定；已知研究項目包括攝動開啟時的 Earth-safe 數值取樣，以及 C4 對中間棒的拆後估分。詳細紀錄在本頁下方與 [NEXT_ROUND_BACKLOG](docs/NEXT_ROUND_BACKLOG.md)。
 
 ## 分段管線第一版（2026-09-23）
 
@@ -24,7 +32,7 @@ TASA／淡江大學辦的「第一屆軌道設計競賽」的任務規劃工具�
 
 - **初賽**：A 是圓軌道、被動（只受重力），單純攔截。**已結束。**
 - **下一輪（排位賽起）**：官方簡報說是**完全不同玩法**——A 變雙曲線、即時追逐戰。工具的雙曲線輸入端
-  已端到端跑過、含 HAP-67 拆棒管線（見下面 P3），但沒鎖進回歸測試。玩法／計分細節要等官方發題才知道。
+  已端到端跑過、含 HAP-67 拆棒管線，並有結構煙霧與 e2e 回歸；玩法／計分細節要等官方發題才知道。
 
 規則要點（初賽）：Δv ≤ 1500 m/s/次、機動間隔 ≥100s、T_max=4×A 週期、**Δr ≤ 5km 即算成功且以內同分**
 （這點很關鍵，計分對命中位置是平的，決定策略）、繳交「Script + 至少模擬一次的 Report」。
@@ -122,7 +130,7 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
   直接報錯、不再拖到 poliastro 算位置才炸。回歸 `tests/test_hyperbolic_smoke.py`。
 - ⚠️ **計分參數與 A/B 六根數要等官方發題**（`k_t/C_t/k_v/C_v`）。
 
-**待辦（2026-09-29 更新，依優先序）**——**下一步的詳細清單見 [HANDOFF_20260928.md](docs/HANDOFF_20260928.md)**：
+**工作紀錄與待辦（更新至 2026-09-29）**——已完成項保留驗證資料；[HANDOFF_20260928.md](docs/HANDOFF_20260928.md) 是 9 月 28 日交接快照，任務 1–3 已完成。未決項見本節末尾與 [NEXT_ROUND_BACKLOG](docs/NEXT_ROUND_BACKLOG.md)：
 - ✅ **提早停止已修、預設關閉（2026-09-29）。** `optimization.EARLY_STOP_ENABLED=true` 才把 `MAX_EARLY_STOP`/`TOL`
   傳給 mealpy 的 `solve()`；省 CPU 但多個情境掉分，維持預設 `false`。40 筆快情境＋3 筆 weird_test 的
   [消融結果](docs/EARLY_STOP_ABLATION_20260929.md) 顯示最差分別掉 1.7269／1.9547 分。

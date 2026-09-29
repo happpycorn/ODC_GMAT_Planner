@@ -1,10 +1,10 @@
 # 🚀 軌道攔截設計賽 - 任務規劃工具 (Rocket Trajectory Calculator)
 
-本程式用於「軌道攔截設計賽」初賽：讓太空船 B（地球）以多次瞬時脈衝機動，在時間限制內攔截太空船 A（外星人，被動、只受重力影響），同時兼顧燃料消耗與任務效率。底層採用多核心 (Multiprocessing + Threading) 與 JIT (Numba) 技術加速運算，並用 L-SHADE 全域搜尋 + L-BFGS-B 局部微調找解，最後產出可直接匯入 GMAT 的任務腳本。
+本程式是「軌道攔截設計賽」的任務規劃工具：讓太空船 B 以多次瞬時脈衝機動，在時間限制內攔截太空船 A，同時兼顧燃料消耗與任務效率。初賽已結束；目前用初賽及自建情境驗證下一輪可能用到的雙曲線攔截流程，下一輪正式軌道與計分參數仍待主辦方公布。程式以多行程、Numba、L-SHADE 搜尋與局部微調找解，最後產出可匯入 GMAT 的任務腳本。
 
 為了確保最佳的執行效能與最簡便的安裝體驗，本專案使用新一代極速套件管理工具 `uv`，不需要手動設定虛擬環境。
 
-**這份文件只講怎麼用（安裝/設定/執行/看輸出）。想知道分數/燃燒方案背後是怎麼算出來的（物理模型、Lambert 攔截設計、最佳化演算法、GMAT 驗證流程…），看 [METHODOLOGY.md](docs/METHODOLOGY.md)。**
+**從這裡看安裝、設定、執行與輸出。** 目前進度和未完成工作見 [STATUS.md](STATUS.md)；物理模型與求解流程見 [METHODOLOGY.md](docs/METHODOLOGY.md)；研究紀錄、情境與初賽封存資料見 [文件導覽](docs/README.md)。
 
 ---
 
@@ -42,6 +42,8 @@ uv sync
 ## 步驟二：設定 `configs/config.json`
 
 程式第一次執行時，如果找不到設定檔會自動生成一份預設範例，但**正式提交前務必手動確認以下欄位是主辦方公布的正式數字**，不是範例值：
+
+共用的重現情境放在版控中的 [`configs/shared/`](configs/shared/)；個人使用的 `configs/config.json` 與其他 `configs/*.json` 仍留在本機。共用檔不含 `local` 區塊，要跑 GMAT 可帶 `--gmat-console` 或使用本機設定檔。各情境用途與完整參數見 [SCENARIOS.md](docs/SCENARIOS.md)。
 
 config 分四大塊 + 一塊選填，各自對應「誰決定這個數字」：`orbit_A`/`orbit_B`（軌道六根數）、`rules`（主辦方規定/公告的數字，我們不能改）、`strategy`（我們自己的任務設計選項，不是規則要求）、`optimization`（純演算法搜尋設定，只影響找不找得到好解/要跑多久，不影響規則本身）、`local`（選填，跟任務/規則完全無關的「這台機器」設定，見下）。
 
@@ -268,9 +270,9 @@ uv run python tests/test_arc_safety.py
 
 ### 現成的測試情境
 
-`configs/` 被 `.gitignore` 排除，所以情境不會跟著 git 走。**所有測試情境的完整參數
-（六根數 + 規則參數 + 實測難度）記錄在 [SCENARIOS.md](docs/SCENARIOS.md)**，照著貼就能重建。
-換機器、或不小心刪掉時去那裡找。
+`configs/shared/` 的共用情境跟著 Git 走；其餘本機 `configs/*.json` 不會。**所有長期使用的測試情境之參數、目的與實測難度記在 [SCENARIOS.md](docs/SCENARIOS.md)**，可用來重建尚未納入共用目錄的情境。
+
+需要批次比較參數或重跑 C4 實驗時，先看 [scripts/README.md](scripts/README.md) 的預覽、執行與彙整指令；C4 runner 以 Linux `/proc` 監看行程，需在 Linux 執行。實驗結果仍寫入本機 `outputs/`。
 
 ---
 
@@ -298,6 +300,24 @@ uv run python tests/test_arc_safety.py
 `verification_status=failed`，Python 方案仍保留。`--verify-script` 執行失敗會以非零退出碼結束。
 在 GMAT GUI 手動執行可使用 `output.txt`／`output_submit.txt`；它們保留相對報表名稱，便於移到其他電腦。
 
+### 查找與封存本機結果
+
+`outputs/` 不進版控。執行下列命令可重建本機的 `outputs/INDEX.md` 與 `outputs/index.json`，列出已保存的 run、sweep 結果與驗證狀態：
+
+```bash
+uv run python scripts/output_inventory.py index
+```
+
+舊 sweep 的大量 `.console.log` 可壓縮到 `outputs/archive/`；工具先驗證封存內容與 SHA-256，再移除已封存的原檔。需要取回時，把下例的 `YYYYMMDD_HHMMSS` 換成自己 `outputs/INDEX.md` 列出的封存檔名：
+
+```bash
+uv run python scripts/output_inventory.py archive-logs
+uv run python scripts/output_inventory.py verify-archive outputs/archive/sweep-console-logs-YYYYMMDD_HHMMSS.tar.gz
+uv run python scripts/output_inventory.py restore-archive outputs/archive/sweep-console-logs-YYYYMMDD_HHMMSS.tar.gz
+```
+
+`docs/solutions/` 保存經挑選並納入版控的初賽成果；本機 `outputs/` 的索引與壓縮檔仍須自行備份。
+
 ---
 
 ## 🖥️ 部署到一台全新電腦
@@ -308,9 +328,7 @@ uv run python tests/test_arc_safety.py
 
 1. **裝 `uv`**：`pip install uv`（Windows 用命令提示字元/PowerShell，Mac/Linux 用終端機）。
 2. **拿到程式碼**：`git clone https://github.com/happpycorn/ODC_GMAT_Planner.git`，或直接把整個資料夾複製過去。
-3. **`configs/` 資料夾要另外處理**：這個資料夾整個被 `.gitignore` 排除（避免測試用的軌道數字不小心被當成正式資料 commit 上去），`git clone` 下來 `configs/` 會是空的。兩個選項：
-   - 直接跑 `uv run main.py`，找不到設定檔會自動生成一份範例（`orbit_A`/`orbit_B` 都是佔位數字，記得換成真的資料）。
-   - 或者手動把原本電腦上 `configs/*.json` 複製過去（USB / 雲端硬碟 / email 都行，就是幾個文字檔）。
+3. **準備設定檔**：`git clone` 會帶入 `configs/shared/` 的共用情境，不會帶入本機 `configs/config.json`。可以指定共用情境，例如 `uv run main.py --config configs/shared/official_sample.json`；也可直接跑 `uv run main.py`，由程式產生佔位範例後填入正式數字。若要沿用自己原有的 `configs/*.json`，需另外複製。
 4. **第一次執行會比較慢**：`uv run main.py` 第一次跑，`uv` 會自動下載對應版本的 Python（3.12+）跟所有套件（`numpy`/`numba`/`scipy`/`astropy`/`poliastro`/`mealpy` 等，現在裝起來大約 1GB 左右——早期版本不小心留了 `torch`/`optuna`/`pymoo` 這些完全沒用到的重量級依賴，已經清掉了，不然會大好幾倍），**這一步需要網路**。之後每次執行都是用裝好的環境，不會重新下載。
 5. **GMAT 是完全獨立的一套軟體，`uv` 不會幫你裝**：這台新電腦要另外安裝 GMAT，然後用 `--gmat-console` 指到正確路徑：
    ```bash
@@ -318,7 +336,7 @@ uv run python tests/test_arc_safety.py
    uv run main.py --gmat-console "/path/to/GMAT/bin/GmatConsole"               # Mac/Linux 範例路徑
    ```
    （`main.py` 裡寫死的預設路徑是我這台機器的路徑，新電腦上一定對不上，一定要用這個參數蓋掉，不然只會印警告然後跳過 GMAT 驗證。）
-6. **建議先拿一個小情境（例如 `configs/practice_scenario.json`）跑一次 `--no-gmat` 版本，確認 Python 端能跑，再測 GMAT 那段**，不要直接拿正式資料在新電腦上測試新環境。
+6. **建議先拿一個小情境跑一次 `--no-gmat` 版本，確認 Python 端能跑，再測 GMAT 那段**；情境可從 [SCENARIOS.md](docs/SCENARIOS.md) 選擇。
 
 ### B. 比賽當天，主辦單位準備的電腦
 

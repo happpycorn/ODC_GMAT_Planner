@@ -18,8 +18,8 @@ run.log（各棒數案例跑了幾代），整理成一行寫進 results.jsonl�
     {
       "name": "budget_v1",                       # 輸出到 outputs/sweeps/<name>/
       "scenarios": [
-        {"name": "contest", "config": "configs/contest.json"},
-        {"name": "contest_w2", "config": "configs/contest.json",
+        {"name": "contest", "config": "configs/shared/contest.json"},
+        {"name": "contest_w2", "config": "configs/shared/contest.json",
          "overrides": {"rules.k_t": 0.001, "rules.C_t": 8000}}     # 同幾何換權重
       ],
       "seeds": [0, 1, 2, 3, 4],
@@ -35,10 +35,12 @@ run.log（各棒數案例跑了幾代），整理成一行寫進 results.jsonl�
     uv run python sweep_params.py sweeps/budget_v1.json              # 開跑（可中斷、可續跑）
     uv run python sweep_params.py sweeps/budget_v1.json --slots 3    # 同時跑 3 個 (牆鐘會互相干擾)
     uv run python sweep_params.py sweeps/budget_v1.json --summary    # 彙整已有結果
+    uv run python sweep_params.py sweeps/budget_v1.json --gmat --gmat-console /path/to/GmatConsole
 """
 import argparse
 import copy
 import datetime
+import fcntl
 import glob
 import itertools
 import json
@@ -229,25 +231,58 @@ class Running:
         self.cache_before, self.console = cache_before, console
 
 
-def start_job(job, out_dir, gmat):
+def preserve_previous_job(out_dir, name):
+    """Keep an incomplete run's inputs and console output before retrying."""
+    run_dir = os.path.join(out_dir, "runs", name)
+    cfg_path = os.path.join(out_dir, "configs", name + ".json")
+    console_path = os.path.join(out_dir, "configs", name + ".console.log")
+    if not any(os.path.lexists(path) for path in (run_dir, cfg_path, console_path)):
+        return None
+    stale_root = os.path.join(out_dir, "runs", "_stale")
+    os.makedirs(stale_root, exist_ok=True)
+    stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    destination = os.path.join(stale_root, f"{name}__{stamp}")
+    suffix = 1
+    while os.path.lexists(destination):
+        destination = os.path.join(stale_root, f"{name}__{stamp}.{suffix}")
+        suffix += 1
+    if os.path.lexists(run_dir):
+        shutil.move(run_dir, destination)
+    else:
+        os.mkdir(destination)
+    for source, target in ((cfg_path, "config.json"), (console_path, "console.log")):
+        if os.path.lexists(source):
+            saved = os.path.join(destination, target)
+            suffix = 1
+            while os.path.lexists(saved):
+                saved = os.path.join(destination, f"{target}.{suffix}")
+                suffix += 1
+            shutil.move(source, saved)
+    return destination
+
+
+def start_job(job, out_dir, gmat, gmat_console=None):
     cfg = build_config(job)
-    cfg_path = os.path.join(out_dir, "configs", job_dirname(job) + ".json")
+    name = job_dirname(job)
+    preserve_previous_job(out_dir, name)
+    cfg_path = os.path.join(out_dir, "configs", name + ".json")
     os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
-    with open(cfg_path, "w", encoding="utf-8") as f:
+    with open(cfg_path, "x", encoding="utf-8") as f:
         json.dump(cfg, f, indent=1, ensure_ascii=False)
-    run_dir = os.path.join(out_dir, "runs", job_dirname(job))
-    if os.path.exists(run_dir):   # 之前失敗/中斷留下的目錄：搬開保留，main.py 要求目錄不存在
-        stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        dest = os.path.join(out_dir, "runs", "_stale", f"{job_dirname(job)}__{stamp}")
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        shutil.move(run_dir, dest)
+    run_dir = os.path.join(out_dir, "runs", name)
     cmd = [sys.executable, "main.py", "--config", cfg_path, "--run-dir", run_dir, "--quiet"]
     if not gmat:
         cmd += ["--stop-after", "solve"]
-    console = open(os.path.join(out_dir, "configs", job_dirname(job) + ".console.log"), "w")
+    elif gmat_console:
+        cmd += ["--gmat-console", gmat_console]
+    console = open(os.path.join(out_dir, "configs", name + ".console.log"), "x")
     cache_before = numba_cache_snapshot()
-    proc = subprocess.Popen(cmd, cwd=ROOT, stdout=console, stderr=subprocess.STDOUT,
-                            start_new_session=True)   # 自己一個 process group，逾時整組殺
+    try:
+        proc = subprocess.Popen(cmd, cwd=ROOT, stdout=console, stderr=subprocess.STDOUT,
+                                start_new_session=True)   # 自己一個 process group，逾時整組殺
+    except Exception:
+        console.close()
+        raise
     return Running(job, proc, run_dir, time.time(), cache_before, console)
 
 
@@ -308,7 +343,23 @@ def warmup(spec, jobs, out_dir):
              f"見 {wdir}"), flush=True)
 
 
-def run_sweep(spec, out_dir, slots, timeout, gmat, retry_failed, do_warmup):
+def run_sweep(spec, out_dir, slots, timeout, gmat, retry_failed, do_warmup,
+              gmat_console=None):
+    # archive-logs takes an exclusive lock before removing console logs. Keep a
+    # shared lock for the entire sweep, including warmup, while jobs may write.
+    lock_path = os.path.join(ROOT, "outputs", "sweeps", ".archive.lock")
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+    with open(lock_path, "a+", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_SH)
+        try:
+            return _run_sweep(spec, out_dir, slots, timeout, gmat, retry_failed,
+                              do_warmup, gmat_console)
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+def _run_sweep(spec, out_dir, slots, timeout, gmat, retry_failed, do_warmup,
+               gmat_console):
     os.makedirs(out_dir, exist_ok=True)
     res_path = os.path.join(out_dir, "results.jsonl")
     jobs = plan_jobs(spec)
@@ -339,7 +390,7 @@ def run_sweep(spec, out_dir, slots, timeout, gmat, retry_failed, do_warmup):
         try:
             while pending or running:
                 while pending and len(running) < slots:
-                    running.append(start_job(pending.pop(0), out_dir, gmat))
+                    running.append(start_job(pending.pop(0), out_dir, gmat, gmat_console))
                 time.sleep(1.0)
                 for r in list(running):
                     pid, status, rusage = os.wait4(r.proc.pid, os.WNOHANG)
@@ -457,6 +508,7 @@ def main():
                     help="同時跑幾個 run（預設 1。>1 省總時間但牆鐘互相干擾，CPU 秒不受影響）")
     ap.add_argument("--timeout", type=float, default=0, help="單次 run 上限秒數（0 = 不限）")
     ap.add_argument("--gmat", action="store_true", help="每次 run 也跑 GMAT 驗證（預設只求解）")
+    ap.add_argument("--gmat-console", help="搭配 --gmat 時指定 GmatConsole 路徑")
     ap.add_argument("--retry-failed", action="store_true", help="重跑狀態不是 ok 的組合")
     ap.add_argument("--no-warmup", action="store_true", help="跳過開跑前的 numba 快取暖身")
     ap.add_argument("--out", help="輸出目錄（預設 outputs/sweeps/<name>）")
@@ -484,7 +536,7 @@ def main():
         return
     try:
         run_sweep(spec, out_dir, max(1, args.slots), args.timeout, args.gmat, args.retry_failed,
-                  not args.no_warmup)
+                  not args.no_warmup, args.gmat_console)
     except KeyboardInterrupt:
         sys.exit(130)
 

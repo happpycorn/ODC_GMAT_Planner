@@ -1,0 +1,75 @@
+{
+  "name": "c4_v1",
+  "_description": "C4 terminal split-aware experiment. The generator expands these groups into 33 local configs.",
+  "presets": {
+    "contest": {
+      "optimization.MAXITER": 2000,
+      "optimization.POPSIZE": 50,
+      "strategy.SEED_PORTFOLIO_N": 1,
+      "strategy.REVS_ENSEMBLE": false,
+      "strategy.LAMBERT_MAX_REVS": 4
+    }
+  },
+  "groups": [
+    {
+      "stem": "E1_contest",
+      "config": "configs/shared/contest.json",
+      "preset": "contest",
+      "overrides": {"optimization.MAX_BURNS": [1, 2, 3]},
+      "variants": {"off": {"strategy.SPLIT_AWARE_TERMINAL": false}, "on": {"strategy.SPLIT_AWARE_TERMINAL": true}}
+    },
+    {
+      "stem": "E2_force4",
+      "config": "configs/shared/contest.json",
+      "preset": "contest",
+      "seeds": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+      "seed_in_name": true,
+      "overrides": {
+        "optimization.MAX_BURNS": [4],
+        "optimization.MAXITER": 200,
+        "strategy.SPLIT_AWARE_SEARCH": true,
+        "strategy.PRIMER_GUIDED_RESEARCH": false
+      },
+      "variants": {"off": {"strategy.SPLIT_AWARE_TERMINAL": false}, "on": {"strategy.SPLIT_AWARE_TERMINAL": true}}
+    },
+    {
+      "stem": "E3_contest4",
+      "config": "configs/shared/contest.json",
+      "preset": "contest",
+      "overrides": {"optimization.MAX_BURNS": [1, 2, 3, 4]},
+      "variants": {"off": {"strategy.SPLIT_AWARE_TERMINAL": false}, "on": {"strategy.SPLIT_AWARE_TERMINAL": true}}
+    },
+    {
+      "stem": "E4_hyper_far",
+      "config": "configs/shared/hyper_far.json",
+      "variants": {"off": {"strategy.SPLIT_AWARE_TERMINAL": false}, "on": {"strategy.SPLIT_AWARE_TERMINAL": true}}
+    },
+    {
+      "stem": "E4_hyperbolic_smoke",
+      "config": "configs/shared/hyperbolic_smoke.json",
+      "variants": {"off": {"strategy.SPLIT_AWARE_TERMINAL": false}, "on": {"strategy.SPLIT_AWARE_TERMINAL": true}}
+    },
+    {
+      "stem": "E4_hyperbolic_test",
+      "config": "configs/shared/hyperbolic_test.json",
+      "variants": {"off": {"strategy.SPLIT_AWARE_TERMINAL": false}, "on": {"strategy.SPLIT_AWARE_TERMINAL": true}}
+    },
+    {
+      "stem": "E5_official_sample",
+      "config": "configs/shared/official_sample.json",
+      "variants": {"off": {"strategy.SPLIT_AWARE_TERMINAL": false}, "on": {"strategy.SPLIT_AWARE_TERMINAL": true}}
+    },
+    {
+      "stem": "E5_playground",
+      "config": "configs/shared/playground.json",
+      "variants": {"off": {"strategy.SPLIT_AWARE_TERMINAL": false}, "on": {"strategy.SPLIT_AWARE_TERMINAL": true}}
+    },
+    {
+      "stem": "E6_contest",
+      "config": "configs/shared/contest.json",
+      "preset": "contest",
+      "overrides": {"optimization.MAX_BURNS": [1, 2, 3]},
+      "variants": {"default": {}}
+    }
+  ]
+}

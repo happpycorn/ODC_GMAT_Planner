@@ -4,7 +4,7 @@
   "scenarios": [
     {
       "name": "official_sample",
-      "config": "configs/official_sample.json"
+      "config": "configs/shared/official_sample.json"
     }
   ],
   "seeds": [

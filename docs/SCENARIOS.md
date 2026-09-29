@@ -1,14 +1,18 @@
 # 測試情境一覽（含完整參數，可重建）
 
-`configs/` 整個被 `.gitignore` 排除，所以**設定檔不會跟著 git 走**：換一台機器、或不小心
-刪掉，就真的沒了。2026-08-15 換到 WSL 這台時就差點無法重建 `weird_test.json`（STATUS.md
-當時只記了「A 是 SMA=150000/ECC=0.93、B 是一般 LEO」，`orbit_B` 的 INC/RAAN 完全沒寫）。
+**2026-09-29 起**，八份常用情境（`contest`、`official_sample`、`hyper_far`、`weird_test`、
+`hard_mode_test`、`hyperbolic_smoke`、`hyperbolic_test`、`playground`）有版控中的
+[`configs/shared/`](../configs/shared/) JSON，可在新環境直接使用。
+根目錄 `configs/*.json` 仍是本機設定，不會跟著 Git 走。2026-08-15 換到 WSL 時曾差點無法重建
+`weird_test.json`（STATUS.md 當時只記了 A 的部分參數，缺少 B 的 INC/RAAN），因此保留本文件的
+完整參數與情境設計脈絡。
 
-**這份文件是那些情境的唯一備份。** 下面每一組都有完整的六根數跟規則參數，照著貼成
-`configs/<名字>.json` 就能重建。新增長期要用的情境時，記得同步更新這裡。
+尚未納入 `configs/shared/` 的情境，仍可依下文的六根數與規則參數重建成
+`configs/<名字>.json`。新增長期使用的情境時，請同步更新本頁；若批次實驗會引用，將移除本機
+`local` 路徑的版本放入 `configs/shared/`。
 
-⚠️ **所有數字都是我們自己編的**，主辦方從來沒公布過任何測資。正式測資出來後，
-`configs/config.json` 整組都要換掉，這裡的情境只能當壓力測試用。
+**來源要分清楚**：`official_sample` 是主辦方公布的初賽範例，`contest` 是初賽正式題；其餘情境
+為自建壓力測試。下一輪正式測資公布後，應另建對應設定，不要沿用本機預設 `configs/config.json`。
 
 **決賽適用性（2026-09-09 盤點，HAP-66）**：這份是自編的測資/方法論目錄，不是初賽限定的
 題目——`official_sample` 是初賽公布的那組具體題目（決賽會換一組新的、目前未知的官方題目），
@@ -43,14 +47,15 @@
 | `hyperbolic_test` | **HAP-67 拆棒管線 × 雙曲線**：贏家違規時自動合法化這條新路徑沒測過 | ❌ 逼出違規解 | DE 違規解 87.56 → 自動拆 5 棒合法 96.81，GMAT 兩版都過 |
 | `hyper_far` | 雙曲線 + **能量門檻**（近地點 25,000km）| ❌ 下限 1,887 > 上限 | 2 棒 1,969.7 m/s，**離下限僅 4.4%**，GMAT 差 **0.203m** |
 | `hyper_fast` | 雙曲線 + **相位鎖死**：證明無解的情境長什麼樣 | ❌ 無解 | 任何解都違規；用來驗證「荒謬超標」警告 |
-| `contest` | **初賽正式題**（`configs/contest.json`；A 圓 7,100 km/INC 120°，B 6,800 km/INC 40°）| ❌ 終端需 ~4,691 m/s | 拆棒後 **98.3188～98.3191**（2026-09-23，GMAT ✅），見 [98.319 解](solutions/98.319_route4_split6.md) |
+| `contest` | **初賽正式題**（`configs/shared/contest.json`；A 圓 7,100 km/INC 120°，B 6,800 km/INC 40°）| ❌ 終端需 ~4,691 m/s | 拆棒後 **98.3188～98.3191**（2026-09-23，GMAT ✅），見 [98.319 解](solutions/98.319_route4_split6.md) |
 | `config` | 預設檔（數字都是編的） | — | — |
 
 ---
 
-## contest —— 初賽正式題（`configs/contest.json`）
+## contest —— 初賽正式題（共用版 `configs/shared/contest.json`）
 
-2026-09-24 補記：這組一直只存在本機 `configs/contest.json`，沒進這份目錄；遠端/換機器要照這裡重建。
+2026-09-24 的補記：當時這組只存在本機 `configs/contest.json`，因此把完整參數寫在下方；
+2026-09-29 已另加入 `configs/shared/contest.json`，新環境可直接使用。
 數值取自 `docs/solutions/checkpoints/` 的拆棒前存檔（與本機 contest.json 相同的軌道/規則；
 `optimization` 是滿預算設定）。`GRAVITY_DEGREE=0`：官方腳本是點質量（見 memory contest-gravity-model-mismatch）。
 

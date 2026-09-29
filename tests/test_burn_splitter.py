@@ -35,7 +35,7 @@ def check(desc, ok):
 
 
 def main():
-    cfg = json.load(open(os.path.join("configs", "contest.json")))
+    cfg = json.load(open(os.path.join("configs", "shared", "contest.json")))
     opt = MissionOptimizer(cfg)
     mu = opt.MU
     j2, j3, j4, re = opt.J2_VAL, opt.J3_VAL, opt.J4_VAL, opt.RE_VAL

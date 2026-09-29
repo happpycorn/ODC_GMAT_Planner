@@ -1,0 +1,44 @@
+{
+  "_comment_scenario": "中等難度練習情境 (2026-08-15)：B 在低軌、A 在中高度偏心軌道，傾角差 28 度。難度刻意設在「單棒做得到但要找一下」——能量門檻只有約 390 m/s (遠低於 1500 上限)，所以不用多棒；挑戰來自相位跟傾角。T_max 只有 16 小時，跑起來快，適合互動玩。ECC 0.3 遠在已驗證安全範圍內 (<=0.9)，GMAT 應該會吻合得很好。數字都是自己編的。",
+  "orbit_A": {
+    "SMA": 13000.0,
+    "ECC": 0.3,
+    "INC": 28.0,
+    "RAAN": 60.0,
+    "AOP": 40.0,
+    "TA": 150.0
+  },
+  "orbit_B": {
+    "SMA": 7200.0,
+    "ECC": 0.02,
+    "INC": 0.0,
+    "RAAN": 0.0,
+    "AOP": 0.0,
+    "TA": 0.0
+  },
+  "rules": {
+    "MAX_DV_MPS": 1500.0,
+    "MIN_MANEUVER_INTERVAL_SEC": 100.0,
+    "T_MAX_PERIOD_MULTIPLE": 4.0,
+    "k_t": 5e-05,
+    "C_t": 25000.0,
+    "k_v": 0.003,
+    "C_v": 1500.0
+  },
+  "strategy": {
+    "GRAVITY_DEGREE": 4,
+    "MISS_TOLERANCE_KM": 5.0
+  },
+  "optimization": {
+    "MAX_BURNS": [
+      1,
+      2
+    ],
+    "MAXITER": 400,
+    "POPSIZE": 15,
+    "NUM_THREADS": -1,
+    "MAX_EARLY_STOP": 40,
+    "TOL": 0.02,
+    "SEED": null
+  }
+}

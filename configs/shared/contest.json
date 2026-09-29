@@ -1,0 +1,47 @@
+{
+  "orbit_A": {
+    "SMA": 7099.999999999989,
+    "ECC": 3.014018116696737e-16,
+    "INC": 120.0,
+    "RAAN": 29.99999999999999,
+    "AOP": 0.0,
+    "TA": 305.349
+  },
+  "orbit_B": {
+    "SMA": 6799.999999999999,
+    "ECC": 1.302888025334762e-16,
+    "INC": 39.99999999999999,
+    "RAAN": 59.99999999999999,
+    "AOP": 0.0,
+    "TA": 179.6860000000047
+  },
+  "rules": {
+    "MAX_DV_MPS": 1500.0,
+    "MIN_MANEUVER_INTERVAL_SEC": 100.0,
+    "T_MAX_PERIOD_MULTIPLE": 4.0,
+    "k_t": 0.003982,
+    "C_t": 6505.65,
+    "k_v": 0.0011862,
+    "C_v": 9064.3
+  },
+  "strategy": {
+    "GRAVITY_DEGREE": 0,
+    "MISS_TOLERANCE_KM": 5.0
+  },
+  "optimization": {
+    "MAX_BURNS": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "MAXITER": 600,
+    "POPSIZE": 20,
+    "NUM_THREADS": -1,
+    "MAX_EARLY_STOP": 60,
+    "TOL": 0.01,
+    "SEED": null
+  }
+}

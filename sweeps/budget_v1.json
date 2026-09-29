@@ -4,7 +4,7 @@
   "scenarios": [
     {
       "name": "contest",
-      "config": "configs/contest.json",
+      "config": "configs/shared/contest.json",
       "overrides": {
         "optimization.MAX_BURNS": [
           1,
@@ -15,7 +15,7 @@
     },
     {
       "name": "contest_fastT",
-      "config": "configs/contest.json",
+      "config": "configs/shared/contest.json",
       "overrides": {
         "optimization.MAX_BURNS": [
           1,
@@ -28,11 +28,11 @@
     },
     {
       "name": "official_sample",
-      "config": "configs/official_sample.json"
+      "config": "configs/shared/official_sample.json"
     },
     {
       "name": "hyper_far",
-      "config": "configs/hyper_far.json"
+      "config": "configs/shared/hyper_far.json"
     }
   ],
   "seeds": [

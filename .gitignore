@@ -9,7 +9,19 @@ wheels/
 # Virtual environments
 .venv
 
+# Keep machine-specific and ad hoc configs local. Only reviewed shared scenarios
+# below are tracked; do not add local.gmat_console_path to these files.
 configs/*
+!configs/shared/
+configs/shared/*
+!configs/shared/contest.json
+!configs/shared/official_sample.json
+!configs/shared/hyper_far.json
+!configs/shared/weird_test.json
+!configs/shared/hard_mode_test.json
+!configs/shared/hyperbolic_smoke.json
+!configs/shared/hyperbolic_test.json
+!configs/shared/playground.json
 
 outputs/*
 

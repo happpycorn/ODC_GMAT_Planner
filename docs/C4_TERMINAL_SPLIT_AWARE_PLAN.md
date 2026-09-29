@@ -106,8 +106,8 @@ E1–E5 各自記「改前 / 改後」分數、棒數、牆鐘；E2/E3 另記每
 **結論：E4 `hyper_far` 退步 −9.6 分 → 依 §5 保持預設關。** 二體情境（contest 系列、`hyperbolic_test`）全部
 通過且 E2 大幅改善；失敗集中在 J2–J4 攝動 + 長終端段，根因是拆棒器、不是目標函數本身（見 6.2）。
 
-設定：`configs/c4/*.json`（旗標開/關各一份、同一份程式碼、全部 `SEED 0`，BLAS 由 `run_study` 依 SEED 自動 pin）。
-輸出與彙整：`outputs/c4/`（`c4_runner.py` 可續跑排程、`c4_summary.py` 彙整表）。表中「拆後」= 拆棒 + 剔除空燒後
+設定：`configs/c4/*.json`（可由版控中的 `sweeps/c4_v1.json` 與 `configs/shared/` 重建；旗標開/關各一份、同一份程式碼、E2 含 SEED 0–8，其餘為 SEED 0，BLAS 由 `run_study` 依 SEED 自動 pin）。
+輸出與彙整：`outputs/c4/`（`scripts/c4_runner.py` 可續跑排程、`scripts/c4_summary.py` 彙整表；用法見 [實驗腳本](../scripts/README.md)）。C4 runner 使用 Linux `/proc`，需在 Linux 執行。表中「拆後」= 拆棒 + 剔除空燒後
 的最終分數；GMAT 欄為一般版(DC)/固定燃燒版。
 
 ### 6.1 各實驗
@@ -152,7 +152,7 @@ E2 逐 SEED（最終拆後分數；括號 = 拆前真實分數）：
 - **記憶體洩漏根因**：`fast_fitness_evaluator` 在 numba 內 try/except 接 poliastro `izzo` 的例外（多圈 M 分支
   時間不夠時丟 ValueError/RuntimeError），numba nopython 的 raise+catch 會漏記憶體。直接迴圈呼叫 30k 次：
   `LAMBERT_MAX_REVS=0` RSS 325→325 MB、`=4` 325→378 MB（~1.8 KB/次）；contest `[1,2,3,4]` 單 run 約 1.5 GB/min。
-  只影響牆鐘不影響分數。本輪驗證改成一次只跑一個大 run（`c4_runner.py --slots 4`）。
+  只影響牆鐘不影響分數。本輪驗證改成一次只跑一個大 run（`uv run python scripts/c4_runner.py --slots 4`）。
   **2026-09-26 已修**：`core_math.izzo_max_revs` 呼叫前預檢 M_max，跳過必丟分支（保守判定，拿不準照呼叫）。
   E3 單 run 系統用量：修前 2 分鐘 1.5→4.7 GB、6 分鐘吃滿 12 GB 進 swap（峰值 swap 7.7 GB）；修後搜尋期間持平。
   逐位元驗證與 numba 快取的插曲見 STATUS 待辦 A。

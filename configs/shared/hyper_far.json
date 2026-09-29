@@ -1,0 +1,45 @@
+{
+  "_comment_scenario": "Far-periapsis hyperbolic flyby. ECC=1.2, periapsis 25,000 km (SMA=-125000). Energy floor is 1,887 m/s - above the 1,500 per-burn cap - so 2+ burns are PROVABLY required. T_MAX=162,570s, 18x longer than hyper_fast, so this is the slow end of the spectrum while hyper_fast is the fast end. Cheapest single burn on the 34x34 grid is 2,686 m/s. From sweep_hyperbolic_limits.py.",
+  "_comment_tmax": "T_MAX_SEC = 2x time-to-periapsis, same rule as the other hyperbolic cases. INVENTED - not an official number.",
+  "orbit_A": {
+    "SMA": -125000.0,
+    "ECC": 1.2,
+    "INC": 30.0,
+    "RAAN": 0.0,
+    "AOP": 0.0,
+    "TA": 229.67
+  },
+  "orbit_B": {
+    "SMA": 7000.0,
+    "ECC": 0.001,
+    "INC": 0.0,
+    "RAAN": 0.0,
+    "AOP": 0.0,
+    "TA": 0.0
+  },
+  "rules": {
+    "MAX_DV_MPS": 1500.0,
+    "MIN_MANEUVER_INTERVAL_SEC": 100.0,
+    "T_MAX_SEC": 162570.0,
+    "k_t": 2e-05,
+    "C_t": 100000.0,
+    "k_v": 0.0015,
+    "C_v": 2500.0
+  },
+  "strategy": {
+    "GRAVITY_DEGREE": 4,
+    "MISS_TOLERANCE_KM": 5.0
+  },
+  "optimization": {
+    "MAX_BURNS": [
+      2,
+      3
+    ],
+    "MAXITER": 1000,
+    "POPSIZE": 20,
+    "NUM_THREADS": 10,
+    "MAX_EARLY_STOP": 40,
+    "TOL": 0.02,
+    "SEED": null
+  }
+}
