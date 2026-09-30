@@ -1,7 +1,8 @@
 # 初賽開發日誌（封存）
 
-> 這是歷史原文。文中的 `scratch_overnight/` 已於 2026-09-30 搬至
-> [研究區](../../research/README.md)；腳本分在 `tools/` 與 `archive_prelim/`，產生資料在 `generated/`。
+> 這是歷史原文。文中的 `scratch_overnight/` 一次性腳本已由
+> [初賽研究封存索引](../prelim/RESEARCH_ARCHIVE.md) 記錄；可重跑工具在 `scripts/research/`，
+> 產生資料在 `outputs/research/`。
 
 這是 STATUS.md 在 2026-09-11 瘦身時，從第 100 行以後搬過來的逐日開發日誌
 （2026-08-13 ～ 08-15 那幾個 session 的完整技術記錄）。STATUS.md 現在只保留

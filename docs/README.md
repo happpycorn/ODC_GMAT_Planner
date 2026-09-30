@@ -11,6 +11,7 @@
 | [solutions/README](solutions/README.md) | 初賽解、正式繳交資料與可重播的拆棒前存檔 |
 | [output_inventory.py](../scripts/output_inventory.py) | 重建本機 `outputs/INDEX.md`，並驗證、封存或還原舊 sweep 日誌；用法見[專案 README](../README.md#查找與封存本機結果) |
 | [scripts/README](../scripts/README.md) | C4 排程、彙整與批次 sweep 的可重用指令；C4 runner 使用 Linux `/proc` |
+| [研究驗證工具](../scripts/research/README.md) | Porkchop、GMAT 對照及其他可重跑的診斷腳本 |
 | [C4 實驗規格](../sweeps/c4_v1.json) | 搭配 `configs/shared/` 重建 33 份 C4 本機設定 |
 | [官方規則](../rules/) | 原始 PDF；具體數值仍以對應輪次的公告為準 |
 
@@ -34,6 +35,8 @@
 | [FLOW_EFFICIENCY_AUDIT_20260923](FLOW_EFFICIENCY_AUDIT_20260923.md) | 流程成本審計；其中部分提案已完成 |
 | [HAP47_SPLIT_ALGORITHM_RESEARCH](HAP47_SPLIT_ALGORITHM_RESEARCH.md) | 早期拆棒演算法研究與 PoC |
 | [PROJECT_AUDIT_20260909](PROJECT_AUDIT_20260909.md) | 9 月 9 日盤點快照；其中部分清理已完成 |
+| [初賽研究封存索引](prelim/RESEARCH_ARCHIVE.md) | 一次性腳本的結論位置與 Git 歷史取回方式 |
+| [Porkchop 網格報告](prelim/PORKCHOP.md) | 單棒窮舉與真傳播器重播的結果 |
 | [HANDOFF_20260928](HANDOFF_20260928.md) | 9 月 28 日交接快照；任務 1–3 已在 9 月 29 日完成 |
 
-初賽當天的 [作業手冊與站別卡](prelim/CONTEST_DAY.md)、[逐日開發日誌](log/DEVLOG_prelim.md) 都是歷史資料。研究腳本、初賽實驗與產生資料的存放方式見 [research/README.md](../research/README.md)。
+初賽當天的 [作業手冊與站別卡](prelim/CONTEST_DAY.md)、[逐日開發日誌](log/DEVLOG_prelim.md) 都是歷史資料。可重跑的研究工具集中在 `scripts/research/`，本機產物在 `outputs/research/`。

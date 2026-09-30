@@ -27,7 +27,3 @@ outputs/*
 
 # Claude/夜跑產出的暫存目錄（規劃筆記、bundle zip 等），比照 outputs/ 可拋、不進版控
 Claude outputs/
-
-# 研究腳本產生的資料；固定 GMAT 對照測資留在 research/tools/gmat/ 版控中。
-research/generated/*
-!research/generated/.gitkeep

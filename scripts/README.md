@@ -11,6 +11,7 @@
 | ablation_v1 | `scripts/run_ablation_v1.sh --dry-run` | `scripts/run_ablation_v1.sh` |
 | budget_v1 與 slow | `scripts/run_budget_v1.sh --dry-run` | `scripts/run_budget_v1.sh` |
 | 本機成果索引 | — | `uv run python scripts/output_inventory.py index` |
+| 研究與交叉驗證 | [工具導覽](research/README.md) | 依導覽選用 `scripts/research/` 中的腳本 |
 
 `sweeps/c4_v1.json` 與 `configs/shared/` 可重建 33 份 C4 設定。乾淨 clone 下，
 `c4_runner.py --dry-run` 在記憶體中預覽這些設定；正式執行前才寫入 `configs/c4/`。

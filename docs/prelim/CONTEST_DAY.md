@@ -1,7 +1,7 @@
 # 初賽當天作業手冊（2026-09-05）
 
-> 本文保留比賽當天的文字；`scratch_overnight/` 的現址與腳本分類見
-> [research/README.md](../../research/README.md)。
+> 本文保留比賽當天的文字；舊 `scratch_overnight/` 腳本的結論與取回方式見
+> [初賽研究封存索引](RESEARCH_ARCHIVE.md)。
 
 **這份是比賽當天照著做的東西。** 怎麼用工具看 [README.md](../../README.md)，
 原理看 [METHODOLOGY.md](../METHODOLOGY.md)，做過什麼看 [STATUS.md](../../STATUS.md)。

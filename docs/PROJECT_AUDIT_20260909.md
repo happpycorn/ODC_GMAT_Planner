@@ -1,7 +1,8 @@
 # 專案盤點與整理（2026-09-09）
 
-> 本文保留盤點當時的狀態。`scratch_overnight/` 已於 2026-09-30 整理為
-> [research/](../research/README.md)；下文舊路徑與待辦不代表目前目錄狀態。
+> 本文保留盤點當時的狀態。`scratch_overnight/` 已整理完畢：結論留在文件，
+> 可重跑工具在 `scripts/research/`，一次性腳本的取回方式見
+> [初賽研究封存索引](prelim/RESEARCH_ARCHIVE.md)。下文舊路徑與待辦不代表目前狀態。
 
 初賽結束後的一次全專案盤點:分清**現役 / 初賽專用 / 棄用**,挑出**潛在問題**,並對到 Linear 卡務。
 Claude 讀過全部現役程式(`main.py` + 6 個 `src/` 模組)、掃過 `scratch_overnight/` 66 個檔與根目錄腳本後整理。
