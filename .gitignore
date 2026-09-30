@@ -28,13 +28,6 @@ outputs/*
 # Claude/夜跑產出的暫存目錄（規劃筆記、bundle zip 等），比照 outputs/ 可拋、不進版控
 Claude outputs/
 
-# porkchop 的原始網格 9.7 MB，跑 porkchop_grid.py 50 秒就重建，不進版控
-scratch_overnight/porkchop_h*.npz
-
-# scratch_overnight/ 的一次性結果 dump（HAP-65，2026-09-09）：都是重跑對應腳本
-# 就能重建的輸出，不是原始資料，不值得進版控。只匹配 scratch_overnight/ 自己的直接
-# 子檔案，不影響 scratch_overnight/tools/gmat/ 底下被工具當固定測資讀寫的 .npy。
-scratch_overnight/*.json
-scratch_overnight/*.npy
-scratch_overnight/porkchop.png
-scratch_overnight/gtoc9_debris.csv
+# 研究腳本產生的資料；固定 GMAT 對照測資留在 research/tools/gmat/ 版控中。
+research/generated/*
+!research/generated/.gitkeep

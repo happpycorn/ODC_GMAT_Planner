@@ -247,7 +247,8 @@ return relay + ladder + pcsplit + nlp_refined
 
 ## 7. PoC 結果（2026-09-09 補做）
 
-腳本：[scratch_overnight/hap47_poc_nlp_split.py](../scratch_overnight/hap47_poc_nlp_split.py)，
+腳本：[research/tools/hap47_poc_nlp_split.py](../research/tools/hap47_poc_nlp_split.py)，
+現用版控中的 `configs/shared/contest.json` 提供同一組軌道與計分參數；
 不動 `optimizer.py`，讀 `outputs/best_98.31_split5_rebalanced/output_submit.txt` 的 VNB
 燒法當 warm start，換成「每段滑行時間 + 每棒 ECI Δv 三分量」共 21 個自由度的直接聯合表示
 法（不是 `split_even` 的「先固定方向網格、再貪婪均分大小」），約束重用
@@ -274,7 +275,7 @@ GMAT 驗證後，結論反轉。
 
 ### 7.1 GMAT 驗證（修正第一版的誤判）
 
-腳本：[scratch_overnight/hap47_poc_gmat_verify.py](../scratch_overnight/hap47_poc_gmat_verify.py)。
+腳本：[research/tools/hap47_poc_gmat_verify.py](../research/tools/hap47_poc_gmat_verify.py)。
 把上面 SLSQP 解的每棒 ECI Δv 轉成 VNB、餵進 `script_generator()` 產生跟
 `best_98.31_split5_rebalanced` 當初驗證同一套的 GMAT 腳本（一般變體，含 DC 目標求解器），
 用 `run_gmat_verification()` 跑 GmatConsole 無頭驗證。

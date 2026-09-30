@@ -4,7 +4,7 @@
 `propagate_rk45`（+ `rk45_step`）跟 `propagate_encke`（+ `encke_f` /
 `encke_delta_accel` / `encke_rk45_step`）是 2026-08-14 探索期產物，跟
 `core_math.propagate_dop853` 交叉驗證過、正確，但比 DOP853 慢。2026-09-09
-全專案盤點（`PROJECT_AUDIT_20260909.md` §3）確認**現役程式與 scratch_overnight
+全專案盤點（`PROJECT_AUDIT_20260909.md` §3）確認**現役程式與 research
 都沒有任何地方 import 這兩組傳播器**（`main.py`/`src/propagator.py` 只呼叫
 `propagate_dop853`）——純參考殘留，抽出來只是讓 `core_math.py` 少 430 行死碼，
 不是因為它們有問題。細節/推導過程見 STATUS.md「重力場模型可設定」跟

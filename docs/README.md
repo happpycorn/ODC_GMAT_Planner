@@ -36,4 +36,4 @@
 | [PROJECT_AUDIT_20260909](PROJECT_AUDIT_20260909.md) | 9 月 9 日盤點快照；其中部分清理已完成 |
 | [HANDOFF_20260928](HANDOFF_20260928.md) | 9 月 28 日交接快照；任務 1–3 已在 9 月 29 日完成 |
 
-初賽當天的 [作業手冊與站別卡](prelim/CONTEST_DAY.md)、[逐日開發日誌](log/DEVLOG_prelim.md) 都是歷史資料。`scratch_overnight/` 的研究腳本另有 `tools/` 與 `archive_prelim/`，不是正式執行入口。
+初賽當天的 [作業手冊與站別卡](prelim/CONTEST_DAY.md)、[逐日開發日誌](log/DEVLOG_prelim.md) 都是歷史資料。研究腳本、初賽實驗與產生資料的存放方式見 [research/README.md](../research/README.md)。

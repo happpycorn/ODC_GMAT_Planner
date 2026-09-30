@@ -517,13 +517,13 @@ class MissionOptimizer:
         # 成本：每次評估 REVS=4 對 REVS=0 是 1.01 倍（飛行時間不夠繞圈時 izzo 直接
         # 失敗、退出得很快），端到端跑完的總時間量不出差異。
         # 分支本身經 ESA pykep 交叉驗證，1,552 條解最大偏差 5.2e-14 km/s（見
-        # scratch_overnight/tools/xcheck_lambert_pykep.py）。
+        # research/tools/xcheck_lambert_pykep.py）。
         #
         # ⚠️ 但這個「不可能變差」只在**單點評估**成立，不能推廣到「開多圈的搜尋結果
         # 不可能變差」（HAP-42，2026-09-03）：L-SHADE 是隨機搜尋，多圈把適應度地形
         # 變複雜（多出 local optima），族群可能收斂到不同、且最終精修分數更差的
         # 盆地——同 SEED 下 REVS=4 的最佳解實測比 REVS=0 少 1.45 分，完整 600 代救不
-        # 回（scratch_overnight/tools/monotonicity_harness.py），porkchop 對拍又獨立
+        # 回（research/tools/monotonicity_harness.py），porkchop 對拍又獨立
         # 看到 3/8 幾何 REVS=0 贏 REVS=4。**per-point dominance ≠ 搜尋結果 dominance。**
         # 這個脆弱性的實際因應是 `run_study_over_revs`／`REVS_ENSEMBLE`（預設開）：
         # 同 SEED 各跑 REVS=0 與這裡設的值，取兩者較好的，見該函式開頭的說明。
@@ -1323,7 +1323,7 @@ class MissionOptimizer:
         貼邊解——這正是 PoC 在既有 98.31 案例上找到、GMAT 驗證過的那個改善的來源
         (HAP47_SPLIT_ALGORITHM_RESEARCH.md §7.1)。
 
-        跟 PoC (`scratch_overnight/hap47_poc_nlp_split.py`) 的差異：PoC 用的是「每棒 ECI
+        跟 PoC (`research/tools/hap47_poc_nlp_split.py`) 的差異：PoC 用的是「每棒 ECI
         Δv 直接當自由變數」的 Cartesian 表示法，但正式系統的最後一棒不是自由變數——是
         `reconstruct_mission_logs` 用 Lambert 解出來瞄準 `offset` 點的。這裡直接對現有的
         標準決策向量 (球座標 + coast_frac + final_leg_frac + offset) 做 SLSQP，完整重用
@@ -2421,8 +2421,8 @@ def run_study_over_revs(config, external_seeds=None):
 
     為什麼：多圈 Lambert（REVS>0）對**單點**評估是嚴格更大的搜尋空間、不可能更差，
     但它把適應度地形變複雜，L-SHADE 這種隨機搜尋偶爾會落到更差的盆地——實測同 SEED
-    下 REVS=4 的最佳解比 REVS=0 少 1.45 分、完整 600 代救不回（scratch_overnight/
-    tools/monotonicity_harness.py），porkchop 對拍又獨立看到 3/8 幾何 REVS=0 贏 REVS=4。
+    下 REVS=4 的最佳解比 REVS=0 少 1.45 分、完整 600 代救不回
+    （research/tools/monotonicity_harness.py），porkchop 對拍又獨立看到 3/8 幾何 REVS=0 贏 REVS=4。
     同 SEED 各跑 REVS=0 與 REVS=LAMBERT_MAX_REVS 再取兩者較好的，就把這條脆弱性換成
     額外搜尋成本。早期串行兩趟約需單趟的 1.8 倍時間；共用案例池縮短牆鐘，CPU 工作量仍相近。
 

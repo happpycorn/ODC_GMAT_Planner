@@ -214,7 +214,7 @@ B1 跟 B2 只差 **4.9°**，幾乎同向，向量和 2,239.6 vs 純量和 2,241
 ### 完整取捨曲線（官方真實參數 + 多圈）
 
 用 `rules.T_MAX_SEC` 當硬性抵達上限逐格掃出來
-（`scratch_overnight/sample_pareto_frontier.py`，整條曲線 371 秒跑完）：
+（`research/tools/sample_pareto_frontier.py`，整條曲線 371 秒跑完）：
 
 | 抵達上限 | 最省合法 ΔV | 實際抵達 | 時間分 | 燃料分 | **總分** |
 |---|---|---|---|---|---|
@@ -243,7 +243,7 @@ B1 跟 B2 只差 **4.9°**，幾乎同向，向量和 2,239.6 vs 純量和 2,241
 **動機**：自製測資有系統性盲點——編測資時「腦中的解長什麼樣」跟寫程式時的假設是同一套，
 所以不會去測「最佳解的中間軌道近地點在地表以下」或「最佳解要繞地球四圈」。
 閉合解是**外部標準**，不受我的假設影響。建立與計算在
-`scratch_overnight/known_answer_suite.py`。
+`research/tools/known_answer_suite.py`。
 
 ### ⚠️ 兩類要分清楚，標籤不能混
 
@@ -441,7 +441,7 @@ B 鎖在 6800 km 低軌，A 的**近地點就在 50,000 km 外**（B 只能自�
 
 **這組不是難度測資**，是**煙霧測試**。排位賽的 A 是雙曲線飛越軌道（簡報第 9 頁），
 程式碼只做過「輸入端不會壞掉」的準備，**整條流程從來沒有端到端跑過一次**。
-2026-08-15 晚上補跑，用 `scratch_overnight/probe_hyperbolic_A.py` 一層一層戳。
+2026-08-15 晚上補跑，用 `research/tools/probe_hyperbolic_A.py` 一層一層戳。
 
 **情境設計**：A 從 TA=-130 度（半徑 96,215 km）進來，t≈19,974s 通過近地點
 （10,000 km），再對稱地飛出去。`T_MAX_SEC=40,000` 剛好包住整段飛越。
@@ -543,7 +543,7 @@ STATUS.md）在目前這版程式碼上重新確認過。
 
 想燒猛一點趕上就得加徑向分量，而**純徑向 1,000 m/s 就把近地點壓到 6,181 km
 （地表以下）**——物理擋死。三個獨立家族全部否定（單棒 14,400 組實掃、
-`feasibility.py` 的切向階梯、`scratch_overnight/split_burn_feasibility.py` 的
+`feasibility.py` 的切向階梯、`research/archive_prelim/split_burn_feasibility.py` 的
 連續 Lambert 重瞄），加上這個解析論證。
 
 **搜尋交出「花 10 分買一次違規」是正確決策**，不是失職：在只能違規的情況下，
@@ -661,7 +661,7 @@ STATUS.md）在目前這版程式碼上重新確認過。
 原本想用 90 度傾角差逼出「在遠地點轉平面」的教科書策略，解析算出遠地點轉向要 1202 m/s、
 近地點要 13820 m/s。**但實際搜尋只花 721 m/s 就攔截成功，而且燃燒點不在遠地點**——
 因為任務只要求撞到位置、不要求共軌，用平面轉向公式估成本會系統性高估。
-設計計算留在 `scratch_overnight/design_apoapsis_planechange_case.py`。
+設計計算留在 `research/archive_prelim/design_apoapsis_planechange_case.py`。
 
 ### antialigned_highecc（比預期簡單太多）
 
@@ -675,7 +675,7 @@ STATUS.md）在目前這版程式碼上重新確認過。
 實測卻是**最簡單的一組**：Lambert 網格 51,200 組裡 8,464 組合法（16.53%），最小單棒
 只要 299.4 m/s。原因是高離心率為了讓近地點浮出地表，SMA 被迫拉到 9~10 萬，遠地點速度
 只剩 0.38 km/s——**在那裡做什麼機動都便宜，而且傳播還特別準**（GMAT 只差 0.53 m）。
-設計計算留在 `scratch_overnight/design_antialigned_highecc_case.py`。
+設計計算留在 `research/archive_prelim/design_antialigned_highecc_case.py`。
 
 ---
 
