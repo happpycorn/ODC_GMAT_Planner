@@ -10,6 +10,7 @@
 | 單棒全域網格 | `porkchop_grid.py 20` → `porkchop_verify.py 20` | [Porkchop 報告](../../docs/prelim/PORKCHOP.md) |
 | HAP-47 拆棒 PoC | `hap47_poc_nlp_split.py` | [拆棒研究](../../docs/HAP47_SPLIT_ALGORITHM_RESEARCH.md) |
 | GMAT 對照 | `gmat/` | [GMAT 工具說明](gmat/README.md) |
+| 排位賽全攝動落差與重瞄準 | `perturbation_gap.py ladder` → `mc` → `retarget --mode bplane` | [全攝動落差報告](../../docs/PERTURBATION_GAP_20261019.md) |
 
 例如：
 
