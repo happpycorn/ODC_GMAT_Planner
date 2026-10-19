@@ -13,6 +13,7 @@
 - **回歸與搜尋預算**：日常跑 `uv run python run_regression.py --quick`，完整跑 `uv run python run_regression.py`；2026-09-29 完整回歸為 14/14。搜尋預算維持 `MAXITER=600`、`POPSIZE=20`，`SEED_PORTFOLIO_N=1`，兩層種子精修與 REVS 集成保留。
 - **資料與文件**：常用情境在版控的 `configs/shared/`；七份 sweep 規格與 C4 實驗規格可由這些情境重建。`outputs/` 保留本機原始成果，可用 `scripts/output_inventory.py index` 產生索引；文件入口見 [docs/README.md](docs/README.md)。
 - **排位賽規則（2026-10-19 收到）**：單棒上限改成 250 m/s 且超標失格、總 Δv ≤ 3 km/s、驗證會開完整攝動，計分參數與 T_max 開賽當下才公布。差異與要改的地方見 [RANKING_ROUND_RULES_20261006](docs/RANKING_ROUND_RULES_20261006.md)。
+- **全攝動重瞄準（2026-10-19）**：`--from-mission <mission.json> --retarget-full-perturbation` 在 GMAT 官方攝動模型下 B 平面重瞄準一棒、重新判定失格條件，通過才產全攝動繳交腳本；`strategy.FORCE_MODEL`／`GMAT_SPACECRAFT`／`GMAT_EPOCH` 控制 GMAT 端模型與太空船參數，預設輸出逐位元不變。見 [README](README.md#排位賽全攝動-b-平面重瞄準)。
 - **下一步**：待官方公布下一輪軌道與計分參數後，以真題重新檢查預算、雙曲線拆棒與安全判定；已知研究項目包括攝動開啟時的 Earth-safe 數值取樣，以及 C4 對中間棒的拆後估分。詳細紀錄在本頁下方與 [NEXT_ROUND_BACKLOG](docs/NEXT_ROUND_BACKLOG.md)。
 
 ## 分段管線第一版（2026-09-23）

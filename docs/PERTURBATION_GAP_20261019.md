@@ -188,6 +188,10 @@ hyper_far 沒中的三組，B 的 Cd·A/m 是 0.12、0.23、0.30 m²/kg，都是
 `src/`，所以留給後續做。驗證邏輯可以直接參考 `perturbation_gap.py` 的 `build_script` 和
 `bplane_basis`。
 
+**2026-10-19 更新：已接進正式管線**（`main.py --from-mission <mission.json> --retarget-full-perturbation`，
+`src/retarget.py`、`src/gmat_env.py`，用法見 README）。用標稱參數（850 kg、8.945 m²）重跑 hyper_far 末棒，
+d_min 110.99 → 0.138 km、總 Δv +4.61 m/s、DC 5 次迭代，跟上表一致。
+
 **要問主辦單位：**
 
 - 太空船的質量、面積、Cd、Cr，SPADFile 的內容或檔名。

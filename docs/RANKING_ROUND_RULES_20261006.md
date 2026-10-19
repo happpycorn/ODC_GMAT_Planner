@@ -32,6 +32,14 @@
 4. **攝動模型和工具差很多。** Python 端只支援重力 J2–J4，GMAT 腳本用 `JGM2.cof`、`Drag = None`、`SRP = Off`。
    要改用官方的力學模型，必須產生能用 EGM96 20×20、潮汐、阻力、輻射壓和第三體重新驗證的 GMAT 腳本。
    SPADFile、質量和面積這些太空船參數規則沒寫，要問主辦單位或等開賽公布。開了攝動之後，Earth-safe 的數值複驗（backlog D1）也要排進來。
+   **狀態（2026-10-19）：已接進正式管線。** 落差量化見 [PERTURBATION_GAP_20261019.md](PERTURBATION_GAP_20261019.md)。
+   `strategy.FORCE_MODEL`（預設 `contest_prelim`，初賽與回歸逐位元不變；`ranking_full` 是官方模型）控制腳本的力學模型，
+   太空船質量/Cd/Cr/面積/SPAD 檔與曆元做成 `strategy.GMAT_SPACECRAFT`／`GMAT_SPACECRAFT_A`／`GMAT_EPOCH`（`src/gmat_env.py`）。
+   新增 `main.py --from-mission <mission.json> --retarget-full-perturbation`：全攝動下 B 平面 DC 改一棒，
+   重新判定命中、Earth-safe（全攝動密集重播的攔截前最低高度，等於 D1 的數值複驗）、T_max、單棒/總 Δv 失格與機動間隔，
+   通過才產全攝動固定燃燒繳交腳本，否則保留原方案並警告（用法見 README〈排位賽：全攝動 B 平面重瞄準〉）。
+   還沒做：太空船參數還是佔位值（等主辦單位公布）；沒有在 250 m/s 上限的多棒解上實測（目前沒有這種解）；
+   A 用跟 B 同一個 ForceModel（規則說 A「僅受重力」，研究量到差 ≤ 0.6 km）；改一棒失格時不會自動換棒，要手動 `--retarget-burn`。
 5. **T_max 只能在開賽時填入。** 程式要求雙曲線情境必須有 `rules.T_MAX_SEC`，這個設計是對的。開賽時拿到任務邊界後，用 A 的軌道算出 T_max 再填進去。
 6. **計分參數在比賽當下才公布**，所以搜尋預算和流程要能在現場短時間跑完。拿到參數後先確認單位：初賽官方給的 `k_v`、`C_v` 是 km/s 制，工具用 m/s，要換算。
 7. 同分判定先比 `d_min`。分數是連續值，完全同分的機會很小，不值得為了這點犧牲時間或燃料。

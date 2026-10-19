@@ -26,6 +26,8 @@ from src.optimizer import (MissionOptimizer, run_study_over_revs,
                            over_dv_count, is_disqualified)
 from src.primer import intercept_primer_profile, insert_node_seed
 from src.script_generator import script_generator
+from src.gmat_env import GMAT_ENV_KEYS, resolve_gmat_env, validate_gmat_env
+from src.retarget import retarget_full_perturbation
 from src.config_validator import validate_config, ConfigValidationError
 from src.core_math import propagate_dop853, fast_norm, to_vnb_frame
 from src.scorer import calculate_score, total_dv_soft_penalty, assess_legality
@@ -138,7 +140,8 @@ def load_or_create_config(filename=os.path.join("configs", "config.json")):
 
     try:
         validate_config(config)
-    except ConfigValidationError as exc:
+        validate_gmat_env(config)  # GMAT 端設定（FORCE_MODEL 等），見 src/gmat_env.py
+    except (ConfigValidationError, ValueError) as exc:
         log.error(f"❌ {filename} 驗證失敗:\n{exc}")
         sys.exit(1)
 
@@ -179,6 +182,14 @@ def parse_args(argv=None):
                          help="讀拆棒後 mission.json，跳過搜尋與拆棒，接產腳本/GMAT；使用存檔設定")
     sources.add_argument("--verify-script", metavar="SCRIPT",
                          help="只用 GMAT 驗證既有腳本，在新目錄保存報表，不重新求解或產生任務")
+    parser.add_argument(
+        "--retarget-full-perturbation", action="store_true",
+        help="搭配 --from-mission：在 GMAT 排位賽全攝動模型下用 B 平面 DifferentialCorrector 改一棒，"
+             "重新判定命中/Earth-safe/單棒與總 Δv，通過才產生全攝動固定燃燒繳交腳本；"
+             "失敗或失格時保留原方案並警告。輸出在新的執行目錄，不動原方案")
+    parser.add_argument(
+        "--retarget-burn", type=int, default=None, metavar="N",
+        help="重瞄準要改哪一棒（0 起算，跟腳本的 BurnB<N> 同編號；負數從後面數）。預設 -1＝最後一棒")
     parser.add_argument("--stop-after", choices=("solve", "export", "verify"), default="verify",
                         help="停在求解存檔/產腳本/GMAT 驗證（預設 verify）")
     parser.add_argument("--run-dir", help="本次輸出目錄，必須尚不存在；預設 outputs/runs/<唯一識別碼>")
@@ -201,6 +212,16 @@ def parse_args(argv=None):
         parser.error("--model-scale 只適用於產腳本階段")
     if args.verify_script and (args.no_gmat or args.stop_after != "verify" or args.no_fixed_script):
         parser.error("--verify-script 不可搭配停止/跳過驗證選項")
+    if args.retarget_burn is not None and not args.retarget_full_perturbation:
+        parser.error("--retarget-burn 只能搭配 --retarget-full-perturbation")
+    if args.retarget_full_perturbation:
+        if not args.from_mission:
+            parser.error("--retarget-full-perturbation 需要 --from-mission（拆棒後的 mission.json）")
+        if args.no_gmat or args.stop_after != "verify" or args.no_fixed_script:
+            parser.error("--retarget-full-perturbation 一定要跑 GMAT，不可搭配 --no-gmat/--stop-after/"
+                         "--no-fixed-script")
+        if args.retarget_burn is None:
+            args.retarget_burn = -1
     if args.no_gmat and args.stop_after == "verify":
         args.stop_after = "export"
     return args
@@ -988,6 +1009,11 @@ def _run_stages(args, run_dir, manifest):
     export_config = copy.deepcopy(config)
     if args.model_scale is not None:
         export_config.setdefault("strategy", {})["GMAT_MODEL_SCALE"] = args.model_scale
+    if args.retarget_full_perturbation:
+        run_retarget_stage(export_config, burns, times, mission_info, optimizer, args=args,
+                           run_dir=run_dir, gmat_console_path=console, manifest=manifest,
+                           local_config=local_config)
+        return
     run_output_stage(export_config, burns, times, mission_info, optimizer,
                      args=args, run_dir=run_dir, gmat_console_path=console, manifest=manifest)
 
@@ -1032,6 +1058,14 @@ def run_output_stage(config, burns, times, mission_info, optimizer, *, args, run
     # 分數拆解 + 交換率（純加印，不改計算；見 print_score_breakdown）
     print_score_breakdown(mission_info, optimizer)
 
+    # GMAT 端環境（力學模型/太空船參數/曆元；全部沒設時跟以前逐位元相同，見 src/gmat_env.py）
+    gmat_env = resolve_gmat_env(config)
+    if gmat_env["force_model"] == "ranking_full":
+        log.warning("⚠️ FORCE_MODEL=ranking_full：一般版腳本的 DC 是「預定時刻位置對齊」，在全攝動下"
+                    "可能很貴（hyper_far 實測 +272 m/s、末棒 361 m/s → 失格），Python 端也還是 J2–J4，"
+                    "兩邊對不上是預期的。建議 FORCE_MODEL 維持 contest_prelim，產出 mission.json 後再用 "
+                    "--from-mission <mission.json> --retarget-full-perturbation。")
+
     # 2. 產出 GMAT 腳本 (打靶邊界跟著規則的 ΔV_lim 走，避免 GMAT 端偷偷超標)
     script_path = script_generator(
         config["orbit_A"]["SMA"], config["orbit_A"]["ECC"], config["orbit_A"]["INC"],
@@ -1041,7 +1075,7 @@ def run_output_stage(config, burns, times, mission_info, optimizer, *, args, run
         burns, times, aim_point=mission_info["aim_point"],
         max_dv=optimizer.MAX_DV, gravity_degree=optimizer.GRAVITY_DEGREE,
         model_scale=config.get("strategy", {}).get("GMAT_MODEL_SCALE", 0.5),
-        output_dir=run_dir,
+        output_dir=run_dir, **gmat_env,
     )
 
     end_time = time.perf_counter()
@@ -1145,7 +1179,7 @@ def run_output_stage(config, burns, times, mission_info, optimizer, *, args, run
                 final_burn_fixed_vnb=final_burn_vnb,
                 output_filename="output_submit.txt",
                 model_scale=config.get("strategy", {}).get("GMAT_MODEL_SCALE", 0.5),
-                output_dir=run_dir,
+                output_dir=run_dir, **gmat_env,
             )
             started = time.perf_counter()
             fixed_script_result = run_gmat_verification(
@@ -1188,6 +1222,137 @@ def run_output_stage(config, burns, times, mission_info, optimizer, *, args, run
             "completed" if gmat_result is not None and
             (args.no_fixed_script or not earth_safe or disqualified or fixed_script_result is not None)
             else "failed")
+
+def run_retarget_stage(config, burns, times, mission_info, optimizer, *, args, run_dir,
+                       gmat_console_path, manifest, local_config):
+    """全攝動 B 平面重瞄準（2026-10-19，docs/PERTURBATION_GAP_20261019.md §4–5）。
+
+    已保存的拆棒後方案 → GMAT 排位賽全攝動下 DC 改一棒（只消垂直於相對速度的兩個分量）→
+    重新判定命中、Earth-safe、T_max、單棒/總 Δv 失格與機動間隔 → 通過才產生全攝動固定燃燒
+    繳交腳本並再用 GMAT 驗一次。任何一步不過：保留原方案（原執行目錄一個檔都不動），本次目錄
+    只留診斷檔與 retarget.json，終端機大聲警告。
+
+    太空船參數與曆元取存檔 config 的 strategy.GMAT_*；有給 --config 時，那份設定 strategy 裡的
+    GMAT_SPACECRAFT / GMAT_SPACECRAFT_A / GMAT_EPOCH / GMAT_EPOCH_FORMAT 會蓋過存檔（主辦單位
+    開賽才公布這些值，那時方案通常已經解好了）。這些只影響 GMAT 端，不影響 Python 物理。"""
+    started = time.perf_counter()
+    cfg = copy.deepcopy(config)
+    overrides = {k: v for k, v in (local_config.get("strategy") or {}).items()
+                 if k in GMAT_ENV_KEYS and k != "FORCE_MODEL"}
+    if overrides:
+        cfg.setdefault("strategy", {}).update(copy.deepcopy(overrides))
+        log.info(f"🛠️ 用 --config 的 GMAT 設定蓋過存檔：{', '.join(sorted(overrides))}")
+    env = resolve_gmat_env(cfg, force_model="ranking_full")
+    n = len(burns)
+    idx = args.retarget_burn % n if -n <= args.retarget_burn < n else args.retarget_burn
+    log.info(f"\n🎯 全攝動 B 平面重瞄準：改第 {idx} 棒（共 {n} 棒，0 起算）。曆元 {env['epoch_format']} "
+             f"{env['epoch']}；B 質量 {env['sc_B']['DRY_MASS_KG']:g} kg、Cd {env['sc_B']['CD']:g}、"
+             f"Cr {env['sc_B']['CR']:g}、阻力面積 {env['sc_B']['DRAG_AREA_M2']:g} m²、"
+             f"SRP 面積 {env['sc_B']['SRP_AREA_M2']:g} m²")
+    res = retarget_full_perturbation(
+        config=cfg, burns=[list(b) for b in burns], times=list(times), idx=args.retarget_burn,
+        env=env, console=gmat_console_path, folder=run_dir / "gmat_retarget",
+        max_dv_mps=optimizer.MAX_DV * 1000.0, min_interval_sec=optimizer.MIN_COAST_TIME,
+        max_total_dv_mps=optimizer.MAX_TOTAL_DV_MPS, t_max_sec=optimizer.T_max,
+        min_radius_km=optimizer.MIN_PERIAPSIS, score_fn=optimizer.legality_fields,
+        gravity_degree=optimizer.GRAVITY_DEGREE)
+    manifest["timings_sec"]["retarget"] = time.perf_counter() - started
+
+    orig = res["original"]
+    rep = orig.get("replay", {})
+    lines = [f"── 全攝動重瞄準 {'─' * 40}"]
+    if "d_min_km" in rep:
+        ol = orig["legality"]
+        lines.append(f"  原方案（全攝動重播）  d_min {rep['d_min_km'] * 1000:>12,.1f} m   "
+                     f"總Δv {ol['total_dv_mps']:>9,.2f} m/s   T {rep['t_plan_sec']:>10,.1f} s   "
+                     f"官方分數估計 {ol['official_score'] if ol['official_score'] is not None else '失格'}")
+    if "retargeted" in res:
+        rt = res["retargeted"]
+        rl, bc = rt["legality"], rt["burn_change"]
+        lines.append(f"  重瞄準後              d_min {rt['d_min_km'] * 1000:>12,.1f} m   "
+                     f"總Δv {rl['total_dv_mps']:>9,.2f} m/s   T {rt['t_team_sec']:>10,.1f} s   "
+                     f"官方分數估計 {rl['official_score'] if rl['official_score'] is not None else '失格'}")
+        lines.append(f"  第 {res['retarget_idx']} 棒 {bc['old_mps']:,.3f} → {bc['new_mps']:,.3f} m/s"
+                     f"（向量修正 {bc['vector_change_mps']:,.3f} m/s，總 Δv {bc['total_dv_change_mps']:+,.3f} m/s）；"
+                     f"DC {res['dc'].get('iterations')} 次迭代；最近點時刻比原預定 "
+                     f"{rt['t_team_sec'] - rep['t_plan_sec']:+,.2f} s")
+        if rl["penalty_count"]:
+            lines.append(f"  ⚠️ 機動間隔違規 {rl['penalty_count']} 次（每次 −10 分；重瞄準不改點火時刻，原方案就有）")
+    log.info("\n".join(lines))
+
+    fixed = None
+    submit_path = None
+    if res["accepted"]:
+        rt = res["retargeted"]
+        nb = [tuple(b) for b in rt["burns"]]
+        submit_path = script_generator(
+            cfg["orbit_A"]["SMA"], cfg["orbit_A"]["ECC"], cfg["orbit_A"]["INC"],
+            cfg["orbit_A"]["RAAN"], cfg["orbit_A"]["AOP"], cfg["orbit_A"]["TA"],
+            cfg["orbit_B"]["SMA"], cfg["orbit_B"]["ECC"], cfg["orbit_B"]["INC"],
+            cfg["orbit_B"]["RAAN"], cfg["orbit_B"]["AOP"], cfg["orbit_B"]["TA"],
+            nb, rt["times"], aim_point=mission_info["aim_point"],
+            max_dv=optimizer.MAX_DV, gravity_degree=optimizer.GRAVITY_DEGREE,
+            final_burn_fixed_vnb=nb[-1], output_filename="output_submit.txt",
+            model_scale=cfg.get("strategy", {}).get("GMAT_MODEL_SCALE", 0.5),
+            output_dir=run_dir, **env)
+        t0 = time.perf_counter()
+        fixed = run_gmat_verification(gmat_console_path, submit_path,
+                                      artifacts_dir=run_dir / "gmat_fixed")
+        manifest["timings_sec"]["gmat_fixed"] = time.perf_counter() - t0
+        if not (fixed and fixed["intercept_success"] and fixed["final_burn_legal"]):
+            res["accepted"] = False
+            why = ("GMAT 執行失敗" if fixed is None else
+                   f"命中 {fixed['intercept_success']}、末棒合規 {fixed['final_burn_legal']}、"
+                   f"Δr {fixed['miss_km'] * 1000:,.1f} m")
+            res["reasons"].append(f"全攝動固定燃燒繳交腳本驗證沒過（{why}）")
+            rejected = Path(submit_path).with_name("output_submit_REJECTED.txt")
+            Path(submit_path).replace(rejected)
+            submit_path = str(rejected)
+    res["fixed_script_verification"] = fixed
+
+    write_json(run_dir / "retarget.json", {
+        "schema_version": 1, "stage": "retarget", "provenance": provenance(),
+        "saved_at": datetime.datetime.now().isoformat(timespec="seconds"),
+        "source": manifest.get("source"), "gmat_env": env, "gmat_console": gmat_console_path,
+        "status": "accepted" if res["accepted"] else "rejected",
+        "submission_script": submit_path if res["accepted"] else None,
+        "result": res,
+    })
+    manifest["retarget"] = {"status": "accepted" if res["accepted"] else "rejected",
+                            "retarget_idx": res["retarget_idx"], "reasons": res["reasons"],
+                            "submission_script": submit_path if res["accepted"] else None}
+    manifest["checks_passed"] = bool(res["accepted"])
+    manifest["last_stage"] = "retarget"
+    manifest["verification_status"] = "completed"
+
+    if res["accepted"]:
+        d_after = res["retargeted"]["d_min_km"]
+        if d_after > 1.0:
+            # B 平面是在預定時刻線性化：相對速度低（百 m/s 級）時最近點會偏離預定時刻、d_min 壓不到 0
+            log.warning(f"⚠️ 重瞄準後 d_min {d_after:,.3f} km，離 5 km 只剩 {5.0 - d_after:,.3f} km 餘裕；"
+                        "太空船參數不確定時可能不夠（研究報告 §3：B 長時間停在低軌時散布可達數 km）。")
+        log.info(f"✅ 全攝動重瞄準通過：命中、Earth-safe、單棒/總 Δv 合法，固定燃燒版 GMAT 驗證 "
+                 f"Δr {fixed['miss_km'] * 1000:,.1f} m。\n  👉 繳交腳本：{submit_path}"
+                 f"\n  細節：{run_dir / 'retarget.json'}")
+        return
+    src = (manifest.get("source") or {}).get("path", "（原 mission.json）")
+    hint = ""
+    if "legality" in orig:
+        head = orig["legality"]["headroom_mps"]
+        order = sorted(range(len(head)), key=lambda i: -head[i])[:3]
+        hint = ("\n  單棒餘裕最大的幾棒（可用 --retarget-burn N 改試）："
+                + "、".join(f"第 {i} 棒 {head[i]:,.2f} m/s" for i in order))
+    miss = rep.get("d_min_km")
+    log.warning("\n" + "🔴" * 30
+                + "\n  全攝動重瞄準沒有通過，**保留原方案，不產生新的繳交腳本**："
+                + "".join(f"\n    • {r}" for r in res["reasons"])
+                + (f"\n  原方案在全攝動下的 d_min = {miss:,.3f} km"
+                   + ("（> 5 km，照原樣繳交會打偏！）" if miss > 5.0 else "（仍在 5 km 內）")
+                   if miss is not None else "")
+                + f"\n  原方案：{src}{hint}"
+                + f"\n  診斷檔：{run_dir / 'gmat_retarget'}、{run_dir / 'retarget.json'}"
+                + "\n" + "🔴" * 30)
+
 
 if __name__ == '__main__':
     main()
