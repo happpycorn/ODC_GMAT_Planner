@@ -524,6 +524,9 @@ class MissionOptimizer:
         # 2.3 退路：旗標開、贏家帶可拆終端違規時，run_study 記下「真實分數最高的零違規
         # 候選」(未精修)，拆棒失敗時 main 改交它。見 _pick_best_case / main._legalize_stage。
         self.legal_backup = None
+        # 排位賽模式下所有棒數案例都在失格層時，_pick_best_case 記下最接近合法的那個
+        # ({"burns", "x", "fitness"})，main 存成 no_legal_route.json 給人檢查 (不產生腳本)。
+        self.no_legal_route = None
 
         # 攔截容許範圍：規則只要求 Δr ≤ 這個值，超出的精準度不會多加分 (Δr_min 會被
         # 地板夾住)，開放讓最後一棒 Lambert 瞄準這個球內最省油的點，而不是死盯著 A
@@ -2034,6 +2037,7 @@ class MissionOptimizer:
         # effective_burns 的說明)，這三種情況都會產生浮點數等級一模一樣的分數。
         viable = {b: r for b, r in self.burn_case_results.items()
                   if r.get("best_x") is not None and r["fitness"] < 0.0}
+        self.no_legal_route = None
         if not viable:
             self._log_no_legal_route()
             return None
@@ -2175,6 +2179,8 @@ class MissionOptimizer:
             log.error("❌ 最佳化失敗：所有的嘗試都撞毀或違規了。")
             return
         b = min(dq, key=lambda k: dq[k]["fitness"])
+        self.no_legal_route = {"burns": b, "x": np.asarray(dq[b]["best_x"], dtype=np.float64),
+                               "fitness": float(dq[b]["fitness"])}
         detail = ""
         try:
             m = self.mission_metrics(dq[b]["best_x"], b)
@@ -2678,6 +2684,13 @@ def run_study_over_revs(config, external_seeds=None):
                     "——上表數字自己看了定案（見 tiebreak_rank_key）。")
 
     _, burns, times, mission_info = candidates[best_i]
+    if burns is None:
+        # 全部失敗：排位賽模式下各趟可能各留一個「最接近合法」的失格候選，取違規最少的掛到
+        # 回傳的 optimizer 上 (main 存成 no_legal_route.json)。它帶著自己那趟的 optimizer。
+        nlr = [(o.no_legal_route["fitness"], i) for i, o in enumerate(optimizers)
+               if o.no_legal_route is not None]
+        if nlr:
+            return None, None, None, optimizers[min(nlr)[1]]
     # 勝出那趟的任務規劃 + Python 預測，以 INFO 重印一次（每趟跑的時候是 DEBUG）。
     if isinstance(mission_info, dict) and mission_info.get("report_text"):
         log.info(mission_info["report_text"])

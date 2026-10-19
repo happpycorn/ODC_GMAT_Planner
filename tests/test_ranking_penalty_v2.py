@@ -11,6 +11,9 @@
   4. C4 可拆倍數 K 由拆棒器最大段數推出（排位賽），初賽維持 5 倍。
   5. fast_fitness_evaluator：同一個決策向量在排位賽模式的分層；撞地球回 −30（低於失格層）。
   6. config_validator：MAX_DV_MPS ≤ 250 沒填 MAX_TOTAL_DV_MPS 直接擋。
+  7. 找不到合法路線：記下最接近的失格候選、存 no_legal_route.json（--from-mission 讀不進去、
+     不產生腳本）、NoLegalRouteError / 結束碼 3。真的跑一次 main.py 的 e2e 見
+     tests/test_no_legal_route_e2e.py（SLOW）。
 """
 
 import copy
@@ -19,6 +22,9 @@ import json
 import math
 import os
 import sys
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
@@ -31,6 +37,8 @@ from src.scorer import (calculate_score, ranked_search_score, assess_legality,
                         DQ_TIER_TOP, DQ_TIER_SPAN, SEARCH_FAIL_SCORE_RANKED)
 from src.burn_splitter import legalize_route
 from src.config_validator import validate_config, ConfigValidationError
+from src.pipeline_artifacts import load_mission
+import main as app
 
 FAILS = []
 
@@ -216,6 +224,69 @@ b100 = copy.deepcopy(BASE)
 b100["rules"]["MAX_DV_MPS"] = 100.0
 check("MAX_DV_MPS = 100（更嚴）沒填總上限 → 也擋", rejected(b100))
 check("MAX_DV_MPS = 1500（初賽）沒填總上限 → 通過", not rejected(copy.deepcopy(BASE)))
+
+print("\n── 7. 找不到合法路線 ──")
+nl = make(BASE, RANK)               # cap 250：X 的終端 4,691 m/s、總 6,200 m/s → 失格層
+fx = float(nl._fitness_wrapper(N)(X))
+check(f"前提：X 在排位賽模式下的 fitness 在失格層（{-fx:.4f}）", 10.0 < fx < 20.0)
+nl.burn_case_results = {N: {"fitness": fx, "best_x": X.copy(), "epochs_run": 1, "note": ""}}
+check("_pick_best_case：只有失格層候選 → None", nl._pick_best_case() is None)
+check("記下最接近合法的候選（棒數、x、fitness）",
+      nl.no_legal_route is not None and nl.no_legal_route["burns"] == N
+      and np.array_equal(nl.no_legal_route["x"], X) and nl.no_legal_route["fitness"] == fx)
+pre_nl = make(BASE)
+pre_nl.burn_case_results = {N: {"fitness": 0.0, "best_x": X.copy(), "epochs_run": 1, "note": ""}}
+check("初賽模式 / 搜尋失敗（fitness 0）不記", pre_nl._pick_best_case() is None and pre_nl.no_legal_route is None)
+
+with tempfile.TemporaryDirectory() as td:
+    p = app.save_no_legal_route(Path(td) / "no_legal_route.json", nl)
+    d = json.loads(p.read_text(encoding="utf-8"))
+    v = d["violations"]
+    check("no_legal_route.json：stage = no_legal_route、含 config / burns / times / mission_info",
+          d["stage"] == "no_legal_route" and all(k in d for k in ("config", "burns", "times", "mission_info")))
+    term = v["over_cap_burns"][-1] if v["over_cap_burns"] else {}
+    check(f"違規量：終端第 {term.get('burn')} 棒 {term.get('dv_mps', 0):,.1f} m/s 超 "
+          f"{term.get('over_cap_mps', 0):,.1f}、超出拆棒範圍；總 Δv 超 {v['total_dv_excess_mps']:,.1f}",
+          term.get("burn") == N and term.get("over_cap_mps", 0) > 4000.0 and term.get("splittable") is False
+          and v["total_dv_excess_mps"] > 3000.0 and abs(v["splitter_limit_mps"] - 3472.0) < 1e-6
+          and len(v["per_burn_dv_mps"]) == N)
+    check("有下一步建議（MAXITER、種子、MAX_BURNS、feasibility.py）",
+          any("MAXITER" in t for t in d["next_steps"]) and any("feasibility" in t for t in d["next_steps"])
+          and any("MAX_BURNS" in t for t in d["next_steps"]))
+    try:
+        load_mission(p)
+        check("--from-mission 讀不進去（不會被拿去產繳交腳本）", False)
+    except ValueError:
+        check("--from-mission 讀不進去（不會被拿去產繳交腳本）", True)
+
+    cfg_path = Path(td) / "cfg.json"
+    cfg_path.write_text(json.dumps(nl.config), encoding="utf-8")
+    run_dir = Path(td) / "run"
+    nl2 = make(BASE, RANK)
+    nl2.no_legal_route = nl.no_legal_route
+    raised = None
+    with patch.object(app, "run_seed_portfolio", return_value=(None, None, None, nl2)):
+        try:
+            app.main(["--config", str(cfg_path), "--run-dir", str(run_dir), "--quiet"])
+        except app.NoLegalRouteError as exc:
+            raised = exc
+    check("main：找不到合法路線 → NoLegalRouteError（不是通用 RuntimeError）", raised is not None)
+    run_json = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    check("run.json status = no_legal_route、指到存檔", run_json["status"] == "no_legal_route"
+          and run_json.get("no_legal_route", "").endswith("no_legal_route.json"))
+    produced = sorted(q.name for q in run_dir.iterdir())
+    check(f"run 目錄有 no_legal_route.json、沒有 mission.json / 任何腳本（{produced}）",
+          "no_legal_route.json" in produced and "mission.json" not in produced
+          and not any(n.endswith(".script") for n in produced))
+    check("結束碼 3（跟一般錯誤 1 分開）", app.EXIT_NO_LEGAL_ROUTE == 3)
+    raised = None
+    with patch.object(app, "run_seed_portfolio", return_value=(None, None, None, make(BASE, RANK))):
+        try:
+            app.main(["--config", str(cfg_path), "--run-dir", str(Path(td) / "run2"), "--quiet"])
+        except RuntimeError as exc:
+            raised = exc
+    check("沒有失格候選的一般搜尋失敗 → 照舊通用 RuntimeError",
+          raised is not None and not isinstance(raised, app.NoLegalRouteError))
 
 print()
 if FAILS:

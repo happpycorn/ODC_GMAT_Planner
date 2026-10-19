@@ -21,6 +21,7 @@
 |---|---|
 | [RANKING_ROUND_RULES_20261006](RANKING_ROUND_RULES_20261006.md) | 排位賽規則跟初賽的差異，以及工具需要改的地方 |
 | [PERTURBATION_GAP_20261019](PERTURBATION_GAP_20261019.md) | 我們的解放進排位賽官方攝動模型還打不打得中；比賽當天要加「全攝動 B 平面重瞄準」 |
+| [RANKING_PENALTY_V2_20261019](RANKING_PENALTY_V2_20261019.md) | 排位賽搜尋懲罰改成「失格層」：任何合法候選都排在總 Δv 超標 / 拆不掉的候選前面；排位賽格式必填總 Δv 上限 |
 | [NEXT_ROUND_BACKLOG](NEXT_ROUND_BACKLOG.md) | 下一輪題型、依賴與待官方發題後的檢查項目 |
 | [C4_TERMINAL_SPLIT_AWARE_PLAN](C4_TERMINAL_SPLIT_AWARE_PLAN.md) | 終端棒拆後估分的設計與實測；已實作部分見文內結果 |
 | [C1_PRIMER_VECTOR_STUDY](C1_PRIMER_VECTOR_STUDY.md) | Primer 引導與加棒搜尋的理論及實作脈絡 |
