@@ -31,6 +31,7 @@
 
 | 文件 | 內容 |
 |---|---|
+| [RANKING_MC_20261019](RANKING_MC_20261019.md) | 排位賽條件（250 m/s、總 Δv 3 km/s）多種子實測：時間、8–15 棒拆棒穩定度、失格案例 |
 | [EARLY_STOP_ABLATION_20260929](EARLY_STOP_ABLATION_20260929.md) | 提早停止消融；目前預設關閉 |
 | [REVS_SCHEDULING_20260929](REVS_SCHEDULING_20260929.md) | REVS 案例共用行程池的驗證 |
 | [FLOW_EFFICIENCY_AUDIT_20260923](FLOW_EFFICIENCY_AUDIT_20260923.md) | 流程成本審計；其中部分提案已完成 |
