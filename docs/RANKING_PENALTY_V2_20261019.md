@@ -107,11 +107,57 @@ contest 的搜尋軌跡，違反「初賽分數逐位元不變」。5 倍是 E1�
 
 ### 回歸與初賽逐位元
 
-（待填）
+- 失格層與 K 推導那個 commit（`f9bb816`）：quick 12/12（108.7 s）、完整 16/16（350.7 s），2026-10-19 23:32–23:40，
+  開跑前確認沒有其他 worktree 的 python 長工作。
+- 找不到合法路線那個 commit（`4fc8256`）之後重跑：quick 12/12（100.2 s）、完整 **17/17**（372.9 s，多了
+  `test_no_legal_route_e2e.py` 16.1 s），2026-10-20 00:21–00:29。
+- **contest replay**（[`sweeps/revs_unified_v1.json`](../sweeps/revs_unified_v1.json)：contest、SEED 0、600×20、
+  `MAX_BURNS=[1,2,3]`、完整拆棒管線、`--slots 1`、sweep 暖身後讀快取）：
 
-### sweep：`sweeps/ranking_mc_v2_penalty.json`
+  | 程式 | 執行位置 | 拆後分數 | 棒數 | 拆前贏家總 Δv（m/s） |
+  |---|---|---|---|---|
+  | 本分支 `f9bb816` | 本 worktree | **98.31908070668248** | 6 | 6,189.372620917897 |
+  | Master `6d2f134` | 全新 worktree（暖身冷編 → 讀快取） | 98.31907096892051 | 7 | 6,189.37260871791 |
+  | 本分支 `4fc8256` | 同一個全新 worktree（同流程） | 98.31907096892051 | 7 | 6,189.37260871791 |
 
-（待填）
+  **同一個 worktree、同一套快取流程下，本分支與 Master 逐位元相同**（拆後分數、棒數、拆前贏家全部一樣），
+  所以初賽情境的分數沒有被這次修改動到。本 worktree 的結果 98.31908070668248 印到小數 5 位就是 98.31908；它跟全新
+  worktree 的 98.31907096892051 不一樣，差異來自 worktree 之間的 numba 快取 / 編譯狀態，不是程式碼：
+  - 另外直接比 `fast_fitness_evaluator`：contest config、1–4 棒、12,000 組隨機決策向量，Master 與本分支回傳值
+    **0 筆不同**（逐位元比 `float.hex`）。
+  - 拆前贏家的總 Δv 在 10⁻⁸ m/s 就分岔，L-SHADE 對 1 ulp 敏感（見記憶 numba-cache-state-breaks-seed-repro：
+    冷編與讀快取會差 1 ulp）。這次兩邊 sweep 的 run 本身都沒有冷編（`numba_cache_written` 都是空的），
+    差別在快取是哪個行程、什麼時候編出來的，根因這次沒有追。
+  - 結論：要拿 98.31908 當逐位元基準，必須在同一個 worktree、同一個快取狀態下 before/after 對照；
+    跨 worktree 只能比到小數 4 位（98.3191）。
+
+### sweep：[`sweeps/ranking_mc_v2_penalty.json`](../sweeps/ranking_mc_v2_penalty.json)
+
+`hyperbolic_test_fuel`（[ranking_mc_v1](RANKING_MC_20261019.md) 裡 5/5 交出失格解）與 `hyperbolic_smoke`（對照）×
+SEED 0–2，全部 `MAX_DV_MPS=250`、`MAX_TOTAL_DV_MPS=3000`、600×20、`--slots 1`。程式 `f9bb816`，
+2026-10-19 23:47–10-20 00:04，機器上沒有其他 python 長工作。原始結果在本機 `outputs/sweeps/ranking_mc_v2_penalty/`（不進版控）。
+
+| | `hyperbolic_test_fuel` s0 / s1 / s2 | `hyperbolic_smoke` s0 / s1 / s2 |
+|---|---|---|
+| 結果 | **找不到合法路線** ×3（明確回報，不交檔） | 合法 ×3 |
+| 分數 | — | 86.7829 / 86.7835 / 86.7820 |
+| 棒數、總 Δv | 最接近合法：2 棒、3,824 m/s、T 8,000 s（三顆一樣） | 4 棒、639.6 / 639.6 / 639.8 m/s |
+| 牆鐘（s） | 77 / 76 / 76 | 162 / 225 / 362 |
+| v1（`d5afcff`，沒設總上限）同種子 | 65.00 失格 ×3（~323,800 m/s、T 200 s），99–101 s | 85.2033 / 86.7845 / 86.7839 |
+
+- **`hyperbolic_test_fuel`：** 搜尋不再停在「T = 200 s、32 萬 m/s」的直接撞擊，最接近合法的候選縮到 3,824 m/s
+  （超 824 m/s），抵達時刻是 T_max（失格層只看違規量，DE 會犧牲時間去省油）。仍然在失格層，所以照設計明確回報
+  「找不到合法路線」，不交失格解、也不跑 C4 退路重搜（牆鐘 76–77 s；v1 是 99–101 s，當時多跑一次退路重搜，
+  但兩版中間還有別的改動，不當成加速量測）。
+  `feasibility.py`（同 config）：T_max 內最便宜的**單棒**轉移就要 3,496.7 m/s（> 3,000），能量下限 697 m/s；
+  這組佔位幾何在 T_max = 8,000 s 內很可能根本沒有總 Δv ≤ 3 km/s 的路線（多棒沒有證明）。注意 3,824 比單棒的 3,497 還貴：
+  `hyperbolic_test` 的 `MAX_BURNS=[2,3]` 沒有 1 棒，失格層裡 DE 也沒把前導棒壓到 0——失格層只保證排序與單調，
+  不保證找到最小違規量。
+- **`hyperbolic_smoke`：** 3/3 合法，三顆都落在 v1 的高群（~86.78），SEED 0 從 v1 的 85.20 升到 86.78；
+  SEED 1/2 比 v1 少 0.0010–0.0019 分（拆棒雜訊級）。v1 是 `d5afcff`、沒設總上限，中間還隔了 `1cd196d` 的改動，
+  這不是乾淨的 A/B，只說明 v2 在可行情境下沒有變差。
+- 找不到合法路線時 sweep 記成 `error`（`main.py` 非 0 結束）。這次跑的是 `f9bb816`，當時還是通用的「求解失敗」；
+  `4fc8256` 起改成結束碼 3 與 `no_legal_route.json`（見第 5 節）。
 
 ## 限制與後續
 
