@@ -2,6 +2,15 @@
 
 從 [專案 README](../README.md) 看安裝、設定、執行與輸出；從 [STATUS](../STATUS.md) 看目前進度與待辦。本頁按用途整理其餘文件。日期標在檔名上的研究與交接紀錄保留當時的結論，最新狀態以 STATUS 為準。
 
+## 排位賽當天（2026-11-09）
+
+| 文件 | 用途 |
+|---|---|
+| [ranking/CONTEST_DAY](ranking/CONTEST_DAY.md) | 拿到題目後的逐步流程、每步預估時間、失格檢查清單與繳交 |
+| [ranking/QUESTIONS_FOR_ORGANIZER](ranking/QUESTIONS_FOR_ORGANIZER.md) | 給主辦單位的問題草稿（尚未寄出）：太空船參數、曆元、驗證設定、T_max、繳交格式 |
+| [tmax_from_boundary.py](../scripts/tmax_from_boundary.py) | A 的軌道根數 + 任務邊界 → `rules.T_MAX_SEC`，解析解與數值傳播交叉驗證 |
+| [check_scoring_params.py](../scripts/check_scoring_params.py) | 官方 `k_t/C_t/k_v/C_v` 換成 m/s 制，用參考解是否落在整數分驗算單位 |
+
 ## 操作與重現
 
 | 文件 | 用途 |
