@@ -1223,6 +1223,7 @@ def run_output_stage(config, burns, times, mission_info, optimizer, *, args, run
             (args.no_fixed_script or not earth_safe or disqualified or fixed_script_result is not None)
             else "failed")
 
+
 def run_retarget_stage(config, burns, times, mission_info, optimizer, *, args, run_dir,
                        gmat_console_path, manifest, local_config):
     """全攝動 B 平面重瞄準（2026-10-19，docs/PERTURBATION_GAP_20261019.md §4–5）。
@@ -1323,7 +1324,8 @@ def run_retarget_stage(config, burns, times, mission_info, optimizer, *, args, r
                             "submission_script": submit_path if res["accepted"] else None}
     manifest["checks_passed"] = bool(res["accepted"])
     manifest["last_stage"] = "retarget"
-    manifest["verification_status"] = "completed"
+    # GMAT 連原方案都重播不了（找不到 GmatConsole、腳本錯誤）算驗證失敗，不是「跑完但沒過」
+    manifest["verification_status"] = "failed" if "error" in rep else "completed"
 
     if res["accepted"]:
         d_after = res["retargeted"]["d_min_km"]

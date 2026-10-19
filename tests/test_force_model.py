@@ -420,6 +420,14 @@ class StageTest(unittest.TestCase):
         self.assertEqual(rec["gmat_env"]["force_model"], "ranking_full")  # 開關不能被蓋掉
         self.assertIn("ShipB.DryMass = 321;", (folder / "output_submit.txt").read_text())
 
+    def test_gmat_unavailable_marks_verification_failed(self):
+        runner, _ = fake_runner()
+        runner["replay"] = lambda *a: {"tag": a[7], "error": "找不到 GmatConsole"}
+        folder = self.run_main("nogmat", runner=runner)
+        run = json.loads((folder / "run.json").read_text())
+        self.assertEqual((run["verification_status"], run["checks_passed"]), ("failed", False))
+        self.assertEqual(json.loads((folder / "retarget.json").read_text())["status"], "rejected")
+
     def test_cli_combinations(self):
         bad = [["--retarget-full-perturbation"],
                ["--from-mission", "m.json", "--retarget-burn", "1"],
