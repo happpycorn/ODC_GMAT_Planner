@@ -2,7 +2,8 @@
 
 **2026-09-29 起**，八份常用情境（`contest`、`official_sample`、`hyper_far`、`weird_test`、
 `hard_mode_test`、`hyperbolic_smoke`、`hyperbolic_test`、`playground`）有版控中的
-[`configs/shared/`](../configs/shared/) JSON，可在新環境直接使用。
+[`configs/shared/`](../configs/shared/) JSON，可在新環境直接使用。2026-10-19 加入排位賽規則範本
+`ranking_round`（只有規則數字是真的，軌道與計分參數是佔位值）。
 根目錄 `configs/*.json` 仍是本機設定，不會跟著 Git 走。2026-08-15 換到 WSL 時曾差點無法重建
 `weird_test.json`（STATUS.md 當時只記了 A 的部分參數，缺少 B 的 INC/RAAN），因此保留本文件的
 完整參數與情境設計脈絡。
@@ -45,6 +46,7 @@
 | `lateral_burn_test` | 原本想測側向燃燒，**實際測到的是計分參數設錯的後果** | ❌ 0 個（14,400 組實掃） | 3 棒 2,113 m/s、Score 95.86（離能量下限只差 11.6%）|
 | `hyperbolic_smoke` | **排位賽路徑**：A 是雙曲線飛越，整條流程原本從沒跑過 | ✅ 851.2 m/s | 不難，目的是驗證程式跑得通（GMAT 差 2.8m）|
 | `hyperbolic_test` | **HAP-67 拆棒管線 × 雙曲線**：贏家違規時自動合法化這條新路徑沒測過 | ❌ 逼出違規解 | DE 違規解 87.56 → 自動拆 5 棒合法 96.81，GMAT 兩版都過 |
+| `ranking_round` | **排位賽規則範本**：單棒 250 m/s、總 Δv 3,000 m/s，超過直接失格 | ❌ 250 m/s 下至少 6 棒 | 軌道/計分是 `hyperbolic_smoke` 的佔位值，開賽時整組換掉；多棒拆棒收斂未驗 |
 | `hyper_far` | 雙曲線 + **能量門檻**（近地點 25,000km）| ❌ 下限 1,887 > 上限 | 2 棒 1,969.7 m/s，**離下限僅 4.4%**，GMAT 差 **0.203m** |
 | `hyper_fast` | 雙曲線 + **相位鎖死**：證明無解的情境長什麼樣 | ❌ 無解 | 任何解都違規；用來驗證「荒謬超標」警告 |
 | `contest` | **初賽正式題**（`configs/shared/contest.json`；A 圓 7,100 km/INC 120°，B 6,800 km/INC 40°）| ❌ 終端需 ~4,691 m/s | 拆棒後 **98.3188～98.3191**（2026-09-23，GMAT ✅），見 [98.319 解](solutions/98.319_route4_split6.md) |

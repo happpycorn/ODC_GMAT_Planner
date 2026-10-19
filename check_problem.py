@@ -106,6 +106,8 @@ def main():
     # --- 計分參數 + 策略提示 ---
     print("\n【計分參數與策略提示】")
     print(f"  每棒 ΔV 上限     {m.MAX_DV*1000.0:10.1f} m/s   （安全邊際後軟上限 {m.MAX_DV_SOFT*1000.0:.1f}）")
+    if m.MAX_TOTAL_DV_MPS is not None:
+        print(f"  總 ΔV 上限       {m.MAX_TOTAL_DV_MPS:10.1f} m/s   （超過失格；每棒超標也是失格）")
     print(f"  機動間隔下限     {m.MIN_COAST_TIME:10.1f} s")
     print(f"  k_t={m.k_t:.6g}  C_t={m.C_t:.6g} s   k_v={m.k_v:.6g}  C_v={m.C_v:.6g} m/s")
 

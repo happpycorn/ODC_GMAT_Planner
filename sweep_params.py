@@ -183,7 +183,8 @@ def collect_result(run_dir):
     if mission:
         mi = mission.get("mission_info", {})
         res["final"] = {k: mi.get(k) for k in ("score", "penalty_count", "num_burns", "total_dv_mps",
-                                              "T_team", "miss_km", "earth_safe")}
+                                              "T_team", "miss_km", "earth_safe",
+                                              "over_dv_count", "disqualified")}
         res["provenance_files"] = (mission.get("provenance") or {}).get("files")
     pre = sorted(glob.glob(os.path.join(run_dir, "winner_presplit_seed*.json")))
     if pre:
@@ -412,7 +413,7 @@ def _run_sweep(spec, out_dir, slots, timeout, gmat, retry_failed, do_warmup,
                     warn = "  ⚠️ 有冷編譯" if row["numba_cache_written"] else ""
                     print(f"[{n_done}/{n_done + len(pending) + len(running)}] {row['key']:<50} "
                           f"{row['status']:<9} score={f.get('score', float('nan')):.4f} "
-                          f"違規={f.get('penalty_count')} 牆鐘={row['wall_sec']:.0f}s "
+                          f"違規={f.get('penalty_count')}{' 失格' if f.get('disqualified') else ''} 牆鐘={row['wall_sec']:.0f}s "
                           f"(累計 {(time.time() - t_start) / 60:.0f} 分){warn}", flush=True)
         except KeyboardInterrupt:
             print("\n⏹ 中斷：終止執行中的 run（沒寫進 results 的下次會重跑）", flush=True)
@@ -451,7 +452,9 @@ def summarize(spec, out_dir):
                 continue
             sc_list = [s for s in (score(r) for r in rs) if s is not None]
             n_fail = sum(r["status"] != "ok" for r in rs)
-            n_pen = sum(((r.get("final") or {}).get("penalty_count") or 0) > 0 for r in rs if r["status"] == "ok")
+            n_pen = sum(bool((r.get("final") or {}).get("disqualified"))
+                        or ((r.get("final") or {}).get("penalty_count") or 0) > 0
+                        for r in rs if r["status"] == "ok")
             walls = [r["wall_sec"] for r in rs if r["status"] == "ok"]
             cpus = [r["cpu_sec"] for r in rs if r["status"] == "ok" and r.get("cpu_sec") is not None]
             srch = [r["search_sec"] for r in rs if r["status"] == "ok" and r.get("search_sec") is not None]

@@ -5,7 +5,8 @@
      旗標關時跟舊的 16 格 scalars 逐位元相同。
   2. 挑贏家換尺：_pick_best_case / pick_best_across_revs 餵假資料（違規 88.32 vs 合法 89.25），
      旗標開選前者、關選後者。
-  3. 退路：拆後估計落空時，交真實分數較好的合法備胎。
+  3. 退路：拆後估計落空時改交合法備胎。排位賽起單棒超標是失格，合法備胎分數再低也勝過
+     失格解（2026-10-19 前是比真實分數，違規解扣 10 分仍可能勝出）。
 
 決策向量取自 docs/solutions/checkpoints/ 的 contest 拆棒前存檔（3 棒、終端 4,691 m/s ≈ 3.13× cap）。
 """
@@ -78,7 +79,7 @@ sp16 = off._scalar_params()[:16].copy()
 vp = np.vstack([off.A_r0, off.A_v0, off.B_r0, off.B_v0])
 f16 = fast_fitness_evaluator(X, N, sp16, vp)
 check("旗標關時與舊 16 格 scalars 逐位元相同", f16 == off._fitness_wrapper(N)(X))
-check("_scalar_params 是 19 格", off._scalar_params().shape == (19,))
+check("_scalar_params 是 20 格（19 = 總 Δv 上限）", off._scalar_params().shape == (20,))
 
 m = off.mission_metrics(X, N)
 check(f"mission_metrics：可拆終端違規 1 次、拆後估計 = 真實 + 10（{m['score']:.4f} → {m['score_split_est']:.4f}）",
@@ -156,7 +157,7 @@ check("拆棒失敗 → 交真實分數較好的合法備胎", r[2] is legal and
 worse = dict(_mi(50.0, 50.0, 0), earth_safe=True, num_burns=3)
 opt_, _ = fake_opt(worse)
 r = app._fallback_to_legal_backup(CFG, "b", "t", viol, opt_)
-check("備胎真實分數更差 → 照舊交違規解", r[2] is viol and r[3] is opt_)
+check("備胎分數較低但合法 → 仍交備胎（失格解一律排在合法解後面）", r[2] is worse)
 
 opt_, _ = fake_opt(legal, flag=False)
 check("旗標關 → 不動", app._fallback_to_legal_backup(CFG, "b", "t", viol, opt_)[2] is viol)
@@ -193,8 +194,16 @@ check("沒有備胎 → 旗標關重搜（重搜設定的旗標是關的）", se
 check("重搜解真實分數較好 → 交重搜解與它的 optimizer", r[2] is rer and getattr(r[3], "tag", None) == "rerun")
 check("重搜不改呼叫端的 config", CFG["strategy"]["SPLIT_AWARE_TERMINAL"] is True)
 
-r = run_fb(opt_, dict(_mi(50.0, 50.0, 0), earth_safe=True, num_burns=4))
-check("重搜解更差 → 照舊交違規解", r[2] is viol and r[3] is opt_)
+low = dict(_mi(50.0, 50.0, 0), earth_safe=True, num_burns=4)
+r = run_fb(opt_, low)
+check("重搜解分數較低但合法 → 交重搜解", r[2] is low)
+
+r = run_fb(opt_, dict(_mi(50.0, 50.0, 1), earth_safe=True, num_burns=4))
+check("重搜解也失格且搜尋用分數更差 → 照舊交原失格解", r[2] is viol and r[3] is opt_)
+
+dq_better = dict(_mi(95.0, 95.0, 1), earth_safe=True, num_burns=4)
+r = run_fb(opt_, dq_better)
+check("兩邊都失格 → 比搜尋用分數", r[2] is dq_better)
 
 r = run_fb(opt_, None)
 check("重搜失敗 → 照舊交違規解", r[2] is viol and r[3] is opt_)
