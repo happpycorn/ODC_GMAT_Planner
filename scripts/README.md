@@ -10,6 +10,8 @@
 | C4 彙整 | — | `uv run python scripts/c4_summary.py --out outputs/c4 --md` |
 | ablation_v1 | `scripts/run_ablation_v1.sh --dry-run` | `scripts/run_ablation_v1.sh` |
 | budget_v1 與 slow | `scripts/run_budget_v1.sh --dry-run` | `scripts/run_budget_v1.sh` |
+| 排位賽 T_max | — | `uv run python scripts/tmax_from_boundary.py --config <檔> --boundary-km <km>`（`--write` 寫回） |
+| 排位賽計分參數 | `uv run python scripts/check_scoring_params.py --demo-prelim` | `uv run python scripts/check_scoring_params.py --kt … --kv-unit … --Cv-unit …`（見 [當天手冊](../docs/ranking/CONTEST_DAY.md)） |
 | 本機成果索引 | — | `uv run python scripts/output_inventory.py index` |
 | 研究與交叉驗證 | [工具導覽](research/README.md) | 依導覽選用 `scripts/research/` 中的腳本 |
 
