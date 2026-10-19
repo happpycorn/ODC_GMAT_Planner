@@ -19,6 +19,7 @@
 
 | 文件 | 用途 |
 |---|---|
+| [RANKING_ROUND_RULES_20261006](RANKING_ROUND_RULES_20261006.md) | 排位賽規則跟初賽的差異，以及工具需要改的地方 |
 | [NEXT_ROUND_BACKLOG](NEXT_ROUND_BACKLOG.md) | 下一輪題型、依賴與待官方發題後的檢查項目 |
 | [C4_TERMINAL_SPLIT_AWARE_PLAN](C4_TERMINAL_SPLIT_AWARE_PLAN.md) | 終端棒拆後估分的設計與實測；已實作部分見文內結果 |
 | [C1_PRIMER_VECTOR_STUDY](C1_PRIMER_VECTOR_STUDY.md) | Primer 引導與加棒搜尋的理論及實作脈絡 |

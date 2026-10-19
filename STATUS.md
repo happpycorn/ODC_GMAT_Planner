@@ -12,6 +12,7 @@
 - **已完成的近期工作**：提早停止開關已接通，但消融顯示多個情境掉分，預設維持關閉；REVS=0/4 案例已共用行程池，保留集成結果並縮短實測牆鐘；Numba 中 Izzo 例外造成的記憶體洩漏已修。實驗見 [提早停止](docs/EARLY_STOP_ABLATION_20260929.md)與 [REVS 排程](docs/REVS_SCHEDULING_20260929.md)。
 - **回歸與搜尋預算**：日常跑 `uv run python run_regression.py --quick`，完整跑 `uv run python run_regression.py`；2026-09-29 完整回歸為 14/14。搜尋預算維持 `MAXITER=600`、`POPSIZE=20`，`SEED_PORTFOLIO_N=1`，兩層種子精修與 REVS 集成保留。
 - **資料與文件**：常用情境在版控的 `configs/shared/`；七份 sweep 規格與 C4 實驗規格可由這些情境重建。`outputs/` 保留本機原始成果，可用 `scripts/output_inventory.py index` 產生索引；文件入口見 [docs/README.md](docs/README.md)。
+- **排位賽規則（2026-10-19 收到）**：單棒上限改成 250 m/s 且超標失格、總 Δv ≤ 3 km/s、驗證會開完整攝動，計分參數與 T_max 開賽當下才公布。差異與要改的地方見 [RANKING_ROUND_RULES_20261006](docs/RANKING_ROUND_RULES_20261006.md)。
 - **下一步**：待官方公布下一輪軌道與計分參數後，以真題重新檢查預算、雙曲線拆棒與安全判定；已知研究項目包括攝動開啟時的 Earth-safe 數值取樣，以及 C4 對中間棒的拆後估分。詳細紀錄在本頁下方與 [NEXT_ROUND_BACKLOG](docs/NEXT_ROUND_BACKLOG.md)。
 
 ## 分段管線第一版（2026-09-23）
