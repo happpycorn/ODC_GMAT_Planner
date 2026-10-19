@@ -6,6 +6,7 @@ import numpy as np
 from numba import njit
 from poliastro.core.iod import izzo  # 只給 njit 的 fast_fitness_evaluator 用；Python 端走 core_math.lambert_izzo
 import concurrent.futures
+import inspect
 import contextlib
 import multiprocessing
 import queue
@@ -18,7 +19,9 @@ from mealpy import FloatVar
 from mealpy.evolutionary_based.SHADE import L_SHADE
 
 from src.propagator import get_r0_v0
-from src.scorer import calculate_score, total_dv_soft_penalty, assess_legality
+from src.burn_splitter import legalize_route
+from src.scorer import (calculate_score, ranked_search_score, assess_legality,
+                        SEARCH_FAIL_SCORE_RANKED)
 from src.core_math import (propagate_dop853, check_constraints, fast_norm,
                            to_vnb_frame, reaches_perigee, lambert_izzo,
                            izzo_max_revs)
@@ -74,6 +77,18 @@ def fast_fitness_evaluator(
     max_total_dv = 0.0
     if scalars.shape[0] >= 20:
         max_total_dv = scalars[19]
+    # 排位賽模式 = 有總 Δv 上限 (2026-10-19 v2)。這個模式下單棒超標超出拆棒器範圍
+    # (索引 20：split_limit，km/s，= 拆棒器最大段數 × MAX_DV_SOFT；不拆棒時 = MAX_DV_SOFT)
+    # 跟總 Δv 超標一樣進失格層 (scorer.ranked_search_score)，搜尋失敗回 SEARCH_FAIL_SCORE_RANKED。
+    # 初賽模式 (max_total_dv = 0) 下面全部等同舊行為。
+    ranked = max_total_dv > 0.0
+    split_limit = term_max_factor * max_dv
+    if scalars.shape[0] >= 21:
+        split_limit = scalars[20]
+    fail = 0.0
+    if ranked:
+        fail = -SEARCH_FAIL_SCORE_RANKED
+    violation = 0.0   # 單棒超出拆棒範圍的量 (m/s)，只有排位賽模式會累加
 
     A_r0 = vectors[0]
     A_v0 = vectors[1]
@@ -125,7 +140,10 @@ def fast_fitness_evaluator(
                 total_dv += dv_mag * (dv_overhead - 1.0)
         else:
             if dv_mag > max_dv:  # 關旗標時理論上不會發生 (bounds 已夾)，留著當防呆
-                penalty_count += 1  # 搜尋用軟懲罰；最終交件判定這是失格 (assess_legality)
+                if ranked:      # 拆棒器只拆終端棒，前導棒超標拆不掉 → 失格層
+                    violation += (dv_mag - max_dv) * 1000.0
+                else:
+                    penalty_count += 1  # 搜尋用軟懲罰；最終交件判定這是失格 (assess_legality)
 
         v_curr_new = v_curr + dv_vec
 
@@ -144,13 +162,13 @@ def fast_fitness_evaluator(
         # (不經過近地點時，弧上最小半徑就是兩端取小者，見 reaches_perigee)。
         if reaches_perigee(r_curr, v_curr_new, mu, t_coast):
             if not check_constraints(r_curr, v_curr_new, mu, min_periapsis):
-                return 0.0 # 直接判定 0 分 (極度差的適應度)
+                return fail # 直接判定 0 分 (極度差的適應度；排位賽模式低於失格層)
 
         # 傳播太空船 B 經過 Coast Time
         r_curr, v_curr = propagate_dop853(r_curr, v_curr_new, t_coast, dt, mu, j2_val, j3_val, j4_val, re_val)
         current_time += t_coast
         if fast_norm(r_curr) < min_periapsis:      # 這段弧的終點
-            return 0.0
+            return fail
 
     # 3. 最後一次機動 (Lambert 攔截)
     # 決定最後一段飛行時間
@@ -236,7 +254,7 @@ def fast_fitness_evaluator(
                     found_any = True
 
     if not found_any:
-        return 0.0
+        return fail
 
     # 計算需要的最後一次推力
     dv_final_vec = v1_req - v_curr
@@ -244,7 +262,10 @@ def fast_fitness_evaluator(
     total_dv += dv_final_mag
 
     if dv_final_mag > max_dv:
-        if split_term > 0.5 and dv_final_mag <= term_max_factor * max_dv:
+        if ranked and dv_final_mag > split_limit:
+            # 排位賽模式、超出拆棒器範圍：拆不掉就是失格，進失格層 (超得越多分數越低)。
+            violation += (dv_final_mag - split_limit) * 1000.0
+        elif split_term > 0.5 and dv_final_mag <= term_max_factor * max_dv:
             # 終端棒拆後估計 (C4)：這發會被拆棒器 (legalize_route) 拆成多發合法燒，實測
             # 拆後分數只比「不扣罰分」少 ~0.003 分——照舊扣 10 分會讓搜尋拿錯的尺比家族
             # (contest：88.32 家族拆後 98.32，卻輸給合法但晚到的 89.25 家族)。改成預付
@@ -260,7 +281,7 @@ def fast_fitness_evaluator(
     # 弧的終點是瞄準點 (在 A 附近，半徑已知安全)，所以不用再檢查終點。
     if reaches_perigee(r_curr, v1_req, mu, t_final_leg):
         if not check_constraints(r_curr, v1_req, mu, min_periapsis):
-            return 0.0
+            return fail
 
     # 4. 結算最終分數 (利用我們剛改好的 scorer)
     # min_distance_km 理論上就是 offset_r：Lambert 打的是瞄準點，瞄準點跟 A 的真實
@@ -273,13 +294,21 @@ def fast_fitness_evaluator(
         penalty_count=penalty_count,
         k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v
     )
-    # 總 Δv 超過上限：搜尋時是軟懲罰 (固定 10 分 + 超出量的斜率)，最終交件判定為失格。
-    # total_dv 含拆棒預付的 overhead，比實際總量略高——方向保守。
-    if max_total_dv > 0.0:
-        score = max(score - total_dv_soft_penalty(total_dv * 1000.0, max_total_dv * 1000.0), 0.0)
+    # 排位賽模式：總 Δv 超標或單棒超出拆棒範圍 → 失格層 [−20, −10)，任何合法候選 (≥ 0) 都排在
+    # 它前面 (scorer.ranked_search_score)。total_dv 含拆棒預付的 overhead，比實際總量略高——方向保守。
+    if ranked:
+        score = ranked_search_score(score, total_dv * 1000.0, max_total_dv * 1000.0, violation)
 
     # Mealpy 預設是找「最小值」，所以我們把分數加負號回傳
     return -score
+
+# 拆棒器 (burn_splitter.legalize_route) 終端棒最多拆幾段。main.legalize_violating_winner 用預設值
+# 呼叫，所以直接讀它的預設參數——拆棒器改段數上限時，搜尋端的「可拆範圍」自動跟著變。
+SPLITTER_MAX_SEG = int(inspect.signature(legalize_route).parameters["max_seg"].default)
+# 初賽模式 (沒設 MAX_TOTAL_DV_MPS) 的 C4 可拆倍數。1500 m/s 上限時定的經驗值 (E1–E4)，
+# 保留它讓初賽情境逐位元不變；排位賽模式改用 SPLITTER_MAX_SEG (見 MissionOptimizer.__init__)。
+PRELIM_TERMINAL_MAX_FACTOR = 5.0
+
 
 def decision_variable_dims(num_burns: int) -> int:
     """
@@ -477,8 +506,19 @@ class MissionOptimizer:
         # 2026-09-25 起預設開（E1–E4 通過、拆棒器攝動 shooting、退路重搜；見計劃書 §6.5–6.7）。
         self.SPLIT_AWARE_TERMINAL = (bool(strategy.get("SPLIT_AWARE_TERMINAL", True))
                                      and self.AUTO_SPLIT_LEGALIZE)
-        self.SPLIT_AWARE_TERMINAL_MAX_FACTOR = max(
-            1.0, float(strategy.get("SPLIT_AWARE_TERMINAL_MAX_FACTOR", 5.0)))
+        # 可拆上限倍數 K：終端棒 ≤ K × MAX_DV_SOFT 算「拆棒器拆得掉」。排位賽模式 (有總 Δv 上限)
+        # 預設 = 拆棒器最大段數 SPLITTER_MAX_SEG (250 m/s 時 14 × 248 = 3,472 m/s；舊的固定 5 倍
+        # 只有 1,240 m/s，把拆得掉的路線當成不可拆，見 docs/RANKING_MC_20261019.md)。初賽模式維持
+        # 5 倍 (逐位元同舊行為)。config 有寫就照 config。
+        self.RANKING_RULES = self.MAX_TOTAL_DV_MPS is not None
+        self.SPLIT_AWARE_TERMINAL_MAX_FACTOR = max(1.0, float(strategy.get(
+            "SPLIT_AWARE_TERMINAL_MAX_FACTOR",
+            float(SPLITTER_MAX_SEG) if self.RANKING_RULES else PRELIM_TERMINAL_MAX_FACTOR)))
+        # 拆棒器能處理的單棒上限 (km/s)。排位賽模式下終端棒超過它、或前導棒超過 MAX_DV_SOFT，
+        # 搜尋分數進失格層 (scorer.ranked_search_score)；不拆棒 (AUTO_SPLIT_LEGALIZE 關) 時任何
+        # 超標都拆不掉。初賽模式不用這個值 (超標照舊每棒 −10)。
+        self.SPLIT_LIMIT = (self.SPLIT_AWARE_TERMINAL_MAX_FACTOR * self.MAX_DV_SOFT
+                            if self.AUTO_SPLIT_LEGALIZE else self.MAX_DV_SOFT)
         self.SPLIT_AWARE_TERMINAL_DV_OVERHEAD = max(
             1.0, float(strategy.get("SPLIT_AWARE_TERMINAL_DV_OVERHEAD", 1.0)))
         # 2.3 退路：旗標開、贏家帶可拆終端違規時，run_study 記下「真實分數最高的零違規
@@ -1883,8 +1923,8 @@ class MissionOptimizer:
     def _scalar_params(self):
         """fast_fitness_evaluator 的 scalars 陣列。索引佈局要跟 evaluator 開頭逐格對齊：
         0-12 環境/計分常數、13 lambert_max_revs、14/15 SPLIT_AWARE_SEARCH、16-18 C4 終端棒
-        拆後估計 (旗標、K、overhead)、19 總 Δv 上限 (km/s，0 = 沒有)。只准在這裡組——原本
-        三處各抄一份，改一處忘兩處。"""
+        拆後估計 (旗標、K、overhead)、19 總 Δv 上限 (km/s，0 = 沒有)、20 拆棒器能處理的單棒
+        上限 (km/s，排位賽模式才用)。只准在這裡組——原本三處各抄一份，改一處忘兩處。"""
         return np.array([
             self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL,
             self.RE_VAL, self.MIN_PERIAPSIS, self.MAX_DV_SOFT, self.k_t, self.C_t, self.k_v, self.C_v,
@@ -1893,6 +1933,7 @@ class MissionOptimizer:
             float(self.SPLIT_AWARE_TERMINAL), self.SPLIT_AWARE_TERMINAL_MAX_FACTOR,
             self.SPLIT_AWARE_TERMINAL_DV_OVERHEAD,
             0.0 if self.MAX_TOTAL_DV_MPS is None else self.MAX_TOTAL_DV_MPS / 1000.0,
+            self.SPLIT_LIMIT,
         ], dtype=np.float64)
 
     def _fitness_wrapper(self, num_burns):
@@ -1994,7 +2035,7 @@ class MissionOptimizer:
         viable = {b: r for b, r in self.burn_case_results.items()
                   if r.get("best_x") is not None and r["fitness"] < 0.0}
         if not viable:
-            log.error("❌ 最佳化失敗：所有的嘗試都撞毀或違規了。")
+            self._log_no_legal_route()
             return None
 
         metrics = {}
@@ -2123,6 +2164,28 @@ class MissionOptimizer:
                 f"ΔV_team {m['dv_mps']:,.1f} m/s，T_team {m['t_team']:,.1f} s)")
         return best_burns_count, best_overall_params, best_overall_score
 
+    def _log_no_legal_route(self):
+        """_pick_best_case 沒有任何合法層候選時的錯誤訊息。排位賽模式下最常見的原因是整場搜尋
+        只找到失格層 (總 Δv 超標 / 單棒超出拆棒範圍) 的路線——明講，並印最好那個的數字，讓人
+        知道差多少 (現場可以考慮放寬棒數、T_max 或接受沒有合法解)。"""
+        dq = {b: r for b, r in self.burn_case_results.items()
+              if r.get("best_x") is not None and r["fitness"] is not None
+              and -SEARCH_FAIL_SCORE_RANKED > r["fitness"] > 0.0}
+        if not (self.RANKING_RULES and dq):
+            log.error("❌ 最佳化失敗：所有的嘗試都撞毀或違規了。")
+            return
+        b = min(dq, key=lambda k: dq[k]["fitness"])
+        detail = ""
+        try:
+            m = self.mission_metrics(dq[b]["best_x"], b)
+            detail = (f"是 {b} 棒、總 Δv {m['dv_mps']:,.0f} m/s、T {m['t_team']:,.0f} s"
+                      f"（{'；'.join(m['dq_reasons']) or '搜尋代理判失格、重播判合法'}；"
+                      f"拆棒器單棒上限 {self.SPLIT_LIMIT * 1000.0:,.0f} m/s）")
+        except Exception as exc:          # 診斷訊息，重建不出來也不擋
+            detail = f"（重建成績失敗：{type(exc).__name__}）"
+        log.error(f"❌ 找不到合法路線：所有棒數案例的最佳解都在失格層（總 Δv 超標或單棒超出拆棒範圍）。"
+                  f"最接近合法的{detail}。排位賽規則下這種解會被判失格，不輸出。")
+
     def split_est_score(self, burn_logs, miss_km, t_team, earth_safe) -> tuple:
         """C4 拆後估計：(score_split_est, 可拆的終端違規數)。
 
@@ -2132,15 +2195,43 @@ class MissionOptimizer:
         SPLIT_AWARE_SEARCH 的事)。不看旗標，永遠算得出來；用不用由呼叫端依旗標決定。
         跟 score 一樣是搜尋/挑候選用的分數 (含軟懲罰)，不是交件分數。"""
         leg = self.assess_burn_logs(burn_logs)
+        n_soft, v_single = self._search_score_terms(leg, [bl['dv_mag'] for bl in burn_logs])
         total_dv = sum(bl['dv_mag'] for bl in burn_logs)
         term = burn_logs[-1]['dv_mag']
+        lim = self.SPLIT_AWARE_TERMINAL_MAX_FACTOR * self.MAX_DV_SOFT
+        if self.RANKING_RULES:
+            lim = min(lim, self.SPLIT_LIMIT)   # 超出拆棒範圍的已經算進失格層，不能再加回 10 分
         n_split = int(bool(earth_safe) and (len(burn_logs) - 1) in leg["over_dv_legs"]
-                      and term <= self.SPLIT_AWARE_TERMINAL_MAX_FACTOR * self.MAX_DV_SOFT)
+                      and term <= lim)
         if n_split:
             total_dv += term * (self.SPLIT_AWARE_TERMINAL_DV_OVERHEAD - 1.0)
-        est = self.ranking_score(miss_km, t_team, total_dv * 1000.0,
-                                 leg["penalty_count"] + leg["over_dv_count"] - n_split)
+        est = self.ranking_score(miss_km, t_team, total_dv * 1000.0, n_soft - n_split, v_single)
         return est, n_split
+
+    def _search_score_terms(self, leg, dvs_kms) -> tuple:
+        """最終判定 (assess_legality) → 搜尋用分數的兩個量：(n_soft, single_violation_mps)。
+        n_soft = 每次 −10 的軟懲罰 (機動間隔違規 + 還拆得掉的單棒超標)；single_violation_mps =
+        拆不掉的單棒超標量 (失格層用，見 scorer.ranked_search_score)。dvs_kms：每棒 Δv (km/s)。
+        初賽模式：單棒超標一律 −10、沒有失格層，逐位元同舊行為。排位賽模式：只有終端棒、且
+        ≤ SPLIT_LIMIT 才拆得掉 (拆棒器只拆終端棒)，其餘超標量算進失格層——跟
+        fast_fitness_evaluator 同一套分類。"""
+        if not self.RANKING_RULES:
+            return leg["penalty_count"] + leg["over_dv_count"], 0.0
+        n_soft, v = leg["penalty_count"], 0.0
+        last = len(dvs_kms) - 1
+        for i in leg["over_dv_legs"]:
+            d = float(dvs_kms[i])
+            if i == last and d <= self.SPLIT_LIMIT:
+                n_soft += 1
+            else:
+                v += (d - (self.SPLIT_LIMIT if i == last else self.MAX_DV_SOFT)) * 1000.0
+        return n_soft, v
+
+    def search_score(self, leg, dvs_kms, miss_km, t_team, total_dv_mps) -> float:
+        """搜尋/挑候選用分數，直接吃最終判定 (assess_legality) 的結果。mission_metrics、
+        _replay_mission、main 的拆棒結果都走這裡，跟 fast_fitness_evaluator 同一套分層。"""
+        n_soft, v = self._search_score_terms(leg, dvs_kms)
+        return self.ranking_score(miss_km, t_team, total_dv_mps, n_soft, v)
 
     def assess_burn_logs(self, burn_logs) -> dict:
         """最終交件判定 (src.scorer.assess_legality) 套上這個 optimizer 的規則數字。"""
@@ -2148,16 +2239,18 @@ class MissionOptimizer:
                                [bl['time'] for bl in burn_logs],
                                self.MAX_DV * 1000.0, self.MIN_COAST_TIME, self.MAX_TOTAL_DV_MPS)
 
-    def ranking_score(self, miss_km, t_team, total_dv_mps, n_soft) -> float:
-        """搜尋/挑候選用的分數：n_soft 次 −10 (機動間隔違規 + 單棒超標的軟懲罰) 再扣總 Δv
-        超標的軟懲罰。跟 fast_fitness_evaluator 同一套算法。合法解 (沒失格) 時等於官方分數；
-        失格解的這個數字只拿來排「哪條路線值得拆棒」，不能當交件分數。"""
+    def ranking_score(self, miss_km, t_team, total_dv_mps, n_soft, single_violation_mps=0.0) -> float:
+        """搜尋/挑候選用的分數：n_soft 次 −10 (機動間隔違規 + 還拆得掉的單棒超標)。排位賽模式下
+        總 Δv 超標、或 single_violation_mps > 0 (拆不掉的單棒超標量) 時改回失格層 [−20, −10)，
+        任何合法層候選 (≥ 0) 都排在它前面 (scorer.ranked_search_score)。跟 fast_fitness_evaluator
+        同一套算法。合法解 (沒失格) 時等於官方分數；失格解的這個數字只拿來排「哪條路線值得
+        拆棒」，不能當交件分數。"""
         sc = calculate_score(
             min_distance_km=miss_km, total_time_sec=t_team,
             total_dv_mps=total_dv_mps, penalty_count=n_soft,
             k_t=self.k_t, C_t=self.C_t, k_v=self.k_v, C_v=self.C_v)
-        if self.MAX_TOTAL_DV_MPS is not None:
-            sc = max(sc - total_dv_soft_penalty(total_dv_mps, self.MAX_TOTAL_DV_MPS), 0.0)
+        if self.RANKING_RULES:
+            sc = ranked_search_score(sc, total_dv_mps, self.MAX_TOTAL_DV_MPS, single_violation_mps)
         return float(sc)
 
     def legality_fields(self, leg, miss_km, t_team) -> dict:
@@ -2196,8 +2289,8 @@ class MissionOptimizer:
         total_dv = sum(log['dv_mag'] for log in burn_logs)
         t_team = float(times[-1])
         leg = self.assess_burn_logs(burn_logs)
-        score = self.ranking_score(miss_km, t_team, total_dv * 1000.0,
-                                   leg["penalty_count"] + leg["over_dv_count"])
+        score = self.search_score(leg, [bl['dv_mag'] for bl in burn_logs], miss_km, t_team,
+                                  total_dv * 1000.0)
         score_split_est, n_split = self.split_est_score(burn_logs, miss_km, t_team, earth_safe)
         return {
             "score": float(score),
@@ -2247,9 +2340,10 @@ class MissionOptimizer:
 
         intercept_time = times[-1]
         penalty_count = leg["penalty_count"]
-        # final_score = 搜尋/挑候選用分數 (單棒超標各 −10、總 Δv 超標軟懲罰)；沒失格時就是官方分數。
-        final_score = self.ranking_score(miss_km, intercept_time, total_dv * 1000.0,
-                                         penalty_count + leg["over_dv_count"])
+        # final_score = 搜尋/挑候選用分數 (拆得掉的單棒超標各 −10；排位賽模式下總 Δv 超標或拆不掉
+        # 的超標進失格層)；沒失格時就是官方分數。
+        final_score = self.search_score(leg, [bl['dv_mag'] for bl in burn_logs], miss_km,
+                                        intercept_time, total_dv * 1000.0)
         legality = self.legality_fields(leg, miss_km, intercept_time)
 
         # 標題照實反映實際開的重力階數 (GRAVITY_DEGREE)，不要再寫死「含 J2」——

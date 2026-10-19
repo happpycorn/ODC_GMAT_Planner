@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import warnings
 warnings.filterwarnings("ignore")
 from src.optimizer import MissionOptimizer
+from src.config_validator import validate_config, ConfigValidationError
 
 
 def _angle_between(u, v):
@@ -75,6 +76,14 @@ def main():
     print(f"config 體檢：{args.config}")
     print("（用 MissionOptimizer 初始化，回顯的是工具真正會用的數值）")
     print("=" * 66)
+
+    # 先跑跟 main.py 同一套 config 驗證：抄錯型別、排位賽格式漏填 MAX_TOTAL_DV_MPS 這類硬錯
+    # 在這裡就擋下來，不要等到開跑才發現 (MissionOptimizer 本身不驗)。
+    try:
+        validate_config(cfg)
+    except ConfigValidationError as exc:
+        print(f"\n❌ config 驗證失敗：\n{exc}")
+        sys.exit(1)
 
     m = MissionOptimizer(cfg)
     mu = m.MU

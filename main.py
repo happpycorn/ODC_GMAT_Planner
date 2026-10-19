@@ -28,7 +28,7 @@ from src.primer import intercept_primer_profile, insert_node_seed
 from src.script_generator import script_generator
 from src.config_validator import validate_config, ConfigValidationError
 from src.core_math import propagate_dop853, fast_norm, to_vnb_frame
-from src.scorer import calculate_score, total_dv_soft_penalty, assess_legality
+from src.scorer import calculate_score, assess_legality
 from src.burn_splitter import legalize_route, _simulate_free, prune_null_burns
 from src.runlog import log, setup as setup_logging
 
@@ -435,9 +435,11 @@ def print_score_breakdown(mission_info, optimizer):
     penalty = pen * 10.0
     soft = n_over * 10.0
     total = max(score_dist + score_time + score_dv - penalty - soft, 0.0)
-    cap_total = getattr(optimizer, "MAX_TOTAL_DV_MPS", None)
-    soft_total = 0.0 if cap_total is None else float(total_dv_soft_penalty(dv, cap_total))
-    total = max(total - soft_total, 0.0)
+    # 排位賽模式的失格層 (總 Δv 超標 / 單棒超出拆棒範圍)：搜尋用分數 < 0，只看違規量、不是上面
+    # 幾項相加 (scorer.ranked_search_score)，直接照記錄的分數印。
+    dq_tier = bool(getattr(optimizer, "RANKING_RULES", False)) and float(mission_info["score"]) < 0.0
+    if dq_tier:
+        total = float(mission_info["score"])
 
     # 每單位的邊際價值（sigmoid 斜率，恆為非負，代表「往好的方向改」能拿回的分數）
     val_per_sec = k_t * (25.0 - score_time) * score_time / 25.0     # 分 / 秒
@@ -449,10 +451,11 @@ def print_score_breakdown(mission_info, optimizer):
              f"  燃料   {score_dv:>6.2f} / 25   (ΔV {dv:,.0f} m/s vs C_v {C_v:,.0f} m/s；每省 1 m/s ≈ +{val_per_mps:.4g} 分)",
              f"  違規   {-penalty:>6.2f}        ({pen} 次機動間隔違規 × -10)"]
     if is_disqualified(mission_info):
-        if n_over:
+        if dq_tier:
+            lines.append("  失格層        (總 Δv 超標或單棒超出拆棒範圍：搜尋用分數只看超標量，"
+                         "任何合法解都排在它前面)")
+        elif n_over:
             lines.append(f"  超標   {-soft:>6.2f}        ({n_over} 棒單棒超標 × -10，搜尋用軟懲罰)")
-        if soft_total:
-            lines.append(f"  總Δv   {-soft_total:>6.2f}        (總 Δv 超過 {cap_total:,.0f} m/s，搜尋用軟懲罰)")
         lines += [f"  {'─' * 5}",
                   f"  合計   {total:>6.2f}        (搜尋用分數)",
                   "  🔴 失格：" + "；".join(mission_info.get("dq_reasons") or ["單棒 Δv 超標"])
@@ -665,11 +668,9 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
                           mc, opt.MAX_TOTAL_DV_MPS)
     T_new = float(m["T_team"])
     n_soft = leg["penalty_count"] + leg["over_dv_count"]
-    score_new = (float(res["score"]) if n_soft == 0 else
-                 opt.ranking_score(float(res["miss_km"]), T_new, float(res["total_dv_mps"]), n_soft))
-    if n_soft == 0 and opt.MAX_TOTAL_DV_MPS is not None:
-        score_new = max(score_new - float(total_dv_soft_penalty(float(res["total_dv_mps"]),
-                                                                opt.MAX_TOTAL_DV_MPS)), 0.0)
+    score_new = (float(res["score"]) if n_soft == 0 and not leg["disqualified"] else
+                 opt.search_score(leg, np.linalg.norm(dvsf, axis=1), float(res["miss_km"]), T_new,
+                                  float(res["total_dv_mps"])))
     legality = opt.legality_fields(leg, float(res["miss_km"]), T_new)
     if not legality["disqualified"] and n_soft == 0:
         legality["official_score"] = score_new   # 跟 score 同一個數字，不讓重算的 ulp 差異混淆

@@ -22,6 +22,8 @@ from src.runlog import log
 
 _EARTH_RE_KM = 6378.137
 _ORBIT_FIELDS = ("SMA", "ECC", "INC", "RAAN", "AOP", "TA")
+# 單棒上限 ≤ 這個值 (m/s) 視為排位賽格式 (2026/10/06 規則：250 m/s)，必須同時填總 Δv 上限。
+RANKING_MAX_DV_MPS = 250.0
 
 
 class ConfigValidationError(ValueError):
@@ -175,6 +177,14 @@ def _validate_rules(rules_cfg, errors: list, orbit_a_cfg=None):
         if not _is_number(v) or v <= 0:
             errors.append(f"rules.MAX_TOTAL_DV_MPS 必須是 >0 的數字 (單位 m/s，排位賽為 3000) 或 null，"
                           f"但收到 {v!r}")
+    # 排位賽格式 (單棒上限 ≤ 250 m/s) 一定有總 Δv 上限。漏抄這一行，搜尋就不知道總 Δv 會失格，
+    # 會選出總 Δv 超標的路線 (docs/RANKING_MC_20261019.md 的 hyperbolic_test_fuel：5/5 失格)；
+    # 失格層與 C4 可拆範圍也只在有總上限時才啟用。不要只靠人記得，直接擋。
+    _cap = rules_cfg.get("MAX_DV_MPS")
+    if _is_number(_cap) and 0 < _cap <= RANKING_MAX_DV_MPS and rules_cfg.get("MAX_TOTAL_DV_MPS") is None:
+        errors.append(f"rules.MAX_DV_MPS = {_cap:g} m/s ≤ {RANKING_MAX_DV_MPS:g}（排位賽格式），但沒填 "
+                      "rules.MAX_TOTAL_DV_MPS——排位賽總 Δv 超過上限直接失格，請填官方數字 "
+                      "（2026/10/06 規則為 3000 m/s；範本見 configs/shared/ranking_round.json）")
     if "MIN_MANEUVER_INTERVAL_SEC" in rules_cfg:
         v = rules_cfg["MIN_MANEUVER_INTERVAL_SEC"]
         if not _is_number(v) or v < 0:

@@ -6,9 +6,10 @@
   * 機動間隔 < 100 s → 每次扣 10 分（不變，penalty_count 只剩這個）
 
 分五塊：
-  1. src.scorer：assess_legality（最終判定）/ total_dv_soft_penalty（搜尋軟懲罰）/ calculate_score 不變
+  1. src.scorer：assess_legality（最終判定）/ ranked_search_score（搜尋失格層）/ calculate_score 不變
   2. config_validator：MAX_TOTAL_DV_MPS 選填驗證、ranking_round.json 範本
-  3. fast_fitness_evaluator：沒設總上限時跟舊 19 格 scalars 逐位元相同；設了才扣軟懲罰
+  3. fast_fitness_evaluator：沒設總上限時跟舊 19 格 scalars 逐位元相同；設了才進失格層
+（失格層的數學保證與報告反例見 tests/test_ranking_penalty_v2.py）
   4. mission_metrics / _replay_mission：搜尋用分數跟舊算法一致，另外標失格、官方分數
   5. main：失格解一律排在合法解後面、拆棒只看單棒超標、舊存檔相容
 
@@ -28,7 +29,7 @@ sys.path.insert(0, ROOT)
 
 from src.optimizer import (MissionOptimizer, fast_fitness_evaluator, reconstruct_mission_logs,
                            is_disqualified, over_dv_count)
-from src.scorer import (calculate_score, assess_legality, total_dv_soft_penalty,
+from src.scorer import (calculate_score, assess_legality, ranked_search_score,
                         DV_LIMIT_TOL_MPS)
 from src.config_validator import validate_config, ConfigValidationError
 import main as app
@@ -80,10 +81,10 @@ leg = assess_legality([240.0] * 13, [100.0 * i for i in range(13)], 250.0, 100.0
 check("總 Δv 3,120 > 3,000 → 失格", leg["disqualified"] and leg["total_dv_over"] and leg["over_dv_count"] == 0)
 leg = assess_legality([250.0] * 12, [100.0 * i for i in range(12)], 250.0, 100.0, 3000.0)
 check("總 Δv 剛好 3,000 → 不失格", not leg["disqualified"])
-check("總 Δv 軟懲罰：沒上限 / 上限內為 0",
-      total_dv_soft_penalty(5000.0, 0.0) == 0.0 and total_dv_soft_penalty(3000.0, 3000.0) == 0.0)
-check("總 Δv 軟懲罰：超 100 m/s → 10 + 0.01×100 = 11 分",
-      abs(total_dv_soft_penalty(3100.0, 3000.0) - 11.0) < 1e-9)
+check("失格層：沒上限 / 上限內 → 分數原樣",
+      ranked_search_score(77.0, 5000.0, 0.0, 0.0) == 77.0 and ranked_search_score(77.0, 3000.0, 3000.0, 0.0) == 77.0)
+check("失格層：總 Δv 超 100 m/s → 分數落在 [−20, −10)",
+      -20.0 < ranked_search_score(77.0, 3100.0, 3000.0, 0.0) < -10.0)
 base = calculate_score(1.0, 5000.0, 1000.0, 0, 1e-4, 11000.0, 5e-3, 1200.0)
 check("calculate_score 舊行為不變：penalty_count 每次 −10",
       abs(calculate_score(1.0, 5000.0, 1000.0, 2, 1e-4, 11000.0, 5e-3, 1200.0) - (base - 20.0)) < 1e-9)
@@ -113,11 +114,12 @@ sc = pre._scalar_params()
 f20 = fast_fitness_evaluator(X, N, sc, vec)
 f19 = fast_fitness_evaluator(X, N, sc[:19].copy(), vec)
 check("沒設總上限時跟舊 19 格 scalars 逐位元相同", f20 == f19)
+check("沒設總上限時跟 20 格 scalars（1cd196d）逐位元相同",
+      fast_fitness_evaluator(X, N, sc[:20].copy(), vec) == f20)
 check("基準解的搜尋分數 > 0（測試前提）", f20 < 0.0)
 cap = make_opt(MAX_TOTAL_DV_MPS=3000.0)
 fcap = fast_fitness_evaluator(X, N, cap._scalar_params(), vec)
-check("總 Δv ~6,200 m/s、上限 3,000 → 搜尋分數至少少 10 分（或歸零）",
-      -fcap <= max(-f20 - 10.0, 0.0) + 1e-9)
+check("總 Δv ~6,200 m/s、上限 3,000 → 搜尋分數進失格層 [−20, −10)", -20.0 < -fcap < -10.0)
 loose = make_opt(MAX_TOTAL_DV_MPS=1e6)
 check("上限遠大於總 Δv → 分數跟沒設一樣",
       fast_fitness_evaluator(X, N, loose._scalar_params(), vec) == f20)
@@ -135,9 +137,10 @@ check("超標棒 → over_dv_count、失格、沒有官方分數；penalty_count
       m["over_dv_count"] == old_pen >= 1 and m["disqualified"] and m["official_score"] is None
       and m["penalty_count"] == 0 and not m["total_dv_over"])
 mc = cap.mission_metrics(X, N)
-check("加總 Δv 上限 → 兩個失格原因、搜尋用分數再扣軟懲罰",
-      mc["total_dv_over"] and len(mc["dq_reasons"]) == 2 and mc["score"] < m["score"])
-check("拆後估計也扣總 Δv 軟懲罰", mc["score_split_est"] < m["score_split_est"])
+check("加總 Δv 上限 → 兩個失格原因、搜尋用分數進失格層",
+      mc["total_dv_over"] and len(mc["dq_reasons"]) == 2 and -20.0 < mc["score"] < -10.0)
+check("拆後估計也在失格層（不把 −10 加回來）",
+      mc["score_split_est"] == mc["score"] and mc["split_terminal_count"] == 1)
 
 wide = make_opt(MAX_DV_MPS=1e5)   # 單棒上限放到 100 km/s → 這組解變合法
 mw = wide.mission_metrics(X, N)
@@ -170,7 +173,7 @@ with patch.object(app.log, "warning", side_effect=lambda msg, *a, **k: warned.ap
      patch.object(app.log, "info"):
     app.print_score_breakdown(mi, pre)
     app.print_score_breakdown(mc | {"total_dv_mps": mc["dv_mps"], "T_team": mc["t_team"]}, cap)
-check("分數拆解（失格解、含總 Δv 軟懲罰）加總跟記錄的搜尋用分數一致", not warned)
+check("分數拆解（失格解、含失格層）加總跟記錄的搜尋用分數一致", not warned)
 
 print()
 if FAILS:
