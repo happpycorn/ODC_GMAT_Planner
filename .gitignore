@@ -22,6 +22,7 @@ configs/shared/*
 !configs/shared/hyperbolic_smoke.json
 !configs/shared/hyperbolic_test.json
 !configs/shared/playground.json
+!configs/shared/ranking_round.json
 
 outputs/*
 

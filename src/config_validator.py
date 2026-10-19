@@ -168,6 +168,13 @@ def _validate_rules(rules_cfg, errors: list, orbit_a_cfg=None):
         v = rules_cfg["MAX_DV_MPS"]
         if not _is_number(v) or v <= 0:
             errors.append(f"rules.MAX_DV_MPS 必須是 >0 的數字 (單位 m/s)，但收到 {v!r}")
+    # MAX_TOTAL_DV_MPS：選填的總 Δv 上限 (m/s)。排位賽規則 ≤ 3 km/s、超過失格；沒填或 null
+    # 代表沒有上限 (初賽行為)。搜尋時是軟懲罰，最終交件判定是失格 (src/scorer.assess_legality)。
+    if rules_cfg.get("MAX_TOTAL_DV_MPS") is not None:
+        v = rules_cfg["MAX_TOTAL_DV_MPS"]
+        if not _is_number(v) or v <= 0:
+            errors.append(f"rules.MAX_TOTAL_DV_MPS 必須是 >0 的數字 (單位 m/s，排位賽為 3000) 或 null，"
+                          f"但收到 {v!r}")
     if "MIN_MANEUVER_INTERVAL_SEC" in rules_cfg:
         v = rules_cfg["MIN_MANEUVER_INTERVAL_SEC"]
         if not _is_number(v) or v < 0:

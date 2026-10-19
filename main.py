@@ -22,12 +22,13 @@ from src.pipeline_artifacts import (create_run_dir, save_mission, load_mission,
 import numpy as np
 from threadpoolctl import threadpool_limits
 from src.optimizer import (MissionOptimizer, run_study_over_revs,
-                           reconstruct_mission_logs, tiebreak_rank_key, _mission_rank_key)
+                           reconstruct_mission_logs, _mission_rank_key,
+                           over_dv_count, is_disqualified)
 from src.primer import intercept_primer_profile, insert_node_seed
 from src.script_generator import script_generator
 from src.config_validator import validate_config, ConfigValidationError
 from src.core_math import propagate_dop853, fast_norm, to_vnb_frame
-from src.scorer import calculate_score
+from src.scorer import calculate_score, total_dv_soft_penalty, assess_legality
 from src.burn_splitter import legalize_route, _simulate_free, prune_null_burns
 from src.runlog import log, setup as setup_logging
 
@@ -75,6 +76,8 @@ DEFAULT_CONFIG = {
         # 那條「週期×倍數」公式。排位賽 A 是雙曲線軌道 (沒有週期)，官方公告 T_max
         # 定義方式後，把算出來的秒數填在這裡——orbit_A.ECC>=1 時這個欄位是必填，
         # 不然 optimizer 初始化會直接報錯 (週期公式對雙曲線沒有意義)。
+        # "MAX_TOTAL_DV_MPS": null,          # 選填：總 Δv 上限，超過失格 (排位賽 3000)；
+        # 沒填 = 沒有上限 (初賽)。排位賽範本見 configs/shared/ranking_round.json。
         # 主辦方公告的環境計分參數 (依軌道分布狀況，每次比賽前會公告)
         "k_t": 0.0001,
         "C_t": 11000.0,
@@ -358,6 +361,9 @@ def append_run_history(config, mission_info, execution_time, gmat_result=None,
         "t_team_sec": round(float(mission_info["T_team"]), 2),
         "miss_km": round(float(mission_info["miss_km"]), 6),
         "penalty_count": int(mission_info["penalty_count"]),
+        "over_dv_count": over_dv_count(mission_info),
+        "disqualified": is_disqualified(mission_info),
+        "official_score": mission_info.get("official_score"),
         "dc_converged": bool(mission_info["dc_converged"]),
         "execution_time_sec": round(execution_time, 2),
         "orbit_A": config["orbit_A"],
@@ -384,7 +390,7 @@ def append_run_history(config, mission_info, execution_time, gmat_result=None,
             # "python_fallback"：一般版本 (DC) 沒有乾淨通過 (通常是 DC 的 Vary 邊界卡在
             # 合法 Δv 範圍、搆不到 Python 認為需要的值)，改用 Python 自己算出的燃燒值
             # 繞過 DC 直接驗證——這種情況下 final_burn_legal 可能是 false，代表這個方案
-            # 命中但超標，依規則第 5 節扣 10 分/次，不是取消資格，仍然是可評估的方案。
+            # 命中但超標：初賽是扣 10 分/次，排位賽起是失格 (run_output_stage 不會產生固定版)。
             "source": fixed_script_source,
             "intercept_success": fixed_script_result["intercept_success"],
             "miss_km": round(fixed_script_result["miss_km"], 6),
@@ -416,7 +422,10 @@ def print_score_breakdown(mission_info, optimizer):
     dr = float(mission_info["miss_km"])            # km
     T = float(mission_info["T_team"])              # s（= 計分用的 intercept_time）
     dv = float(mission_info["total_dv_mps"])       # m/s
-    pen = int(mission_info["penalty_count"])
+    # penalty_count = 機動間隔違規 (官方扣分)；單棒超標是失格，score 裡只是搜尋用的軟懲罰。
+    # 2026-10-19 之前的存檔沒有 over_dv_count，那時 penalty_count 本身就是單棒超標次數。
+    n_over = over_dv_count(mission_info)
+    pen = int(mission_info["penalty_count"]) if "over_dv_count" in mission_info else 0
     k_t, C_t = optimizer.k_t, optimizer.C_t
     k_v, C_v = optimizer.k_v, optimizer.C_v
 
@@ -424,7 +433,11 @@ def print_score_breakdown(mission_info, optimizer):
     score_time = 25.0 / (1.0 + math.exp(min(k_t * (T - C_t), 700.0)))
     score_dv = 25.0 / (1.0 + math.exp(min(k_v * (dv - C_v), 700.0)))
     penalty = pen * 10.0
-    total = max(score_dist + score_time + score_dv - penalty, 0.0)
+    soft = n_over * 10.0
+    total = max(score_dist + score_time + score_dv - penalty - soft, 0.0)
+    cap_total = getattr(optimizer, "MAX_TOTAL_DV_MPS", None)
+    soft_total = 0.0 if cap_total is None else float(total_dv_soft_penalty(dv, cap_total))
+    total = max(total - soft_total, 0.0)
 
     # 每單位的邊際價值（sigmoid 斜率，恆為非負，代表「往好的方向改」能拿回的分數）
     val_per_sec = k_t * (25.0 - score_time) * score_time / 25.0     # 分 / 秒
@@ -434,9 +447,19 @@ def print_score_breakdown(mission_info, optimizer):
              f"  距離   {score_dist:>6.2f} / 50   (Δr_min {dr*1000:,.0f} m；≤5,000 m 時地板滿分 50)",
              f"  時間   {score_time:>6.2f} / 25   (T {T:,.0f} s vs C_t {C_t:,.0f} s；每早到 1 s ≈ +{val_per_sec:.4g} 分)",
              f"  燃料   {score_dv:>6.2f} / 25   (ΔV {dv:,.0f} m/s vs C_v {C_v:,.0f} m/s；每省 1 m/s ≈ +{val_per_mps:.4g} 分)",
-             f"  違規   {-penalty:>6.2f}        ({pen} 次 × -10)",
-             f"  {'─' * 5}",
-             f"  合計   {total:>6.2f} / 100"]
+             f"  違規   {-penalty:>6.2f}        ({pen} 次機動間隔違規 × -10)"]
+    if is_disqualified(mission_info):
+        if n_over:
+            lines.append(f"  超標   {-soft:>6.2f}        ({n_over} 棒單棒超標 × -10，搜尋用軟懲罰)")
+        if soft_total:
+            lines.append(f"  總Δv   {-soft_total:>6.2f}        (總 Δv 超過 {cap_total:,.0f} m/s，搜尋用軟懲罰)")
+        lines += [f"  {'─' * 5}",
+                  f"  合計   {total:>6.2f}        (搜尋用分數)",
+                  "  🔴 失格：" + "；".join(mission_info.get("dq_reasons") or ["單棒 Δv 超標"])
+                  + "——沒有官方分數，不可繳交。"]
+    else:
+        lines += [f"  {'─' * 5}",
+                  f"  合計   {total:>6.2f} / 100"]
 
     # 交換率：省 1 秒 相當於 省多少 m/s（燃料/時間邊際價值之比）
     if val_per_mps > 1e-12 and val_per_sec > 1e-12:
@@ -565,12 +588,13 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
     見 docs/HAP67_SPLIT_PIPELINE_PLAN.md（contest.json：88.32 含 −10 → 98.31 零違規、
     GMAT 定燒命中、+9.99 分）。
 
-    預設開；strategy.AUTO_SPLIT_LEGALIZE=false 可關（退回舊行為：違規解原樣交出去）。
+    預設開；strategy.AUTO_SPLIT_LEGALIZE=false 可關（違規解原樣交出去——排位賽起單棒超標是
+    失格，run_output_stage 會大聲擋下、不產生繳交腳本）。
     """
     if not bool(config.get("strategy", {}).get("AUTO_SPLIT_LEGALIZE", True)):
         return None
-    if int(mission_info.get("penalty_count", 0)) <= 0:
-        return None  # 沒有違規棒，沒東西要拆
+    if over_dv_count(mission_info) <= 0:
+        return None  # 沒有單棒超標，沒東西要拆（總 Δv 超標拆棒救不了）
 
     opt = optimizer
     mu, j2, j3, j4, re = opt.MU, opt.J2_VAL, opt.J3_VAL, opt.J4_VAL, opt.RE_VAL
@@ -634,11 +658,26 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
     burns_vnb = [tuple(float(c) for c in to_vnb_frame(rp, vp, dvsf[i]))
                  for i, (rp, vp) in enumerate(states)]
     times_new = [float(t0f)] + [float(c) for c in coastsf]
+    # 拆完照最終交件規則重判一次（單棒用真實上限、機動間隔、總 Δv）。拆棒器用 MAX_DV_SOFT
+    # 與 min_coast 當約束，正常一定零違規；總 Δv 上限它不知道，可能拆完反而超標 → 失格。
+    burn_t = t0f + np.concatenate(([0.0], np.cumsum(coastsf[:-1])))
+    leg = assess_legality(np.linalg.norm(dvsf, axis=1) * 1000.0, burn_t, opt.MAX_DV * 1000.0,
+                          mc, opt.MAX_TOTAL_DV_MPS)
+    T_new = float(m["T_team"])
+    n_soft = leg["penalty_count"] + leg["over_dv_count"]
+    score_new = (float(res["score"]) if n_soft == 0 else
+                 opt.ranking_score(float(res["miss_km"]), T_new, float(res["total_dv_mps"]), n_soft))
+    if n_soft == 0 and opt.MAX_TOTAL_DV_MPS is not None:
+        score_new = max(score_new - float(total_dv_soft_penalty(float(res["total_dv_mps"]),
+                                                                opt.MAX_TOTAL_DV_MPS)), 0.0)
+    legality = opt.legality_fields(leg, float(res["miss_km"]), T_new)
+    if not legality["disqualified"] and n_soft == 0:
+        legality["official_score"] = score_new   # 跟 score 同一個數字，不讓重算的 ulp 差異混淆
     new_mi = {
         "x": xf, "num_burns": Nf,
-        "score": float(res["score"]), "miss_km": float(res["miss_km"]),
-        "total_dv_mps": float(res["total_dv_mps"]), "T_team": float(m["T_team"]),
-        "penalty_count": 0,
+        "score": score_new, "miss_km": float(res["miss_km"]),
+        "total_dv_mps": float(res["total_dv_mps"]), "T_team": T_new,
+        **legality,
         # 拆分解每棒都是直接算好的 ECI 燒、legalize_route 已驗證命中容許球內，沒有「Lambert
         # 猜測靠 DC 收斂」這回事，本來就自洽——對齊 dc_converged 語意設 True。
         "dc_converged": True,
@@ -647,9 +686,11 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
         "earth_safe": bool(float(np.min(m["arc_minr"])) >= opt.MIN_PERIAPSIS - 1e-3),
         "min_arc_radius_km": float(np.min(m["arc_minr"])),
     }
-    log.info(f"\n🔧 HAP-67 自動拆分：違規解 {mission_info['score']:.4f}（{mission_info['penalty_count']} 次違規）"
-             f" → 合法 {new_mi['score']:.4f}（{Nf} 棒、零違規、總Δv {new_mi['total_dv_mps']:,.0f} m/s）"
-             f"，差 {new_mi['score']-mission_info['score']:+.4f} 分。")
+    verdict = ("🔴 仍失格：" + "；".join(new_mi["dq_reasons"]) if new_mi["disqualified"]
+               else f"合法 {new_mi['score']:.4f}")
+    log.info(f"\n🔧 HAP-67 自動拆分：超標解 {mission_info['score']:.4f}（{over_dv_count(mission_info)} 棒超標，失格）"
+             f" → {verdict}（{Nf} 棒、總Δv {new_mi['total_dv_mps']:,.0f} m/s）"
+             f"，搜尋用分數差 {new_mi['score']-mission_info['score']:+.4f}。")
     return burns_vnb, times_new, new_mi
 
 
@@ -724,8 +765,9 @@ def _search_stage(config):
 
 
 def _fallback_to_legal_backup(config, burns, times, mi, opt):
-    """C4 退路（2.3）：拆後估計落空時——贏家仍有違規（段數上限內拆不出、或拆後不 Earth-safe）——
-    找一個替代解，跟違規解比**真實分數**（§6），交好的那個。沒違規、或旗標關時原樣回傳。
+    """C4 退路（2.3）：拆後估計落空時——贏家仍失格（段數上限內拆不出、拆後不 Earth-safe、或總 Δv
+    超標）——找一個替代解。排位賽起失格解一律輸給不失格的解；兩邊都失格才比搜尋用分數（§6）。
+    沒失格、或旗標關時原樣回傳。
 
     替代解依序：
     1. 搜尋時記下的「最佳零違規候選」（`optimizer.legal_backup`，未精修）精修出來，要合法才算。
@@ -735,14 +777,14 @@ def _fallback_to_legal_backup(config, burns, times, mi, opt):
 
     回傳 (burns, times, mission_info, optimizer)：替代解可能來自 REVS 集成的另一趟或重搜，要換成
     它自己的 optimizer（LAMBERT_MAX_REVS／旗標不同），產腳本/存檔才對得上。"""
-    if not getattr(opt, "SPLIT_AWARE_TERMINAL", False) or int(mi.get("penalty_count", 0)) <= 0:
+    if not getattr(opt, "SPLIT_AWARE_TERMINAL", False) or not is_disqualified(mi):
         return burns, times, mi, opt
     cand, src = None, None
     bk = getattr(opt, "legal_backup", None)
     if bk is not None:
         b_opt = bk["opt"]
         b_burns, b_times, b_mi = b_opt.refine_trajectory(bk["x"], bk["burns"], bk["fitness"])
-        if b_burns is not None and isinstance(b_mi, dict) and int(b_mi.get("penalty_count", 0)) <= 0 \
+        if b_burns is not None and isinstance(b_mi, dict) and not is_disqualified(b_mi) \
                 and bool(b_mi.get("earth_safe", True)):
             cand, src = (b_burns, b_times, b_mi, b_opt), "合法備胎"
         else:
@@ -762,13 +804,20 @@ def _fallback_to_legal_backup(config, burns, times, mi, opt):
     c_burns, c_times, c_mi, c_opt = cand
     eps = opt.TIEBREAK_SCORE_EPS
     use_cand = (not bool(mi.get("earth_safe", True))
-                or _mission_rank_key(c_mi, eps=eps) < _mission_rank_key(mi, eps=eps))
-    log.warning(f"⚠️ C4：拆後估計落空——違規解真實 {mi['score']:.4f}（{mi['penalty_count']} 次違規）"
-                f" vs {src} {c_mi['score']:.4f}（{c_mi['num_burns']} 棒、{int(c_mi.get('penalty_count', 0))} 次違規）"
-                f"→ 交{src if use_cand else f'違規解（{src}更差）'}。")
+                or _final_rank_key(c_mi, eps=eps) < _final_rank_key(mi, eps=eps))
+    c_tag = "失格" if is_disqualified(c_mi) else "合法"
+    log.warning(f"⚠️ C4：拆後估計落空——失格解搜尋用分數 {mi['score']:.4f}（{over_dv_count(mi)} 棒超標）"
+                f" vs {src} {c_mi['score']:.4f}（{c_mi['num_burns']} 棒、{c_tag}）"
+                f"→ 交{src if use_cand else f'失格解（{src}更差）'}。")
     if use_cand:
         return c_burns, c_times, c_mi, c_opt
     return burns, times, mi, opt
+
+
+def _final_rank_key(mi, eps=None):
+    """拆棒之後（交件前）比兩個候選用的排名鍵：失格的一律排在不失格的後面，其餘照§6。
+    拆棒前的路線比較（REVS 集成、C2）不能用這個——那時超標路線還沒拆，正是要保留的候選。"""
+    return (is_disqualified(mi),) + _mission_rank_key(mi, eps=eps)
 
 
 def _solve_pipeline(config, output_dir="outputs"):
@@ -824,10 +873,10 @@ def run_seed_portfolio(config, output_dir="outputs"):
         if b is None or not isinstance(mi, dict):
             table.append(f"   {sd:>6}   （全軍覆沒，不列入挑選）")
             continue
-        key = tiebreak_rank_key(mi["score"], mi["miss_km"], mi["total_dv_mps"],
-                                mi["T_team"], eps=opt.TIEBREAK_SCORE_EPS)
+        key = _final_rank_key(mi, eps=opt.TIEBREAK_SCORE_EPS)
         table.append(f"   {sd:>6}{mi['score']:>10.4f}{mi['miss_km'] * 1000:>13,.1f}"
-                     f"{mi['total_dv_mps']:>15,.1f}{mi['num_burns']:>6}")
+                     f"{mi['total_dv_mps']:>15,.1f}{mi['num_burns']:>6}"
+                     + ("   🔴失格" if is_disqualified(mi) else ""))
         if best is None or key < best[0]:
             best = (key, sd, b, t, mi, opt)
     if best is None:
@@ -963,6 +1012,23 @@ def run_output_stage(config, burns, times, mission_info, optimizer, *, args, run
                     + f"\n  或放寬 T_max / 調整棒數再重跑。仍會產出 {run_dir / 'output.txt'} 供診斷。"
                     + "\n" + "🔴" * 30)
 
+    # 失格閘門 (2026-10-19，排位賽規則)：單棒 Δv > MAX_DV_MPS + 1e-5 m/s、或總 Δv >
+    # MAX_TOTAL_DV_MPS 直接失格（初賽的單棒超標是扣 10 分，現在不是）。搜尋時這些只是軟懲罰、
+    # 讓 DE 能找超標路線交給拆棒器；拆不出合法版時走到這裡就要大聲擋，跟 Earth-safe 閘門一樣
+    # 不產生固定燃燒的繳交腳本。
+    disqualified = is_disqualified(mission_info)
+    manifest["disqualified"] = disqualified
+    if disqualified:
+        reasons = mission_info.get("dq_reasons") or [f"{over_dv_count(mission_info)} 棒單棒 Δv 超標"]
+        log.warning("\n" + "🔴" * 30
+                    + "\n  警告：這個解違反排位賽硬性限制，官方會直接判失格："
+                    + "".join(f"\n    • {r}" for r in reasons)
+                    + "\n  **不會產生繳交腳本，絕對不可繳交**。報表裡的分數只是搜尋用分數。"
+                    + "\n  單棒超標：確認 AUTO_SPLIT_LEGALIZE 有開、或放寬 T_max / 棒數重跑；"
+                    + "\n  總 Δv 超標：拆棒救不了，要換路線（feasibility.py 看能量下界）。"
+                    + f"\n  仍會產出 {run_dir / 'output.txt'} 供診斷。"
+                    + "\n" + "🔴" * 30)
+
     # 分數拆解 + 交換率（純加印，不改計算；見 print_score_breakdown）
     print_score_breakdown(mission_info, optimizer)
 
@@ -1027,10 +1093,10 @@ def run_output_stage(config, burns, times, mission_info, optimizer, *, args, run
     #     算出的值當 fallback。這個分支存在的理由：DC 的 Vary 邊界寫死卡在合法 Δv 範圍
     #     (script_generator 的 max_dv 參數)，如果真正需要的燃燒本來就超過規則上限，DC
     #     不管怎樣都不可能收斂到那個值——這不代表 Python 找到的方案是垃圾，只代表「透過
-    #     GMAT DC 求解」這條路線走不通。而規則第 5 節明講：單次燃燒超標只是每次扣 10 分
-    #     (扣到 0 分為止)，不是直接取消資格，所以「命中但超標」仍然是一個可能值得採用、
-    #     至少值得誠實跑出來看看分數的方案，不該被 DC 收斂失敗吃掉、變成一份根本產生不出來
-    #     的結果。用 Python 自己的值繞過 DC 直接驗證，才知道這個方案實際上能不能重現、
+    #     GMAT DC 求解」這條路線走不通。初賽規則第 5 節：單次燃燒超標只是每次扣 10 分，
+    #     所以「命中但超標」當時仍值得跑出來看分數。排位賽起超標直接失格——Python 端判定
+    #     失格的解在上面的失格閘門就不會走到這裡；Python 判合法、GMAT 卻說末棒超標的，
+    #     fallback 照樣跑，但結果會標成「失格、不可繳交」。用 Python 自己的值繞過 DC 直接驗證，才知道這個方案實際上能不能重現、
     #     真正的 Δv 是多少。
     #
     # 兩種情況都需要先確認 mission_info["dc_converged"] (Python 端 refine_lambert_burn
@@ -1041,6 +1107,8 @@ def run_output_stage(config, burns, times, mission_info, optimizer, *, args, run
     if not earth_safe:
         # Earth-safe 閘門擋下 (HAP-48)：撞地球的解不產生繳交腳本，避免手滑送出去被失格。
         log.warning("⛔ Earth-safe 閘門：此解撞地球，跳過『固定燃燒版本』繳交腳本的產生。")
+    elif disqualified:
+        log.warning("⛔ 失格閘門：此解違反單棒/總 Δv 上限，跳過『固定燃燒版本』繳交腳本的產生。")
     elif not args.no_gmat and not args.no_fixed_script:
         clean_dc = bool(
             gmat_result and gmat_result["intercept_success"]
@@ -1100,8 +1168,8 @@ def run_output_stage(config, burns, times, mission_info, optimizer, *, args, run
                 if fixed_script_result["intercept_success"] and fixed_script_result["final_burn_legal"]:
                     log.info("  👉 命中且合規，可以直接繳交。")
                 elif fixed_script_result["intercept_success"]:
-                    log.info("  👉 命中但超標：依規則第 5 節每次違規扣 10 分（非取消資格），仍可繳交；"
-                             "但先用 feasibility.py / sweep_burns.py 確認沒有更好的合法解。")
+                    log.warning("  🔴 命中但最後一棒超過每棒上限：排位賽單棒超標直接失格，不可繳交。"
+                                "先用 feasibility.py / sweep_burns.py 找合法解。")
                 else:
                     log.warning("  ⚠️ 沒有命中：DC 來源不該發生；Python fallback 代表這組解站不住腳，不建議採用。")
             else:
@@ -1118,7 +1186,7 @@ def run_output_stage(config, burns, times, mission_info, optimizer, *, args, run
         manifest["last_stage"] = "verify"
         manifest["verification_status"] = (
             "completed" if gmat_result is not None and
-            (args.no_fixed_script or not earth_safe or fixed_script_result is not None)
+            (args.no_fixed_script or not earth_safe or disqualified or fixed_script_result is not None)
             else "failed")
 
 if __name__ == '__main__':
