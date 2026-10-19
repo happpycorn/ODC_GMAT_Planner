@@ -47,7 +47,8 @@ def provenance():
             stderr=subprocess.DEVNULL).strip()
     except (OSError, subprocess.CalledProcessError):
         commit = None
-    files = (*PHYSICS_FILES, "main.py", "src/script_generator.py", "src/pipeline_artifacts.py")
+    files = (*PHYSICS_FILES, "main.py", "src/script_generator.py", "src/pipeline_artifacts.py",
+             "src/gmat_env.py", "src/retarget.py")
     return {"git_commit": commit, "python": platform.python_version(),
             "files": {p: file_digest(ROOT / p) for p in files}}
 

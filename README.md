@@ -111,6 +111,9 @@ uv run main.py --from-mission outputs/runs/solve-a/mission.json --run-dir output
 
 # 4. 只重驗既有固定燃燒腳本，不重新求解或重產任務
 uv run main.py --verify-script outputs/runs/verify-a/output_submit.txt --run-dir outputs/runs/recheck-a
+
+# 5. 排位賽：在官方全攝動模型下 B 平面重瞄準，產生全攝動固定燃燒繳交腳本（見下節）
+uv run main.py --from-mission outputs/runs/solve-a/mission.json --retarget-full-perturbation --run-dir outputs/runs/retarget-a
 ```
 
 `--run-dir` 可省略，程式會自動建立唯一目錄；指定時必須是**尚不存在**的目錄，避免覆蓋先前結果。
@@ -124,6 +127,45 @@ uv run main.py --verify-script outputs/runs/verify-a/output_submit.txt --run-dir
 重播時若另外給 `--config`，只讀取其中的 `local.gmat_console_path`，不覆寫物理設定。
 存檔有格式版本、內容雜湊、程式來源雜湊與來源鏈；改動求解/物理模組或 `uv.lock` 後會拒絕直接重用拆後方案，
 請重新求解，或在只改拆棒器時從 `--from-winner` 重播。產腳本程式的修改不會要求重跑搜尋。
+
+### 排位賽：全攝動 B 平面重瞄準
+
+Python 只算 J2–J4，排位賽官方驗證開 EGM96 20×20、潮汐、NRLMSISE00 阻力、日月、SRP、相對論。
+同一組脈衝放進全攝動，短任務偏 0.5–1.3 km，22.6 h 的 hyper_far 偏到 111 km
+（[研究報告](docs/PERTURBATION_GAP_20261019.md)）。所以排位賽的流程是：
+
+1. 照舊求解＋拆棒＋GMAT 驗證（`FORCE_MODEL` 保持預設 `contest_prelim`，GMAT 與 Python 模型對齊）。
+2. `--from-mission <mission.json> --retarget-full-perturbation`：在全攝動下用 GMAT DifferentialCorrector
+   改一棒（預設最後一棒，`--retarget-burn N` 指定，0 起算、同腳本的 `BurnB<N>`），**只消掉垂直於相對速度的
+   兩個分量**；最後一段滑行改成停在最近點。不用「預定時刻位置對齊」：那在 hyper_far 會多花 272 m/s、末棒 361 m/s 直接失格。
+3. 重新判定：d_min ≤ 5 km、攔截前 Earth-safe（≥ 100 km）、最近點 ≤ T_max、單棒 ≤ 250 m/s 與總 Δv ≤ 3 km/s
+   （跟求解端同一個 `assess_legality`，看的是寫進腳本的 7 位小數值）、機動間隔（違規只扣分，會列出）。
+4. 全部通過才寫 `output_submit.txt`（全攝動、全部固定燃燒），再用 GMAT 跑一次確認命中與末棒合規。
+   任何一步不過：**保留原方案**、不產新繳交腳本，終端機印紅色警告、列出原因和每棒的單棒餘裕
+   （可以改用餘裕大的棒重試）。原執行目錄一個檔都不會動。
+
+整段只開一個 GMAT 行程、串行跑 3–4 次，hyper_far 約 25 秒。實測結果跟研究報告一致
+（hyper_far 末棒：111 km → 0.14 km，總 Δv +4.6 m/s，DC 5 次迭代）。B 平面是在預定時刻線性化，
+相對速度只有百 m/s 級時最近點會偏離預定時刻，d_min 壓不到 0（端到端測試的 LEO 例子 3.5 → 3.05 km，仍命中）；
+d_min > 1 km 時會額外警告餘裕不足。
+
+**太空船參數與曆元**（主辦單位還沒公布）放在 `strategy`，全部選填，只影響 GMAT 端：
+
+```json
+"FORCE_MODEL": "contest_prelim",
+"GMAT_SPACECRAFT": {"DRY_MASS_KG": 850, "CD": 2.2, "CR": 1.8, "DRAG_AREA_M2": 6, "SRP_AREA_M2": 8,
+                    "SPAD_DRAG_FILE": null, "SPAD_SRP_FILE": null},
+"GMAT_SPACECRAFT_A": {},
+"GMAT_EPOCH": "21545",
+"GMAT_EPOCH_FORMAT": "TAIModJulian"
+```
+
+預設值就是以前腳本寫死的值，沒設時產出的腳本逐位元不變。`GMAT_SPACECRAFT_A` 只覆寫 A 的欄位；
+`SPAD_*_FILE` 給絕對路徑時該項改用 SPADFile（兩艘船要一致）。開賽才拿到這些值時，不用重解：
+重瞄準時另給 `--config <檔>`，那份設定 `strategy` 裡的 `GMAT_SPACECRAFT`／`GMAT_SPACECRAFT_A`／`GMAT_EPOCH`／
+`GMAT_EPOCH_FORMAT` 會蓋過存檔（`FORCE_MODEL` 不會，重瞄準一律用全攝動）。
+`FORCE_MODEL: "ranking_full"` 會讓一般流程的 `output.txt`／`output_submit.txt` 也改用全攝動，但一般版 DC
+是定時位置對齊、Python 端仍是 J2–J4，程式會警告；建議只用上面的重瞄準階段。
 
 GMAT 單獨驗證支援本工具產生、含 `Report_Intercept` 的腳本；會保存執行副本，只改報表目的地，原始腳本保持不變。
 每次驗證的 `verification.json` 記錄腳本雜湊、結果與 `checks_passed`（命中、末棒合規、DC 模式另需收斂）。
@@ -290,6 +332,8 @@ uv run python tests/test_arc_safety.py
 | `output_submit.txt` | 固定燃燒繳交版；應搭配本次固定版報表確認結果 |
 | `gmat_dc/`、`gmat_fixed/` | 各自的 `executed.script`、`GMAT_InterceptReport.txt`、stdout/stderr 和 `verification.json` |
 | `gmat/` | `--verify-script` 的獨立驗證資料，格式同上 |
+| `retarget.json` | `--retarget-full-perturbation` 的結果：通過／不通過與原因、重瞄準前後的棒與滑行時間、全攝動 d_min、合法性與官方分數估計、用的太空船參數與曆元 |
+| `gmat_retarget/` | 重瞄準的全攝動重播與 B 平面 DC 腳本、報表、stdout/stderr（通過時 `output_submit.txt` 是全攝動版；不通過時沒有這個檔，固定版驗證沒過時改名為 `output_submit_REJECTED.txt`） |
 | `run.json` | 來源鏈、程式版本、執行狀態、各階段時間與驗證結果 |
 | `run.log` | 本次完整日誌 |
 | `run_history.jsonl` | 產腳本／驗證階段的成績與 GMAT 結果 |
@@ -352,6 +396,9 @@ uv run python scripts/output_inventory.py restore-archive outputs/archive/sweep-
 
 1. `gmat_verified.intercept_success`、`targeter_converged` 都是 `true`，且沒有任何一次燃燒超過 1500 m/s（一般版本，本次目錄的 `output.txt`，用來確認算出來的方案本身沒問題）。
 2. `fixed_script_verified.intercept_success`、`final_burn_legal` 都是 `true`（固定燃燒版本，本次目錄的 `output_submit.txt`，**這份才是建議繳交的檔案**，不含任何求解器，換電腦跑結果會更穩定）。
+
+排位賽另外確認重瞄準那次目錄的 `retarget.json` 是 `"status": "accepted"`，繳交的是那裡的 `output_submit.txt`
+（全攝動版）；`rejected` 時照終端機警告處理，不要交那次目錄的任何腳本。
 
 如果沒有 `fixed_script_verified` 這個欄位，代表一般版本沒有通過驗證（或是有加 `--no-fixed-script`），先確認一般版本乾淨過了，再重跑一次讓固定版本產生出來。
 

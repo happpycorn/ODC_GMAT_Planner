@@ -3,6 +3,8 @@ import math
 import datetime
 
 from src.runlog import log
+from src.gmat_env import (DEFAULT_EPOCH, DEFAULT_EPOCH_FORMAT, DEFAULT_SPACECRAFT,
+                          FORCE_MODELS)
 
 
 def _require_ascii(script_content, what="GMAT 腳本"):
@@ -28,14 +30,211 @@ def _require_ascii(script_content, what="GMAT 腳本"):
     return script_content
 
 
+# ---------------------------------------------------------------- 力學模型與太空船區塊
+# contest_prelim 的文字必須跟改版前逐字相同（預設輸出逐位元不變，tests/test_force_model.py 釘住）。
+PRELIM_SC_COMMENT = """% The DryMass/Cd/Cr/DragArea/SRPArea/BurnB*.Isp/GravitationalAccel values below
+% are cosmetic: they are required fields for Spacecraft/ImpulsiveBurn objects,
+% but Drag=None and SRP=Off in DefaultProp_ForceModel (see below) mean drag and
+% solar radiation pressure are never actually applied, so Cd/Cr/DragArea/SRPArea
+% have no effect on the propagated trajectory; BurnB*.DecrementMass = false means
+% mass never decreases, so Isp/GravitationalAccel don't affect any burn's actual
+% Delta-v or the resulting orbit either. The numbers below are just typical
+% values for a mid-size chemical-propulsion satellite, kept here so the script
+% looks complete and passes GMAT's parser - changing them will NOT change
+% InterceptSuccess/FinalBurnLegal.
+"""
+
+RANKING_FULL_SC_COMMENT = """% FORCE_MODEL = ranking_full: drag and SRP are ON in DefaultProp_ForceModel, so
+% DryMass/Cd/Cr/DragArea/SRPArea (or the SPAD files) below DO change the
+% trajectory. They come from strategy.GMAT_SPACECRAFT / GMAT_SPACECRAFT_A in the
+% config (src/gmat_env.py); replace them with the organizers' values once
+% announced. BurnB*.DecrementMass = false still keeps the mass constant, so
+% Isp/GravitationalAccel remain cosmetic.
+"""
+
+
+def _g(v):
+    """數字寫進腳本：850.0 → '850'、2.2 → '2.2'（跟舊腳本寫死的字面值相同）。"""
+    return format(float(v), ".15g")
+
+
+def spacecraft_physics_lines(ship, sc):
+    """太空船的質量、阻力/輻射壓係數與面積；SPAD 檔有給才多寫那兩行。"""
+    lines = [f"{ship}.DryMass = {_g(sc['DRY_MASS_KG'])};",
+             f"{ship}.Cd = {_g(sc['CD'])};",
+             f"{ship}.Cr = {_g(sc['CR'])};",
+             f"{ship}.DragArea = {_g(sc['DRAG_AREA_M2'])};",
+             f"{ship}.SRPArea = {_g(sc['SRP_AREA_M2'])};"]
+    if sc.get("SPAD_DRAG_FILE"):
+        lines.append(f"{ship}.SPADDragFile = '{sc['SPAD_DRAG_FILE']}';")
+    if sc.get("SPAD_SRP_FILE"):
+        lines.append(f"{ship}.SPADSRPFile = '{sc['SPAD_SRP_FILE']}';")
+    return lines
+
+
+def force_model_lines(name, force_model, gravity_degree, gravity_order=0, sc=None):
+    """GMAT ForceModel 區塊。
+
+    contest_prelim：JGM2 zonal（Order 由呼叫端給，script_generator 固定 0），無阻力/SRP——
+    跟 Python 端對齊，文字跟改版前逐字相同。
+    ranking_full：排位賽官方模型。設定沿用 scripts/research/perturbation_gap.py 在 GMAT R2026a
+    實測可跑的寫法（EGM96.cof 與 CSSI 太空天氣檔都在 GMAT 安裝的 data/ 底下）。
+    sc 給的是 B 的參數（兩艘共用同一個 ForceModel，gmat_env 已確保 SPAD 設定一致）。"""
+    if force_model == "contest_prelim":
+        return [f"Create ForceModel {name};",
+                f"{name}.CentralBody = Earth;",
+                f"{name}.PrimaryBodies = {{Earth}};",
+                f"{name}.Drag = None;",
+                f"{name}.SRP = Off;",
+                f"{name}.RelativisticCorrection = Off;",
+                f"{name}.ErrorControl = RSSStep;",
+                f"{name}.GravityField.Earth.Degree = {gravity_degree};",
+                f"{name}.GravityField.Earth.Order = {gravity_order};",
+                f"{name}.GravityField.Earth.StmLimit = 100;",
+                f"{name}.GravityField.Earth.PotentialFile = 'JGM2.cof';",
+                f"{name}.GravityField.Earth.TideModel = 'None';"]
+    if force_model != "ranking_full":
+        raise ValueError(f"force_model must be one of {FORCE_MODELS}, got {force_model!r}")
+    sc = sc or DEFAULT_SPACECRAFT
+    drag_model = "SPADFile" if sc.get("SPAD_DRAG_FILE") else "Spherical"
+    srp_model = "SPADFile" if sc.get("SPAD_SRP_FILE") else "Spherical"
+    return [f"Create ForceModel {name};",
+            f"{name}.CentralBody = Earth;",
+            f"{name}.PrimaryBodies = {{Earth}};",
+            f"{name}.PointMasses = {{Sun, Luna}};",
+            f"{name}.Drag.AtmosphereModel = NRLMSISE00;",
+            f"{name}.Drag.HistoricWeatherSource = 'CSSISpaceWeatherFile';",
+            f"{name}.Drag.PredictedWeatherSource = 'CSSISpaceWeatherFile';",
+            f"{name}.Drag.CSSISpaceWeatherFile = 'SpaceWeather-All-v1.2.txt';",
+            f"{name}.Drag.DragModel = '{drag_model}';",
+            f"{name}.SRP = On;",
+            f"{name}.SRP.SRPModel = {srp_model};",
+            f"{name}.RelativisticCorrection = On;",
+            f"{name}.ErrorControl = RSSStep;",
+            f"{name}.GravityField.Earth.Degree = 20;",
+            f"{name}.GravityField.Earth.Order = 20;",
+            f"{name}.GravityField.Earth.StmLimit = 100;",
+            f"{name}.GravityField.Earth.PotentialFile = 'EGM96.cof';",
+            f"{name}.GravityField.Earth.TideModel = 'SolidAndPole';"]
+
+
+ORBIT_KEYS = ("SMA", "ECC", "INC", "RAAN", "AOP", "TA")
+DENSE_REPORT_COLUMNS = (["ShipB.ElapsedSecs"]
+                        + [f"ShipB.EarthMJ2000Eq.{c}" for c in ("X", "Y", "Z", "VX", "VY", "VZ")]
+                        + [f"ShipA.EarthMJ2000Eq.{c}" for c in ("X", "Y", "Z", "VX", "VY", "VZ")])
+
+
+def full_perturbation_script(orbit_A, orbit_B, burns, times, env, *, gravity_degree=4,
+                             report_path=None, retarget_idx=None, bplane=None,
+                             summary_path=None, vary_bound_kms=2.0,
+                             ext_sec=600.0, max_step=60.0, stop_alt_km=50.0):
+    """全攝動重瞄準用的兩種 GMAT 腳本（回傳腳本文字，不寫檔）。
+
+    retarget_idx 為 None：重播版。每個積分步寫一列兩船狀態到 report_path（MaxStep 限在
+    max_step 秒，讓 Python 端用 Hermite 內插找最近點），預定攔截時刻之後再多傳 ext_sec 秒
+    （最近點可能晚到）。
+    retarget_idx 給定：B 平面 DC 版。Vary 第 retarget_idx 棒的 VNB 三分量，只 Achieve
+    「預定攔截時刻相對位置在 bplane 兩個單位向量上的投影 = 0」（垂直於相對速度的兩個分量）；
+    沿相對速度的分量只會讓最近點早到或晚到幾秒，不花 Δv 去修。收斂後把該棒三分量和相對
+    位置寫到 summary_path。不用「預定時刻位置對齊」：那在 hyper_far 會多花 272 m/s、
+    把最後一棒推到 361 m/s（docs/PERTURBATION_GAP_20261019.md §4）。
+
+    每段 Propagate 都帶 ShipB 高度 stop_alt_km 的停止條件：攔截後 B 常一路鑽進大氣層，
+    MSISE 密度會讓 RK89 卡在最小步長。所有路徑都必須是絕對路徑（GmatConsole 會切到 bin/）。
+    燃燒/滑行時間的寫法跟繳交腳本一致（滑行 .5f），重播的才是會被繳交的那一份。"""
+    sc_A, sc_B = env["sc_A"], env["sc_B"]
+    fm = env["force_model"]
+    dc = retarget_idx is not None
+    if dc and (bplane is None or summary_path is None):
+        raise ValueError("B 平面 DC 版需要 bplane（兩個單位向量）與 summary_path")
+    if not dc and report_path is None:
+        raise ValueError("重播版需要 report_path")
+    for path in (report_path, summary_path):
+        if path is not None and (not str(path).startswith("/") or any(c in str(path) for c in "'\n\r")):
+            raise ValueError(f"GMAT 輸出路徑必須是不含引號的絕對路徑：{path!r}")
+    L = ["% generated by src/script_generator.py full_perturbation_script",
+         f"% FORCE_MODEL = {fm}; " + ("B-plane DifferentialCorrector on BurnB%d" % retarget_idx
+                                       if dc else "dense replay report")]
+    for ship, orbit, sc in (("ShipA", orbit_A, sc_A), ("ShipB", orbit_B, sc_B)):
+        L += [f"Create Spacecraft {ship};",
+              f"{ship}.DateFormat = {env['epoch_format']};",
+              f"{ship}.Epoch = '{env['epoch']}';",
+              f"{ship}.CoordinateSystem = EarthMJ2000Eq;",
+              f"{ship}.DisplayStateType = Keplerian;"]
+        L += [f"{ship}.{k} = {float(orbit[k])!r};" for k in ORBIT_KEYS]
+        L += spacecraft_physics_lines(ship, sc)
+    L += force_model_lines("FM", fm, gravity_degree, 0, sc_B)
+    L += ["Create Propagator Prop;", "Prop.FM = FM;", "Prop.Type = RungeKutta89;",
+          "Prop.InitialStepSize = 60;", "Prop.Accuracy = 1e-12;", "Prop.MinStep = 0.001;",
+          f"Prop.MaxStep = {_g(max_step)};", "Prop.MaxStepAttempts = 50;",
+          "Prop.StopIfAccuracyIsViolated = false;"]
+    for k, b in enumerate(burns):
+        L += [f"Create ImpulsiveBurn BurnB{k};", f"BurnB{k}.CoordinateSystem = Local;",
+              f"BurnB{k}.Origin = Earth;", f"BurnB{k}.Axes = VNB;"]
+        L += [f"BurnB{k}.Element{i + 1} = {float(b[i])!r};" for i in range(3)]
+        L += [f"BurnB{k}.DecrementMass = false;"]
+    if dc:
+        L += ["Create ReportFile RS;", "RS.SolverIterations = None;",
+              f"RS.Filename = '{summary_path}';", "RS.Precision = 16;", "RS.WriteHeaders = false;",
+              "Create DifferentialCorrector DC;", "DC.MaximumIterations = 40;",
+              "DC.DerivativeMethod = ForwardDifference;", "DC.Algorithm = NewtonRaphson;",
+              "Create Variable dX dY dZ p1 p2;"]
+    else:
+        L += ["Create ReportFile RF;", "RF.SolverIterations = None;",
+              f"RF.Filename = '{report_path}';", "RF.Precision = 16;", "RF.WriteHeaders = false;",
+              "RF.ZeroFill = Off;", "RF.Add = {%s};" % ", ".join(DENSE_REPORT_COLUMNS)]
+
+    def prop(secs):
+        return ("Propagate Prop(ShipA, ShipB) {ShipA.ElapsedSecs = %.5f, ShipB.Earth.Altitude = %s};"
+                % (secs, _g(stop_alt_km)))
+    L.append("BeginMissionSequence;")
+    for k, b in enumerate(burns):
+        if times[k] > 0:
+            L.append(prop(times[k]))
+        if dc and k == retarget_idx:
+            # 被 Vary 那棒之前的滑行留在 Target 迴圈外面，迴圈只重算這棒之後
+            L.append("Target DC {SolveMode = Solve, ExitMode = SaveAndContinue};")
+            for i in range(3):
+                # 上下限要比原本的分量大，不然卡在邊界看起來像發散（研究報告 §6）
+                bound = max(float(vary_bound_kms), abs(float(b[i])) + 0.5)
+                L.append(f"  Vary DC(BurnB{k}.Element{i + 1} = {float(b[i])!r}, {{Perturbation = 1e-6, "
+                         f"Lower = {-bound!r}, Upper = {bound!r}, MaxStep = 0.01}});")
+        L.append(f"Maneuver BurnB{k}(ShipB);")
+    L.append(prop(times[-1]))
+    if dc:
+        L += [f"  GMAT d{c} = ShipB.EarthMJ2000Eq.{c} - ShipA.EarthMJ2000Eq.{c};" for c in "XYZ"]
+        for name, e in zip(("p1", "p2"), bplane):
+            L.append(f"  GMAT {name} = dX*({float(e[0])!r}) + dY*({float(e[1])!r}) + dZ*({float(e[2])!r});")
+            L.append(f"  Achieve DC({name} = 0, {{Tolerance = 0.02}});")
+        k = retarget_idx
+        L += ["EndTarget;",
+              f"Report RS BurnB{k}.Element1 BurnB{k}.Element2 BurnB{k}.Element3 dX dY dZ;"]
+    elif ext_sec > 0:
+        L.append(prop(ext_sec))
+    return _require_ascii("\n".join(L) + "\n", "全攝動重瞄準腳本")
+
+
 def script_generator(
     a_sma, a_ecc, a_inc, a_raan, a_aop, a_ta,
     b_sma, b_ecc, b_inc, b_raan, b_aop, b_ta,
     burns, times, aim_point, max_dv=1.5, gravity_degree=2,
     final_burn_fixed_vnb=None, output_filename="output.txt",
     model_scale=0.5, output_dir="outputs", report_filename="GMAT_InterceptReport.txt",
+    force_model="contest_prelim", sc_A=None, sc_B=None,
+    epoch=DEFAULT_EPOCH, epoch_format=DEFAULT_EPOCH_FORMAT,
 ):
     """
+    force_model / sc_A / sc_B / epoch / epoch_format: GMAT-side environment, see
+    src/gmat_env.py (main.py passes resolve_gmat_env(config)). The defaults
+    reproduce the pre-2026-10-19 script byte for byte: "contest_prelim" is the
+    JGM2 zonal model aligned with Python; "ranking_full" switches the ForceModel
+    to the ranking round's official model (EGM96 20x20, SolidAndPole tides,
+    NRLMSISE00 drag, Sun/Luna, SRP, relativity) and makes the spacecraft
+    DryMass/Cd/Cr/areas physically meaningful. gravity_degree only applies to
+    contest_prelim. Note the normal (DC) variant still aims at a fixed-time
+    position; under ranking_full use main.py --retarget-full-perturbation
+    (B-plane DC) instead - see docs/PERTURBATION_GAP_20261019.md section 4.
+
     gravity_degree: highest zonal (m=0) harmonic to include, matching Python's
     strategy.GRAVITY_DEGREE exactly (0=point mass, 2=J2, 3=J2+J3, 4=J2+J3+J4).
     Sets GMAT's GravityField.Earth.Degree; Order is always pinned to 0
@@ -291,6 +490,24 @@ Report Report_Intercept ShipB.ElapsedSecs MissDistance InterceptSuccess FinalBur
         "% (Target/Vary/Achieve). See the comment near 'Burns' below.\n"
     )
 
+    if force_model not in FORCE_MODELS:
+        raise ValueError(f"force_model must be one of {FORCE_MODELS}, got {force_model!r}")
+    full_model = force_model == "ranking_full"
+    sc_A = {**DEFAULT_SPACECRAFT, **(sc_A or {})}
+    sc_B = {**DEFAULT_SPACECRAFT, **(sc_B or {})}
+    if full_model:
+        header_note += (
+            "% FORCE MODEL: ranking_full (EGM96 20x20, SolidAndPole tides, NRLMSISE00\n"
+            "% drag, Sun/Luna, SRP, relativity) - the ranking round's official model.\n"
+        )
+        sc_comment = RANKING_FULL_SC_COMMENT
+    else:
+        sc_comment = PRELIM_SC_COMMENT
+    phys_A = "\n".join(spacecraft_physics_lines("ShipA", sc_A))
+    phys_B = "\n".join(spacecraft_physics_lines("ShipB", sc_B))
+    fm_block = "\n".join(force_model_lines("DefaultProp_ForceModel", force_model, gravity_degree,
+                                            gravity_order, sc_B))
+
     script_content = f"""
 %General Mission Analysis Tool(GMAT) Script
 %Created: 2026-06-27 00:00:00
@@ -312,19 +529,9 @@ Report Report_Intercept ShipB.ElapsedSecs MissDistance InterceptSuccess FinalBur
 %---------- Spacecraft
 %----------------------------------------
 
-% The DryMass/Cd/Cr/DragArea/SRPArea/BurnB*.Isp/GravitationalAccel values below
-% are cosmetic: they are required fields for Spacecraft/ImpulsiveBurn objects,
-% but Drag=None and SRP=Off in DefaultProp_ForceModel (see below) mean drag and
-% solar radiation pressure are never actually applied, so Cd/Cr/DragArea/SRPArea
-% have no effect on the propagated trajectory; BurnB*.DecrementMass = false means
-% mass never decreases, so Isp/GravitationalAccel don't affect any burn's actual
-% Delta-v or the resulting orbit either. The numbers below are just typical
-% values for a mid-size chemical-propulsion satellite, kept here so the script
-% looks complete and passes GMAT's parser - changing them will NOT change
-% InterceptSuccess/FinalBurnLegal.
-Create Spacecraft ShipA;
-ShipA.DateFormat = TAIModJulian;
-ShipA.Epoch = '21545';
+{sc_comment}Create Spacecraft ShipA;
+ShipA.DateFormat = {epoch_format};
+ShipA.Epoch = '{epoch}';
 ShipA.CoordinateSystem = EarthMJ2000Eq;
 ShipA.DisplayStateType = Keplerian;
 ShipA.SMA = {a_sma};
@@ -333,11 +540,7 @@ ShipA.INC = {a_inc};
 ShipA.RAAN = {a_raan};
 ShipA.AOP = {a_aop};
 ShipA.TA = {a_ta};
-ShipA.DryMass = 850;
-ShipA.Cd = 2.2;
-ShipA.Cr = 1.8;
-ShipA.DragArea = 6;
-ShipA.SRPArea = 8;
+{phys_A}
 % Trajectory colors belong on the Spacecraft in R2026a, not on the OrbitView
 % (OrbitView.OrbitColor/TargetColor were removed - setting them there is
 % silently ignored and emits an interpreter warning). Purely a visual aid.
@@ -351,8 +554,8 @@ ShipA.TargetColor = Gray;
 ShipA.ModelScale = {model_scale};
 
 Create Spacecraft ShipB;
-ShipB.DateFormat = TAIModJulian;
-ShipB.Epoch = '21545';
+ShipB.DateFormat = {epoch_format};
+ShipB.Epoch = '{epoch}';
 ShipB.CoordinateSystem = EarthMJ2000Eq;
 ShipB.DisplayStateType = Keplerian;
 ShipB.SMA = {b_sma};
@@ -361,11 +564,7 @@ ShipB.INC = {b_inc};
 ShipB.RAAN = {b_raan};
 ShipB.AOP = {b_aop};
 ShipB.TA = {b_ta};
-ShipB.DryMass = 850;
-ShipB.Cd = 2.2;
-ShipB.Cr = 1.8;
-ShipB.DragArea = 6;
-ShipB.SRPArea = 8;
+{phys_B}
 ShipB.OrbitColor = Lime;
 ShipB.TargetColor = Gray;
 ShipB.ModelScale = {model_scale};
@@ -374,18 +573,7 @@ ShipB.ModelScale = {model_scale};
 %---------- ForceModels
 %----------------------------------------
 
-Create ForceModel DefaultProp_ForceModel;
-DefaultProp_ForceModel.CentralBody = Earth;
-DefaultProp_ForceModel.PrimaryBodies = {{Earth}};
-DefaultProp_ForceModel.Drag = None;
-DefaultProp_ForceModel.SRP = Off;
-DefaultProp_ForceModel.RelativisticCorrection = Off;
-DefaultProp_ForceModel.ErrorControl = RSSStep;
-DefaultProp_ForceModel.GravityField.Earth.Degree = {gravity_degree};
-DefaultProp_ForceModel.GravityField.Earth.Order = {gravity_order};
-DefaultProp_ForceModel.GravityField.Earth.StmLimit = 100;
-DefaultProp_ForceModel.GravityField.Earth.PotentialFile = 'JGM2.cof';
-DefaultProp_ForceModel.GravityField.Earth.TideModel = 'None';
+{fm_block}
 
 %----------------------------------------
 %---------- Propagators
