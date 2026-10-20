@@ -20,6 +20,7 @@
 | 文件 | 用途 |
 |---|---|
 | [RANKING_ROUND_RULES_20261006](RANKING_ROUND_RULES_20261006.md) | 排位賽規則跟初賽的差異，以及工具需要改的地方 |
+| [SPLITTER_SPEED_20261020](SPLITTER_SPEED_20261020.md) | 拆棒器加速與穩定化：3 顆種子並行 22 分鐘、疊合差分（逐位元不變）、多起點拆棒；現場拆棒設定已寫進 `configs/shared/ranking_round.json` |
 | [PERTURBATION_GAP_20261019](PERTURBATION_GAP_20261019.md) | 我們的解放進排位賽官方攝動模型還打不打得中；比賽當天要加「全攝動 B 平面重瞄準」 |
 | [NEXT_ROUND_BACKLOG](NEXT_ROUND_BACKLOG.md) | 下一輪題型、依賴與待官方發題後的檢查項目 |
 | [C4_TERMINAL_SPLIT_AWARE_PLAN](C4_TERMINAL_SPLIT_AWARE_PLAN.md) | 終端棒拆後估分的設計與實測；已實作部分見文內結果 |

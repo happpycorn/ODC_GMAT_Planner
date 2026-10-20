@@ -764,12 +764,15 @@ def load_winner_checkpoint(path):
 def _legalize_stage(config, burns, times, mi, opt):
     """拆棒合法化那一段（Earth-safe 才拆）。`_solve_pipeline` 與 `--from-winner` 重播共用。
 
-    設了 SEED 時跟搜尋階段一樣把 BLAS 鎖單執行緒（見 run_study_over_revs 的重現性說明）：
+    設了 SEED（或開了 SPLIT_FAST_FD）時跟搜尋階段一樣把 BLAS 鎖單執行緒（見 run_study_over_revs 的重現性說明）：
     joint NLP（SLSQP）在父行程跑、原本沒鎖，多執行緒 BLAS 讓同一個拆棒前贏家拆出不同結果
     （2026-09-25 實測 contest：鎖 98.319106／7 棒 vs 不鎖 98.318995／6 棒）。"""
     if bool(mi.get("earth_safe", True)):
         seed_set = config.get("optimization", {}).get("SEED") is not None
-        with (threadpool_limits(limits=1, user_api="blas") if seed_set else contextlib.nullcontext()):
+        # SPLIT_FAST_FD 開時不論有沒有 SEED 都鎖：SLSQP 的問題只有幾十維，多執行緒 BLAS 不會更快、
+        # 只會空轉（10-20 實測每個行程吃 ~650% CPU、慢 1.7×），3 顆種子並行時會互搶核心。
+        lock = seed_set or bool(config.get("strategy", {}).get("SPLIT_FAST_FD", False))
+        with (threadpool_limits(limits=1, user_api="blas") if lock else contextlib.nullcontext()):
             _legal = legalize_violating_winner(config, burns, times, mi, opt)
         if _legal is not None:
             burns, times, mi = _legal
