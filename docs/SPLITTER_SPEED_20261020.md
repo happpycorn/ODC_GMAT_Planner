@@ -229,6 +229,7 @@ contest 的對照：`6d2f134` 與本分支各自 `main.py --from-winner … --st
 | `SPLIT_N_SPAN` | 1 | 多跑幾個段數的 NLP（原本寫死 1）。**不建議改小** | 改了會變 |
 | `SPLIT_NLP_MAXITER` | 1000 | joint NLP 迭代上限（原本寫死 1000）。**不建議改小** | 改了會變 |
 
+回歸：`run_regression.py --quick` 11/11（91.7 s）、完整 15/15（367.0 s）。
 全部沒填時 `legalize_route` 走原本的程式路徑（`_legalize_route_slots`），回歸測試 `test_burn_splitter.py` 驗：
 疊合差分（序列 / 2 行程）、平行多起點、單起點差分池都跟原路徑逐位元相同；預算 0 s 仍交合法解；`prune_reopt` 剔得掉空燒。
 
@@ -248,8 +249,9 @@ contest 的對照：`6d2f134` 與本分支各自 `main.py --from-winner … --st
 
 ## 後續
 
-1. **合併：** Master（`ad9d6ad`）的搜尋懲罰 v2 大改了 `main.py`（含 `legalize_violating_winner`、`_legalize_stage`），
-   本分支在同兩個函式加了 `split_options` 與 BLAS 鎖，合併會衝突，要手動處理。`burn_splitter.py` Master 沒動。
+1. **合併：** Master（`ad9d6ad`，搜尋懲罰 v2）大改了 `main.py`。在暫存 worktree 試合併本分支 + `ad9d6ad`：
+   沒有衝突（`main.py`、`config_validator.py`、`docs/README.md` 自動合併），合併後 `run_regression.py --quick` 16/16 通過、
+   `test_burn_splitter.py` 全過。沒有實際合併。
 2. **現場手冊：** `docs/ranking/CONTEST_DAY.md`（Master）要加「3 顆種子並行、各設 SEED、拆棒設定照 ranking_round.json」。
 3. 搜尋現在是 3 顆並行的瓶頸（C2 重搜 ~450 s）。可以量 C2 在 250 m/s 下值不值得。
 4. 多起點只挪終端棒起點。如果真題的拆前解有好幾發超標中間棒，要看 `SPLIT_AWARE_SEARCH` 那條路要不要同樣處理。
