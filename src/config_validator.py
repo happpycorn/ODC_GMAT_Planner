@@ -287,7 +287,7 @@ def _validate_strategy(strategy_cfg, errors: list):
     if "SPLIT_FAST_FD" in strategy_cfg and not isinstance(strategy_cfg["SPLIT_FAST_FD"], bool):
         errors.append("strategy.SPLIT_FAST_FD 必須是 true/false，但收到 "
                       f"{strategy_cfg['SPLIT_FAST_FD']!r}（joint NLP 疊合有限差分，結果逐位元不變）")
-    for k, lo in (("SPLIT_FD_WORKERS", 1), ("SPLIT_N_SPAN", 0), ("SPLIT_NLP_MAXITER", 1)):
+    for k, lo in (("SPLIT_WORKERS", 1), ("SPLIT_N_SPAN", 0), ("SPLIT_NLP_MAXITER", 1)):
         if k in strategy_cfg and not (_is_int(strategy_cfg[k]) and strategy_cfg[k] >= lo):
             errors.append(f"strategy.{k} 必須是 >={lo} 的整數，但收到 {strategy_cfg[k]!r}")
     if "SPLIT_MULTISTART" in strategy_cfg:
@@ -295,6 +295,10 @@ def _validate_strategy(strategy_cfg, errors: list):
         if not (isinstance(v, list) and all(_is_number(f) and 0 <= f <= 2 for f in v)):
             errors.append("strategy.SPLIT_MULTISTART 必須是 0~2 之間數字的清單（終端棒起點往前挪幾倍"
                           f"「連續燒長度」，例如 [0, 0.5, 1]），但收到 {v!r}")
+    if "SPLIT_WALL_BUDGET_SEC" in strategy_cfg:
+        v = strategy_cfg["SPLIT_WALL_BUDGET_SEC"]
+        if v is not None and not (_is_number(v) and v >= 0):
+            errors.append(f"strategy.SPLIT_WALL_BUDGET_SEC 必須是 >=0 的秒數（0/null = 不限），但收到 {v!r}")
     if "SPLIT_PRUNE_REOPT_MPS" in strategy_cfg:
         v = strategy_cfg["SPLIT_PRUNE_REOPT_MPS"]
         if not (_is_number(v) and 0 <= v <= 50):

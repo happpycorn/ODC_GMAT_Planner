@@ -588,9 +588,11 @@ def split_options(config):
         "n_span": int(st.get("SPLIT_N_SPAN", 1)),
         "maxiter": int(st.get("SPLIT_NLP_MAXITER", 1000)),    # C3：1000
         "fast_fd": bool(st.get("SPLIT_FAST_FD", False)),
-        "fd_workers": int(st.get("SPLIT_FD_WORKERS", 1)),
+        "workers": int(st.get("SPLIT_WORKERS", 1)),
         "starts": st.get("SPLIT_MULTISTART") or None,
         "prune_reopt_tol": None if not reopt else float(reopt) / 1000.0,
+        "wall_budget": (None if not st.get("SPLIT_WALL_BUDGET_SEC")
+                        else float(st["SPLIT_WALL_BUDGET_SEC"])),
     }
 
 
@@ -652,6 +654,12 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
     if res is None or not res["feasible"]:
         log.info("⚠️ HAP-67 自動拆分：這個違規解在段數上限內拆不出合法版，沿用原解。")
         return None
+    if res.get("start_shift_sec"):
+        log.info(f"🔀 多起點拆棒：終端棒起點提前 {res['start_shift_sec']:.0f} s 的那一組最好"
+                 f"（{res['score']:.4f}，{res['N']} 棒）。")
+    if res.get("budget_hit"):
+        log.warning(f"⏱️ 拆棒牆鐘預算 {config['strategy']['SPLIT_WALL_BUDGET_SEC']} s 到期：交目前最好的"
+                    f"合法拆法（{res['score']:.4f}，{res['N']} 棒），後面的精修略過。")
 
     # free-ECI 結果 → 每棒「燒前狀態」→ VNB；組回 script_generator / mission_info 要的格式
     Nf = int(res["N"]); xf = np.asarray(res["x"], dtype=np.float64)

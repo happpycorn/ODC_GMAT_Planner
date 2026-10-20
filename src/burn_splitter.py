@@ -21,6 +21,7 @@ import concurrent.futures
 import functools
 import math
 import multiprocessing
+import time
 import numpy as np
 from scipy.optimize import minimize
 from scipy.optimize._numdiff import approx_derivative
@@ -363,7 +364,7 @@ class FDPool:
 
 def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
                     A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v,
-                    T_max, miss_tol, maxiter=1000, fd_map=None):
+                    T_max, miss_tol, maxiter=1000, fd_map=None, deadline=None):
     """對一個 N 棒暖啟 `x0` (free-ECI 佈局) 做 SLSQP 聯合優化，回傳優化後的解與指標。
 
     目標 = -calculate_score(miss, T_team, 總Δv, penalty=0)；約束 (ineq ≥0)：每棒 ≤cap、
@@ -449,9 +450,28 @@ def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
                 {"type": "ineq", "fun": lambda x: stack(x)[1 + 2 * N:],
                  "jac": lambda x: jac_all(x)[1 + 2 * N:]}]
 
-    res = minimize(objective, x0, method="SLSQP", bounds=bounds, jac=jac,
-                   constraints=cons, options={"maxiter": maxiter, "ftol": 1e-10})
-    x1 = np.clip(res.x, np.array(lb), np.array(ub))
+    budget_hit = False
+    if deadline is None:
+        res = minimize(objective, x0, method="SLSQP", bounds=bounds, jac=jac,
+                       constraints=cons, options={"maxiter": maxiter, "ftol": 1e-10})
+        x_end = res.x
+    else:
+        # 牆鐘預算（anytime）：scipy 1.16 的 SLSQP 不理 StopIteration，用自己的例外跳出，
+        # 交最後一個主迭代點（SLSQP 走不可行路徑，那一點可能不可行——呼叫端還有 greedy 暖啟保底）。
+        last = [np.asarray(x0, dtype=np.float64)]
+
+        def _cb(xk):
+            last[0] = xk
+            if time.monotonic() > deadline:
+                raise _BudgetExceeded
+
+        try:
+            res = minimize(objective, x0, method="SLSQP", bounds=bounds, jac=jac, callback=_cb,
+                           constraints=cons, options={"maxiter": maxiter, "ftol": 1e-10})
+            x_end = res.x
+        except _BudgetExceeded:
+            x_end, budget_hit = last[0], True
+    x1 = np.clip(x_end, np.array(lb), np.array(ub))
     m = _simulate_free(x1, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0)
     feasible = (float(np.max(m["dv_mags"])) <= cap + 1e-6
                 and float(np.min(m["arc_minr"])) >= min_periapsis - 1e-3
@@ -462,7 +482,16 @@ def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
                                  0, k_t, C_t, k_v, C_v),
         "total_dv_mps": m["total_dv"] * 1000.0, "T_team": m["T_team"],
         "miss_km": m["miss_km"], "dv_mps": [d * 1000.0 for d in m["dv_mags"]],
+        **({"budget_hit": True} if budget_hit else {}),
     }
+
+
+class _BudgetExceeded(Exception):
+    """joint_nlp_split 的牆鐘預算到期（見 legalize_route 的 `wall_budget`）。"""
+
+
+def _past(deadline):
+    return deadline is not None and time.monotonic() > deadline
 
 
 def _slot_after_capped(leading_dvs, leading_coasts, cap, min_coast, tol=1e-6):
@@ -500,16 +529,17 @@ def legalize_route(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
                    cap, min_coast, mu, j2, j3, j4, re, min_periapsis, max_revs,
                    A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, T_max,
                    miss_tol, n_span=1, max_seg=14, maxiter=1000, slot_after_capped=True,
-                   fast_fd=False, fd_workers=1, starts=None, prune_reopt_tol=None,
-                   prune_reopt_maxiter=None):
+                   fast_fd=False, workers=1, starts=None, prune_reopt_tol=None,
+                   prune_reopt_maxiter=None, wall_budget=None):
     """Stage 2 對外單一入口（見 `_legalize_route_core`）。
 
     `slot_after_capped=True`（預設）先用 `_slot_after_capped` 重排前導棒：丟掉無用空燒、在貼 cap
     的前導棒後補空位給 NLP 分擔溢出量；重排版拆不出合法解才退回原樣。
 
     SPLITTER_SPEED（2026-10-19）的開關，預設全關＝舊路徑逐位元不變：
-    - `fast_fd=True`：joint NLP 改用疊合有限差分（逐位元等價、軌跡少算 3/4，見 `FDPool`）；
-      `fd_workers>1` 再把擾動點分給行程池並行算。
+    - `fast_fd=True`：joint NLP 改用疊合有限差分（逐位元等價、軌跡少算 3/4，見 `FDPool`）。
+    - `workers>1`：拆棒器可以用幾個行程。有多個起點時一個起點一個行程（`_run_start`）；只有一個
+      起點時把有限差分的擾動點分給行程池（要配 fast_fd）。結果都跟 workers=1 逐位元相同。
     - `starts`：多起點拆棒。每個元素 f 把終端棒的起點往前挪 f×(n_lo−1)×min_coast 秒
       （n_lo = 終端棒單發 Δv / cap 無條件進位，也就是連續燒的長度），各自拆完取分數最高的 feasible 解。
       貪婪拆棒只會從原本的脈衝時刻**往後**排燒，整串燒偏晚；f=0.5 讓它大致以原脈衝為中心。
@@ -517,32 +547,60 @@ def legalize_route(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
     - `prune_reopt_tol`（km/s）：拆完把 |Δv| < 這個值的棒剔掉，對剩下的棒數再跑一次 joint NLP
       （`prune_reopt_maxiter`，預設同 maxiter），feasible 且分數不低於原解 − `_PRUNE_REOPT_SLACK` 就換掉。
       處理「NLP 解貼在命中容許邊界、prune_null_burns 剔不掉 0.1 m/s 空棒」的殘留空燒。
+    - `wall_budget`（秒）：隨時可交（anytime）。貪婪暖啟一定照跑（那是第一個合法解）；超過預算後
+      SLSQP 在下一個主迭代跳出、交最後的迭代點，還沒開始的 NLP（下一個段數、退回原樣的那趟、
+      其他起點、剔空棒重最佳化）全部略過，回傳到目前為止最好的 feasible 解。**結果跟機器快慢有關、
+      不可逐位元重現**；沒觸發時（拆得比預算快）跟沒設一樣。
     """
     kw = dict(cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3, j4=j4, re=re,
               min_periapsis=min_periapsis, max_revs=max_revs, A_r0=A_r0, A_v0=A_v0,
               B_r0=B_r0, B_v0=B_v0, k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v, T_max=T_max,
               miss_tol=miss_tol, n_span=n_span, max_seg=max_seg, maxiter=maxiter)
-    if not fast_fd and starts is None and prune_reopt_tol is None:
+    if (not fast_fd and starts is None and prune_reopt_tol is None and wall_budget is None
+            and workers <= 1):
         return _legalize_route_slots(t0, leading_dvs, leading_coasts, terminal_coast, target,
                                      slot_after_capped=slot_after_capped, **kw)
+    deadline = None if wall_budget is None else time.monotonic() + float(wall_budget)
     ctx = dict(mu=mu, j2=j2, j3=j3, j4=j4, re=re, A_r0=A_r0, A_v0=A_v0, B_r0=B_r0, B_v0=B_v0,
                cap=cap, min_periapsis=min_periapsis, miss_tol=miss_tol,
                k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v)
-    if fast_fd:
+    if fast_fd or workers > 1:
         # 開行程池前先在本行程跑一次模擬，確保 fork 時 numba 函式都已編譯（子行程直接繼承）。
         _simulate_free_reuse(np.concatenate([[float(t0)], [float(terminal_coast)], np.zeros(3)]), 1,
                              mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0)
-    with FDPool(fd_workers if fast_fd else 1, ctx) as pool:
+    shifts = list(_shifted_routes(t0, leading_dvs, leading_coasts, terminal_coast, target,
+                                  starts, cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3,
+                                  j4=j4, re=re, max_revs=max_revs, B_r0=B_r0, B_v0=B_v0))
+    results = None
+    if workers > 1 and len(shifts) > 1 and "fork" in multiprocessing.get_all_start_methods():
+        # 起點之間互不相干：一個起點一個行程（fork，子行程內序列疊合差分），比把差分點分給行程池
+        # 有效率（每次迭代不用來回傳 4N+1 個點）。結果跟依序跑逐位元相同，挑選順序也一樣。
+        global _START_JOB
+        _START_JOB = (shifts, dict(kw, slot_after_capped=slot_after_capped, deadline=deadline),
+                      ctx if fast_fd else None)
+        try:
+            with concurrent.futures.ProcessPoolExecutor(
+                    max_workers=min(workers, len(shifts)),
+                    mp_context=multiprocessing.get_context("fork")) as ex:
+                results = list(ex.map(_run_start, range(len(shifts))))
+        finally:
+            _START_JOB = None
+    with FDPool(workers if (fast_fd and results is None) else 1, ctx) as pool:
         fd = pool if fast_fd else None
         best = None
-        for shifted in _shifted_routes(t0, leading_dvs, leading_coasts, terminal_coast, target,
-                                       starts, cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3,
-                                       j4=j4, re=re, max_revs=max_revs, B_r0=B_r0, B_v0=B_v0):
-            res = _legalize_route_slots(*shifted, slot_after_capped=slot_after_capped,
-                                        fd_map=fd, **kw)
+        for i, shifted in enumerate(shifts):
+            if results is not None:
+                res = results[i]
+            else:
+                if best is not None and _past(deadline):
+                    best["budget_hit"] = True
+                    break
+                res = _legalize_route_slots(*shifted, slot_after_capped=slot_after_capped,
+                                            fd_map=fd, deadline=deadline, **kw)
             if res is not None and res["feasible"] and (best is None or res["score"] > best["score"]):
                 best = res
-        if best is not None and prune_reopt_tol is not None:
+                best["start_shift_sec"] = float(shifted[3]) - float(terminal_coast)
+        if best is not None and prune_reopt_tol is not None and not _past(deadline):
             pr = prune_reopt(best["x"], best["N"], tol=prune_reopt_tol,
                              maxiter=prune_reopt_maxiter or maxiter, fd_map=fd,
                              cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3, j4=j4, re=re,
@@ -550,8 +608,21 @@ def legalize_route(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
                              B_v0=B_v0, k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v, T_max=T_max,
                              miss_tol=miss_tol)
             if pr is not None and pr["score"] >= best["score"] - _PRUNE_REOPT_SLACK:
+                pr.update({k: best[k] for k in ("start_shift_sec", "budget_hit") if k in best})
                 best = pr
     return best
+
+
+# 平行多起點：fork 前放進全域，子行程只收起點編號（routes / kw 不必 pickle）。
+_START_JOB = None
+
+
+def _run_start(i):
+    shifts, kw, ctx = _START_JOB
+    if ctx is None:
+        return _legalize_route_slots(*shifts[i], **kw)
+    with FDPool(1, ctx) as fd:
+        return _legalize_route_slots(*shifts[i], fd_map=fd, **kw)
 
 
 # prune_reopt 接受「分數掉一點點」的上限：剔掉的都是 <1 m/s 的空棒，重最佳化理論上不會更差，
@@ -629,13 +700,16 @@ def _legalize_route_slots(t0, leading_dvs, leading_coasts, terminal_coast, targe
             res = _legalize_route_core(t0, aug[0], aug[1], terminal_coast, target, **kw)
             if res is not None and res["feasible"]:
                 return res
+            if res is not None and _past(kw.get("deadline")):
+                return res
     return _legalize_route_core(t0, leading_dvs, leading_coasts, terminal_coast, target, **kw)
 
 
 def _legalize_route_core(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
                          cap, min_coast, mu, j2, j3, j4, re, min_periapsis, max_revs,
                          A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, T_max,
-                         miss_tol, n_span=1, max_seg=14, maxiter=1000, fd_map=None):
+                         miss_tol, n_span=1, max_seg=14, maxiter=1000, fd_map=None,
+                         deadline=None):
     """Stage 2 核心：吃一條「前導合法棒 + 一發(可能超標的)終端攔截」的 route，
     回傳**合法化 + joint-NLP 優化後**的最佳解（free-ECI），或 None（拆不出）。
 
@@ -684,13 +758,17 @@ def _legalize_route_core(t0, leading_dvs, leading_coasts, terminal_coast, target
         # 候選 2：joint NLP 精修結果。SLSQP 有時會把可行暖啟推到邊界外（有限差分梯度在
         # 多圈傳播上有雜訊），那一步就不可行——這時**不能**把暖啟一起丟掉，所以兩個都評，
         # 取 feasible 且分數最高者。
-        for cand in (_eval_free(x0, N, cap, min_periapsis, mu, j2, j3, j4, re,
-                                A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, miss_tol),
-                     joint_nlp_split(x0, N, cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3,
-                                     j4=j4, re=re, min_periapsis=min_periapsis, A_r0=A_r0, A_v0=A_v0,
-                                     B_r0=B_r0, B_v0=B_v0, k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v,
-                                     T_max=T_max, miss_tol=miss_tol, maxiter=maxiter,
-                                     fd_map=fd_map)):
+        cands = [_eval_free(x0, N, cap, min_periapsis, mu, j2, j3, j4, re,
+                            A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, miss_tol)]
+        if _past(deadline) and (best is not None or cands[0]["feasible"]):
+            cands[0]["budget_hit"] = True          # 預算已到：只收 greedy 暖啟，不再開 NLP
+        else:
+            cands.append(joint_nlp_split(x0, N, cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3,
+                                         j4=j4, re=re, min_periapsis=min_periapsis, A_r0=A_r0,
+                                         A_v0=A_v0, B_r0=B_r0, B_v0=B_v0, k_t=k_t, C_t=C_t, k_v=k_v,
+                                         C_v=C_v, T_max=T_max, miss_tol=miss_tol, maxiter=maxiter,
+                                         fd_map=fd_map, deadline=deadline))
+        for cand in cands:
             if cand["feasible"] and (best is None or cand["score"] > best["score"]):
                 best = cand
     return best

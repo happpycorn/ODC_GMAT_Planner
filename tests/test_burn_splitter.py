@@ -174,6 +174,18 @@ def main():
             check("多起點拆棒 feasible 且分數不低於單起點",
                   rm_ is not None and rm_["feasible"] and rm_["score"] >= res["score"])
             check("多起點拆棒每棒 ≤ 上限", rm_ is not None and max(rm_["dv_mps"]) <= cap * 1000.0 + 1e-3)
+            rp_ = legalize_route(fast_fd=True, starts=[0.0, 0.5, 1.0], workers=3, **lr)
+            check("多起點平行（workers=3）跟依序逐位元相同",
+                  rp_ is not None and rm_ is not None and np.array_equal(rp_["x"], rm_["x"])
+                  and rp_["score"] == rm_["score"])
+            rw_ = legalize_route(fast_fd=True, workers=2, **lr)
+            check("單起點差分行程池（workers=2）跟預設逐位元相同",
+                  rw_ is not None and np.array_equal(rw_["x"], res["x"]) and rw_["score"] == res["score"])
+            rb = legalize_route(wall_budget=0.0, **lr)
+            check("牆鐘預算 0 s 仍交合法解（greedy 暖啟）並標記 budget_hit",
+                  rb is not None and rb["feasible"] and rb.get("budget_hit") is True
+                  and max(rb["dv_mps"]) <= cap * 1000.0 + 1e-3)
+            check("預算 0 s 的解不比完整拆棒好（只是保底）", rb is not None and rb["score"] <= res["score"])
             pz = prune_reopt(xz, Nz, tol=1e-6, maxiter=25, fd_map=None,
                              **{kk: vv for kk, vv in nl.items() if kk != "maxiter"})
             check("prune_reopt 剔掉插入的空燒並重評 feasible", pz is not None and pz["feasible"] and pz["N"] < Nz)
