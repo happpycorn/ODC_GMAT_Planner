@@ -138,6 +138,16 @@ def main():
         print("    （拿到解之後用該解的 T/V 重算真正的交換率，見 CONTEST_DAY 第五節）")
 
     # --- 若參考解已知：驗算單位 ---
+    # 排位賽格式（有 MAX_TOTAL_DV_MPS）不印：這組參考解是初賽範例題的，用排位賽參數算一定
+    # 「不是 90」，2026-10-20 演練時這行的紅色警告會讓現場誤以為單位換錯。
+    if m.MAX_TOTAL_DV_MPS is not None:
+        print("\n【單位換算檢查】")
+        print("  排位賽格式：用 scripts/check_scoring_params.py 驗算單位"
+              "（docs/ranking/CONTEST_DAY.md 步驟 3），這裡不做初賽範例的 90 分對照。")
+        print("\n" + "=" * 66)
+        print("體檢完成。逐項確認上面的數字都合理，再開始跑 main.py。")
+        print("=" * 66)
+        return
     REF_DV, REF_T, REF_SCORE = 2241.427, 3211.737, 90.00
     def score(V_mps, T_s):
         s_dist = 50.0

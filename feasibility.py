@@ -251,7 +251,20 @@ def main():
     print("\n" + "=" * 70)
     print("建議")
     print("=" * 70)
-    if floor > cap:
+    total_cap = opt.MAX_TOTAL_DV_MPS
+    auto_split = config.get("strategy", {}).get("AUTO_SPLIT_LEGALIZE", True)
+    if total_cap is not None and floor > total_cap:
+        print(f"  🔴 能量下限 {floor:,.0f} m/s 已經超過總 Δv 上限 {total_cap:,.0f} m/s，")
+        print("     在這個 T_max 內很可能沒有合法解；先確認根數、T_max 和邊界有沒有抄錯。")
+    if floor > cap and auto_split:
+        # 排位賽（或任何開了 AUTO_SPLIT_LEGALIZE 的情境）：DE 先用少棒數找路線，拆棒器再把大棒
+        # 拆成多棒；MAX_BURNS 指的是拆棒「前」的棒數，照下限放大反而拖慢搜尋。
+        print(f"  拆棒合法化（AUTO_SPLIT_LEGALIZE）已開：MAX_BURNS 是拆棒前的路線棒數，")
+        print(f"  維持小的值（排位賽範本是 [1, 2]），不要照下限放到 {min_burns_energy}。")
+        print(f"  拆棒後至少會有 {min_burns_energy} 棒（每棒 ≤ {cap - opt.MAX_DV_MARGIN_MPS:,.0f} m/s）。")
+        if total_cap is not None:
+            print(f"  總 Δv 上限 {total_cap:,.0f} m/s；能量下限佔 {100.0 * floor / total_cap:.0f}%。")
+    elif floor > cap:
         print(f"  MAX_BURNS 不要放小於 {min_burns_energy} 的值——那些在物理上不可能合法，")
         print(f"  放進去只是浪費搜尋時間（會找到違規解，每次違規扣 10 分）。")
         print(f"  但也不要只放 {min_burns_energy}：下限沒算平面差跟相位，實際可能還要更多，")

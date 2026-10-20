@@ -8,11 +8,11 @@
 沒有標「官方」的判斷都是我們自己的推論，現場以工作人員說的為準。開賽前要問的問題整理在
 [QUESTIONS_FOR_ORGANIZER](QUESTIONS_FOR_ORGANIZER.md)。
 
-> **TODO（等資料）**
-> - 求解的計時數據：ranking-mc session 會產生 `docs/RANKING_MC_20261019.md`（250 m/s、8–12 棒的多種子
->   蒙地卡羅）。寫這份文件時那份還沒出來，下表「求解」一列先用初賽與 budget_v1 的數字估，出來後要改。
-> - `--retarget-full-perturbation`：另一個 session 正在實作，寫這份文件時還沒合併。§6 兩種情況都寫了。
-> - 比賽時長、地點、繳交方式：官方還沒公布。
+> **2026-10-20 演練過一次**（`configs/shared/ranking_round.json` 的佔位題，步驟 1–8 全通過，實測時間填在 §二）。
+> 求解時間的依據：[RANKING_MC](../RANKING_MC_20261019.md)、[SPLITTER_SPEED](../SPLITTER_SPEED_20261020.md)。
+> `--retarget-full-perturbation` 已合併。
+>
+> **TODO（等官方）**：比賽時長、地點、繳交方式、太空船參數。
 
 ---
 
@@ -30,24 +30,25 @@
 
 比賽時長還沒公布。每一步的預估時間如下，括號是遇到問題時的上限。
 
-| 步驟 | 做什麼 | 預估 | 依據 |
-|---|---|---|---|
-| 1 | 抄題目、建 config，兩人各抄一次核對 | 5–10 分 | 初賽實測 |
-| 2 | 算 T_max 寫回 config | 1 分 | CLI 實測：含 numba 編譯約 5 s |
-| 3 | 計分參數換算、驗算、寫回 config | 2–3 分 | CLI 是秒級；時間花在打字和核對 |
-| 4 | `check_problem.py` 體檢、`feasibility.py` 看最少棒數 | 2–5 分 | 初賽實測；`feasibility.py` 前兩層幾十秒到幾分鐘 |
-| 5 | 第一次求解（拿到能交的東西） | **TODO**（先估 10–40 分） | 見下方說明 |
-| 6 | 全攝動 B 平面重瞄準 + 重播 | 2–5 分（15 分） | 單次 DC 2–15 s，hyper_far 定時對齊 58 s；重播 50 組蒙地卡羅約 10 分（4 個 GMAT） |
-| 7 | GMAT 驗證固定燃燒版 | 1–3 分 | 初賽完整流程含 GMAT 約 80 s；全攝動積分較慢，未實測 |
-| 8 | 失格檢查清單 | 5 分 | |
-| 9 | 繳交 | 5–10 分 | 初賽要在主辦機重跑、產 Report、上傳 |
-| | **第一份能交的解合計** | **約 35–80 分** | 步驟 5 的不確定性最大 |
+「演練實測」是 2026-10-20 用 `ranking_round.json` 佔位題（T_max 11.4 h、能量下限 637 m/s）在 8 核機器上量的
+機器時間，不含人打字核對。
 
-**步驟 5 的估法（TODO：用 RANKING_MC 的數字取代）：** 初賽的經驗是「搜尋時間由 T_max 決定」，
-小時級 T_max 一輪約 2 分鐘，天級要數十分鐘（[初賽手冊](../prelim/CONTEST_DAY.md) §4.1）。
-排位賽 A 是雙曲線，佔位情境的 T_max 是 11 h（hyperbolic_smoke）到 45 h（hyper_far）；另外 250 m/s 會讓
-拆棒段數變多，拆棒時間還沒在 8–12 棒量過。RANKING_MC 出來之後，把這列換成「中位／最差」兩個數字，
-並決定 §5 要不要一開始就降級。
+| 步驟 | 做什麼 | 預估 | 演練實測 | 依據 |
+|---|---|---|---|---|
+| 1 | 抄題目、建 config，兩人各抄一次核對 | 5–10 分 | — | 初賽實測 |
+| 2 | 算 T_max 寫回 config | 1 分 | 7 s + 10 s（含 numba 編譯） | |
+| 3 | 計分參數換算、驗算、寫回 config | 2–3 分 | < 1 s | 時間花在打字和核對 |
+| 4 | `check_problem.py` 體檢、`feasibility.py` 看能量下限 | 1–3 分 | 4 s + 13 s | |
+| 5 | 3 顆種子並行求解 | **13–25 分**（40 分） | **12.6 分**（3 顆都合法、86.784 分、4 棒） | 長飛掠 hyper_far 3 顆並行 22 分（SPLITTER_SPEED）；上限是預算 600 s 的拆棒長尾 |
+| 6 | 全攝動 B 平面重瞄準（含固定燃燒版 GMAT） | 1 分（5 分） | 33 s | DC 2 次迭代；+0.57 m/s |
+| 7 | GMAT 獨立驗證繳交腳本 | 1 分 | 8 s | |
+| 8 | 失格檢查清單 | 5 分 | — | |
+| 9 | 繳交 | 5–10 分 | — | 初賽要在主辦機重跑、產 Report、上傳 |
+| | **第一份能交的解合計** | **約 35–60 分** | 機器時間約 14 分 | 步驟 5 的不確定性最大 |
+
+**步驟 5 的時間由題目決定**：佔位題 12.6 分鐘；長飛掠（hyper_far，T_max 45 h、要拆 8 棒）3 顆並行 22 分鐘，
+其中搜尋最多 17 分、拆棒 2–7 分（[SPLITTER_SPEED](../SPLITTER_SPEED_20261020.md) §1）。拆棒有 600 s 預算當保險。
+降級旋鈕見[初賽手冊](../prelim/CONTEST_DAY.md) §4.1：第一個退 `REVS_ENSEMBLE`，代數比族群重要，不要加大 POPSIZE。
 
 **原則跟初賽一樣：先交得出東西，再求更好。** 步驟 5 第一輪跑完、做完 6–8，就先把那一份存好當保底，
 剩下的時間再跑第二台機器的分支或多 seed。
@@ -67,7 +68,7 @@
   ```bash
   uv run python tests/test_ranking_rules.py
   ```
-- [ ] 看 `--retarget-full-perturbation` 合併了沒有，決定 §6 走哪條：
+- [ ] 確認 `main.py --help` 有 `--retarget-full-perturbation`：
   ```bash
   uv run python main.py --help
   ```
@@ -195,31 +196,39 @@ uv run python check_problem.py --config configs/ranking.json
 uv run python feasibility.py --config configs/ranking.json
 ```
 
-- `check_problem.py`：A/B 的近地點、平面夾角、T_max、`C_t / T_max` 有沒有離譜。最後那行
-  「單位換算檢查」是初賽範例專用的，排位賽**忽略**（步驟 3 已經驗過）。
-- `feasibility.py`：**能量下限**。至少要 ⌈能量下限 / 250⌉ 棒；能量下限接近或超過 3,000 m/s，
-  總 Δv 上限下可能無解，第一輪就要知道。
+- `check_problem.py`：A/B 的近地點、平面夾角、T_max、`C_t / T_max` 有沒有離譜。排位賽格式不做初賽的
+  「參考解 90 分」對照（步驟 3 已經驗過單位）。
+- `feasibility.py`：**能量下限**。拆棒後至少 ⌈能量下限 / 250⌉ 棒；能量下限接近或超過 3,000 m/s，
+  總 Δv 上限下可能無解，第一輪就要知道。**`MAX_BURNS` 維持範本的 [1, 2]**：它是拆棒前的路線棒數，
+  DE 先找路線、拆棒器再拆，不要照下限放大。
 
-### 步驟 5：求解（TODO：計時見 RANKING_MC）
+### 步驟 5：3 顆種子並行求解（演練 12.6 分）
+
+做 3 份只差 `optimization.SEED` 的 config（`SEED: null` 會讓搜尋開多執行緒，3 個行程互搶核心）：
 
 ```bash
-uv run python main.py --config configs/ranking.json --stop-after solve --run-dir outputs/runs/rank-a
+for s in 0 1 2; do python3 -c "import json;d=json.load(open('configs/ranking.json'));d['optimization']['SEED']=$s;json.dump(d,open('configs/ranking_s$s.json','w'),ensure_ascii=False,indent=2)"; done
+```
+
+開 3 個終端各跑一顆（或一行背景跑完再 `wait`）：
+
+```bash
+for s in 0 1 2; do uv run python main.py --config configs/ranking_s$s.json --stop-after solve --run-dir outputs/runs/rank-s$s -q & done; wait
 ```
 
 先停在 solve，拿到 `mission.json` 再做重瞄準和驗證，搜尋就不用重跑。
-DE 會先找少棒數的路線，再由 `AUTO_SPLIT_LEGALIZE`（預設開）拆成每棒 ≤ 250 − 2 m/s（`MAX_DV_MARGIN_MPS` = 2）。
+DE 先找少棒數的路線，再由 `AUTO_SPLIT_LEGALIZE`（預設開）拆成每棒 ≤ 250 − 2 m/s（`MAX_DV_MARGIN_MPS` = 2）。
+拆棒設定（`SPLIT_FAST_FD`、`SPLIT_WORKERS=3`、多起點、600 s 預算）在範本 `strategy` 裡已經填好，不要動。
 
-跑完看終端機最後的「分數拆解」：
+跑完比三顆的 `mission.json`（`score`、`disqualified`），挑分數最高、沒失格的那顆：
 
-- 有 `🔴 失格` 就**不能交**。單棒超標：確認 `AUTO_SPLIT_LEGALIZE` 沒被關、放寬棒數或 T_max 重跑；
-  總 Δv 超標：拆棒救不了，換路線（看 `feasibility.py` 的能量下限）。
+```bash
+for s in 0 1 2; do python3 -c "import json;d=json.load(open('outputs/runs/rank-s$s/mission.json'))['mission_info'];print($s,d['score'],d['disqualified'],d['num_burns'],round(d['total_dv_mps'],1))"; done
+```
+
+- 失格（`disqualified: true`）就**不能交**。結束碼 3 =「找不到合法路線」：看 `no_legal_route.json`
+  裡最接近的候選超標多少，照終端機的建議（加 MAXITER、加種子、檢查 T_max 與能量下限）重跑。
 - 記下 Δr_min、ΔV_team、T_team、棒數、最大單棒。
-
-**TODO（RANKING_MC 出來後補）：**
-- 每輪牆鐘中位與最差，決定要不要一開始就降級（降級旋鈕見[初賽手冊](../prelim/CONTEST_DAY.md) §4.1；
-  第一個退 `REVS_ENSEMBLE`，代數比族群重要，不要加大 POPSIZE）。
-- 8–12 棒拆棒的收斂率，以及失敗時該怎麼辦。
-- 多 seed 的分數散布：兩台機器同 config 不同 `SEED` 取好的那個值不值得（跨 seed best-of-N，HAP-35）。
 
 ### 步驟 6：全攝動 B 平面重瞄準（2–5 分）
 
@@ -233,39 +242,32 @@ B 平面重瞄準只要多花 0.04–4.6 m/s，所有試過的解都收斂。
 - 改有餘裕的那一棒（通常是最後的微調棒）。拆出來的棒大多貼著 248 m/s，改那種棒會超標。
 - 力學模型用全攝動；官方公布曆元和太空船參數之後換成官方的（[問題 1–6](QUESTIONS_FOR_ORGANIZER.md)）。
 
-**若 `--retarget-full-perturbation` 已合併：** 照那個 PR 的說明用，例如
+把步驟 5 挑中的那顆（下例是 seed 2）拿來重瞄準：
 
 ```bash
-uv run python main.py --from-mission outputs/runs/rank-a/mission.json --retarget-full-perturbation --run-dir outputs/runs/rank-a-rt
+uv run python main.py --config configs/ranking.json --from-mission outputs/runs/rank-s2/mission.json --retarget-full-perturbation --run-dir outputs/runs/rank-rt
 ```
 
-（旗標名稱與用法以合併後的 `main.py --help` 為準。）
+演練結果（33 s）：原方案在全攝動下 d_min 3,787 m（還在 5 km 內），重瞄準後 3.2 m，總 Δv +0.57 m/s；
+終端機印 `✅ 全攝動重瞄準通過` 和繳交腳本的路徑。失敗或失格時會保留原方案並警告，**不會產生繳交腳本**。
 
-**若還沒合併：** 用研究腳本手動做。在 `scripts/research/perturbation_gap.py` 的 `SOLUTIONS` 加一筆
-`"today": dict(kind="mission", label="today", path="<mission.json 的絕對路徑>")`，然後
-
-```bash
-uv run python scripts/research/perturbation_gap.py retarget --mode bplane --solutions today --mc 20
-```
-
-結果在 `outputs/research/perturbation_gap/retarget_bplane.json`：挑最後一棒（或 `delta_vec_mps` 最小）且
-`replay.hit` 為真的那筆，`new_burns` 是修正後各棒的 VNB Δv（km/s）。手動把那一棒寫進 `output_submit.txt`
-對應的 `ImpulsiveBurn`（只改那三個數字，**不要打中文**），再用步驟 7 驗證。這條路沒有演練過，
-預估 15 分鐘以上；時間不夠就至少跑 `ladder` 看全攝動下 d_min 還有沒有在 5 km 內。
-
-**太空船參數沒公布時：** 加 `--mc 20`～`50`，看重瞄準後的命中率。命中率不夠，讓 B 少在低軌停留、
-或縮短最後一段滑行再求解一次。
+- **看改的那一棒還剩多少餘裕。** 預設改最後一棒，演練時從 247.98 變成 248.55 m/s（離 250 剩 1.45 m/s）。
+  拆出來的棒多半貼著 248 m/s，修正量大時可能超標而被拒；這時用 `--retarget-burn N` 改一棒有餘裕的
+  （演練的第 2 棒只有 97 m/s）。
+- 太空船參數用的是我們的預設（850 kg、Cd 2.2、Cr 1.8、阻力面積 6 m²、SRP 面積 8 m²），官方公布後要換。
+  在官方公布之前，長時間停在低軌的任務要另外評估命中率
+  （`scripts/research/perturbation_gap.py` 的 `--mc`，見 [PERTURBATION_GAP](../PERTURBATION_GAP_20261019.md)）。
 
 ### 步驟 7：GMAT 驗證（1–3 分）
 
 ```bash
-uv run python main.py --verify-script <修正後的 output_submit.txt> --run-dir outputs/runs/rank-a-verify
+uv run python main.py --config configs/ranking.json --verify-script outputs/runs/rank-rt/output_submit.txt --run-dir outputs/runs/rank-verify
 ```
 
-- 固定燃燒版（`output_submit.txt`）才是繳交用的，跟初賽一樣。
-- 現有 `script_generator` 產的腳本力學模型是 J2–J4（`JGM2.cof`、`Drag = None`、`SRP = Off`）。
-  **繳交的腳本要不要換成官方力學模型、要不要帶我們的太空船參數**，看[問題 6、12](QUESTIONS_FOR_ORGANIZER.md) 的答案。
-- GMAT 和 Python（J2–J4）的落差在公尺等級是正常的；全攝動重播跟 J2–J4 差公里等級也是正常的，那是步驟 6 要修的東西。
+- 固定燃燒版（`output_submit.txt`）才是繳交用的，跟初賽一樣。演練 8 s，印 `✅ GMAT 獨立驗證通過`。
+- 重瞄準產的腳本用全攝動模型（`FORCE_MODEL = ranking_full`：EGM96、日月、NRLMSISE00、SRP、相對論），
+  也帶著我們的太空船參數。**繳交時要不要保留這些設定**，看[問題 6、12](QUESTIONS_FOR_ORGANIZER.md) 的答案。
+- 沒做重瞄準的腳本是 J2–J4（`JGM2.cof`、`Drag = None`、`SRP = Off`），全攝動下會差公里等級，不要直接交。
 
 ### 步驟 8：失格檢查清單（5 分）
 
