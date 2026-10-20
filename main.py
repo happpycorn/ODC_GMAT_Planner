@@ -603,6 +603,24 @@ def primer_guided_research(config, burns, times, mission_info, optimizer):
     return None
 
 
+def split_options(config):
+    """strategy 裡的拆棒旋鈕 → legalize_route 的關鍵字參數（SPLITTER_SPEED，2026-10-19；
+    數據見 docs/SPLITTER_SPEED_20261020.md）。全部沒填時等於舊的呼叫（n_span=1、maxiter=1000、
+    其餘關），拆棒結果逐位元不變。"""
+    st = config.get("strategy", {})
+    reopt = st.get("SPLIT_PRUNE_REOPT_MPS")
+    return {
+        "n_span": int(st.get("SPLIT_N_SPAN", 1)),
+        "maxiter": int(st.get("SPLIT_NLP_MAXITER", 1000)),    # C3：1000
+        "fast_fd": bool(st.get("SPLIT_FAST_FD", False)),
+        "workers": int(st.get("SPLIT_WORKERS", 1)),
+        "starts": st.get("SPLIT_MULTISTART") or None,
+        "prune_reopt_tol": None if not reopt else float(reopt) / 1000.0,
+        "wall_budget": (None if not st.get("SPLIT_WALL_BUDGET_SEC")
+                        else float(st["SPLIT_WALL_BUDGET_SEC"])),
+    }
+
+
 def legalize_violating_winner(config, burns, times, mission_info, optimizer):
     """HAP-67 Stage 2 接線：DE 贏家若有「超標但 Earth-safe」的違規棒，自動把它拆成合法
     多棒版（`burn_splitter.legalize_route`）並回傳新的 (burns_vnb, times, mission_info)；
@@ -657,10 +675,16 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
         min_periapsis=opt.MIN_PERIAPSIS, max_revs=opt.LAMBERT_MAX_REVS,
         A_r0=opt.A_r0, A_v0=opt.A_v0, B_r0=opt.B_r0, B_v0=opt.B_v0,
         k_t=opt.k_t, C_t=opt.C_t, k_v=opt.k_v, C_v=opt.C_v, T_max=T_max,
-        miss_tol=opt.MISS_TOLERANCE_SOFT, n_span=1)  # maxiter 用拆棒器預設（C3：1000）
+        miss_tol=opt.MISS_TOLERANCE_SOFT, **split_options(config))
     if res is None or not res["feasible"]:
         log.info("⚠️ HAP-67 自動拆分：這個違規解在段數上限內拆不出合法版，沿用原解。")
         return None
+    if res.get("start_shift_sec"):
+        log.info(f"🔀 多起點拆棒：終端棒起點提前 {res['start_shift_sec']:.0f} s 的那一組最好"
+                 f"（{res['score']:.4f}，{res['N']} 棒）。")
+    if res.get("budget_hit"):
+        log.warning(f"⏱️ 拆棒牆鐘預算 {config['strategy']['SPLIT_WALL_BUDGET_SEC']} s 到期：交目前最好的"
+                    f"合法拆法（{res['score']:.4f}，{res['N']} 棒），後面的精修略過。")
 
     # free-ECI 結果 → 每棒「燒前狀態」→ VNB；組回 script_generator / mission_info 要的格式
     Nf = int(res["N"]); xf = np.asarray(res["x"], dtype=np.float64)
@@ -763,12 +787,15 @@ def load_winner_checkpoint(path):
 def _legalize_stage(config, burns, times, mi, opt):
     """拆棒合法化那一段（Earth-safe 才拆）。`_solve_pipeline` 與 `--from-winner` 重播共用。
 
-    設了 SEED 時跟搜尋階段一樣把 BLAS 鎖單執行緒（見 run_study_over_revs 的重現性說明）：
+    設了 SEED（或開了 SPLIT_FAST_FD）時跟搜尋階段一樣把 BLAS 鎖單執行緒（見 run_study_over_revs 的重現性說明）：
     joint NLP（SLSQP）在父行程跑、原本沒鎖，多執行緒 BLAS 讓同一個拆棒前贏家拆出不同結果
     （2026-09-25 實測 contest：鎖 98.319106／7 棒 vs 不鎖 98.318995／6 棒）。"""
     if bool(mi.get("earth_safe", True)):
         seed_set = config.get("optimization", {}).get("SEED") is not None
-        with (threadpool_limits(limits=1, user_api="blas") if seed_set else contextlib.nullcontext()):
+        # SPLIT_FAST_FD 開時不論有沒有 SEED 都鎖：SLSQP 的問題只有幾十維，多執行緒 BLAS 不會更快、
+        # 只會空轉（10-20 實測每個行程吃 ~650% CPU、慢 1.7×），3 顆種子並行時會互搶核心。
+        lock = seed_set or bool(config.get("strategy", {}).get("SPLIT_FAST_FD", False))
+        with (threadpool_limits(limits=1, user_api="blas") if lock else contextlib.nullcontext()):
             _legal = legalize_violating_winner(config, burns, times, mi, opt)
         if _legal is not None:
             burns, times, mi = _legal

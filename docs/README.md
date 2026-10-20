@@ -29,6 +29,7 @@
 | 文件 | 用途 |
 |---|---|
 | [RANKING_ROUND_RULES_20261006](RANKING_ROUND_RULES_20261006.md) | 排位賽規則跟初賽的差異，以及工具需要改的地方 |
+| [SPLITTER_SPEED_20261020](SPLITTER_SPEED_20261020.md) | 拆棒器加速與穩定化：3 顆種子並行 22 分鐘、疊合差分（逐位元不變）、多起點拆棒；現場拆棒設定已寫進 `configs/shared/ranking_round.json` |
 | [PERTURBATION_GAP_20261019](PERTURBATION_GAP_20261019.md) | 我們的解放進排位賽官方攝動模型還打不打得中；比賽當天要加「全攝動 B 平面重瞄準」 |
 | [RANKING_PENALTY_V2_20261019](RANKING_PENALTY_V2_20261019.md) | 排位賽搜尋懲罰改成「失格層」：任何合法候選都排在總 Δv 超標 / 拆不掉的候選前面；排位賽格式必填總 Δv 上限 |
 | [NEXT_ROUND_BACKLOG](NEXT_ROUND_BACKLOG.md) | 下一輪題型、依賴與待官方發題後的檢查項目 |
