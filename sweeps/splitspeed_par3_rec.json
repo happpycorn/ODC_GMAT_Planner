@@ -1,0 +1,31 @@
+{
+  "name": "splitspeed_par3_rec",
+  "_說明": "SPLITTER_SPEED（2026-10-20）：跟 splitspeed_par3 同樣 3 顆種子同時跑，拆棒改用建議設定（疊合差分、3 行程、多起點 [0,0.75,1]、剔空棒重最佳化 1 m/s、牆鐘預算 600 s）。見 docs/SPLITTER_SPEED_20261020.md。",
+  "scenarios": [
+    {
+      "name": "hyper_far",
+      "config": "configs/shared/hyper_far.json"
+    }
+  ],
+  "seeds": [
+    0,
+    1,
+    2
+  ],
+  "base": {
+    "rules.MAX_DV_MPS": 250.0,
+    "rules.MAX_TOTAL_DV_MPS": 3000.0,
+    "optimization.MAXITER": 600,
+    "optimization.POPSIZE": 20,
+    "optimization.NUM_THREADS": 5,
+    "strategy.SPLIT_FAST_FD": true,
+    "strategy.SPLIT_WORKERS": 3,
+    "strategy.SPLIT_MULTISTART": [
+      0,
+      0.75,
+      1
+    ],
+    "strategy.SPLIT_PRUNE_REOPT_MPS": 1.0,
+    "strategy.SPLIT_WALL_BUDGET_SEC": 600
+  }
+}

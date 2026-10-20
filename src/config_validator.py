@@ -283,7 +283,7 @@ def _validate_strategy(strategy_cfg, errors: list):
         if k in strategy_cfg and (not _is_number(strategy_cfg[k]) or strategy_cfg[k] < 1.0):
             errors.append(f"strategy.{k} 必須是 >=1 的數字，但收到 {strategy_cfg[k]!r}")
 
-    # 拆棒旋鈕（SPLITTER_SPEED，2026-10-19；docs/SPLITTER_SPEED_20261019.md）
+    # 拆棒旋鈕（SPLITTER_SPEED，2026-10-19；docs/SPLITTER_SPEED_20261020.md）
     if "SPLIT_FAST_FD" in strategy_cfg and not isinstance(strategy_cfg["SPLIT_FAST_FD"], bool):
         errors.append("strategy.SPLIT_FAST_FD 必須是 true/false，但收到 "
                       f"{strategy_cfg['SPLIT_FAST_FD']!r}（joint NLP 疊合有限差分，結果逐位元不變）")

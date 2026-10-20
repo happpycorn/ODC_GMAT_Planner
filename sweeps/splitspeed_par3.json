@@ -1,6 +1,6 @@
 {
   "name": "splitspeed_par3",
-  "_說明": "SPLITTER_SPEED（2026-10-19）：hyper_far 種子 0–2 同時跑（--slots 3），NUM_THREADS=5（16 核 / 3）。見 docs/SPLITTER_SPEED_20261019.md。",
+  "_說明": "SPLITTER_SPEED（2026-10-19）：hyper_far 種子 0–2 同時跑（--slots 3），NUM_THREADS=5（16 核 / 3）。見 docs/SPLITTER_SPEED_20261020.md。",
   "scenarios": [
     {
       "name": "hyper_far",

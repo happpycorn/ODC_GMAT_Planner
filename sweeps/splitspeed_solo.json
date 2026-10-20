@@ -1,6 +1,6 @@
 {
   "name": "splitspeed_solo",
-  "_說明": "SPLITTER_SPEED（2026-10-19）：hyper_far 單顆種子單獨跑（--slots 1），當 3 顆並行的對照。見 docs/SPLITTER_SPEED_20261019.md。",
+  "_說明": "SPLITTER_SPEED（2026-10-19）：hyper_far 單顆種子單獨跑（--slots 1），當 3 顆並行的對照。見 docs/SPLITTER_SPEED_20261020.md。",
   "scenarios": [
     {
       "name": "hyper_far",

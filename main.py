@@ -580,7 +580,7 @@ def primer_guided_research(config, burns, times, mission_info, optimizer):
 
 def split_options(config):
     """strategy 裡的拆棒旋鈕 → legalize_route 的關鍵字參數（SPLITTER_SPEED，2026-10-19；
-    數據見 docs/SPLITTER_SPEED_20261019.md）。全部沒填時等於舊的呼叫（n_span=1、maxiter=1000、
+    數據見 docs/SPLITTER_SPEED_20261020.md）。全部沒填時等於舊的呼叫（n_span=1、maxiter=1000、
     其餘關），拆棒結果逐位元不變。"""
     st = config.get("strategy", {})
     reopt = st.get("SPLIT_PRUNE_REOPT_MPS")

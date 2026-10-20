@@ -287,7 +287,7 @@ def _simulate_free_reuse(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0):
     }
 
 
-# ── 快速有限差分（SPLITTER_SPEED，2026-10-19；數據見 docs/SPLITTER_SPEED_20261019.md）────────────
+# ── 快速有限差分（SPLITTER_SPEED，2026-10-19；數據見 docs/SPLITTER_SPEED_20261020.md）────────────
 # SLSQP 沒給 jac 時，目標函數與三組約束**各自**做一次 2-point 有限差分：同一個 x 附近同樣的
 # 4N+1 個擾動點，被 4 個函式各算一遍，而 joint_nlp_split 的 metrics 快取只存一筆，全部 miss——
 # 每次迭代要跑 4×(4N+1) 條完整軌跡。快速路徑把「目標 + 全部約束」疊成一個向量，用 scipy 同一支
@@ -364,7 +364,8 @@ class FDPool:
 
 def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
                     A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v,
-                    T_max, miss_tol, maxiter=1000, fd_map=None, deadline=None):
+                    T_max, miss_tol, maxiter=1000, fd_map=None, deadline=None,
+                    require_feasible=False):
     """對一個 N 棒暖啟 `x0` (free-ECI 佈局) 做 SLSQP 聯合優化，回傳優化後的解與指標。
 
     目標 = -calculate_score(miss, T_team, 總Δv, penalty=0)；約束 (ineq ≥0)：每棒 ≤cap、
@@ -457,12 +458,21 @@ def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
         x_end = res.x
     else:
         # 牆鐘預算（anytime）：scipy 1.16 的 SLSQP 不理 StopIteration，用自己的例外跳出，
-        # 交最後一個主迭代點（SLSQP 走不可行路徑，那一點可能不可行——呼叫端還有 greedy 暖啟保底）。
+        # 交最後一個主迭代點。SLSQP 走不可行路徑，那一點可能不可行：`require_feasible`（呼叫端
+        # 手上還沒有任何合法解）時，到期後要等到某個主迭代點用**真實約束**判可行才跳出——
+        # 預算是軟的，但絕不因為預算交出不合法的結果（10-20 實測：不這樣做 s4 會退回超標原解）。
         last = [np.asarray(x0, dtype=np.float64)]
 
         def _cb(xk):
             last[0] = xk
             if time.monotonic() > deadline:
+                if require_feasible:
+                    mk = _simulate_free_reuse(np.clip(xk, np.array(lb), np.array(ub)), N, mu, j2,
+                                              j3, j4, re, A_r0, A_v0, B_r0, B_v0)
+                    if not (float(np.max(mk["dv_mags"])) <= cap + 1e-6
+                            and float(np.min(mk["arc_minr"])) >= min_periapsis - 1e-3
+                            and mk["miss_km"] <= miss_tol + 1e-6):
+                        return
                 raise _BudgetExceeded
 
         try:
@@ -610,6 +620,8 @@ def legalize_route(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
             if pr is not None and pr["score"] >= best["score"] - _PRUNE_REOPT_SLACK:
                 pr.update({k: best[k] for k in ("start_shift_sec", "budget_hit") if k in best})
                 best = pr
+    if best is not None and _past(deadline):
+        best["budget_hit"] = True
     return best
 
 
@@ -679,16 +691,44 @@ def prune_reopt(x, N, *, tol, maxiter, fd_map, cap, min_coast, mu, j2, j3, j4, r
     xd, Nd = drop_null_burns(x, N, tol)
     if Nd == N:
         return None
-    best = None
-    for cand in (_eval_free(xd, Nd, cap, min_periapsis, mu, j2, j3, j4, re,
-                            A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, miss_tol),
-                 joint_nlp_split(xd, Nd, cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3, j4=j4,
+    ev = functools.partial(_eval_free, N=Nd, cap=cap, min_periapsis=min_periapsis, mu=mu, j2=j2,
+                           j3=j3, j4=j4, re=re, A_r0=A_r0, A_v0=A_v0, B_r0=B_r0, B_v0=B_v0,
+                           k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v, miss_tol=miss_tol)
+    cands = [ev(xd)]
+    # 剔掉的殘量乘上長滑行會讓命中點偏掉，原解又貼在命中容許邊界上（hyper_far p0：剔完就不可行、
+    # SLSQP 從不可行點也爬不回來）。先用最後一棒把命中點拉回原解的位置，再從那裡重最佳化。
+    target = _simulate_free_reuse(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0)["r_final"]
+    xr = _retarget_last(xd, Nd, target, cap, mu, j2, j3, j4, re, B_r0, B_v0)
+    if xr is not None:
+        cands.append(ev(xr))
+    x_nlp = xr if xr is not None else xd
+    cands.append(joint_nlp_split(x_nlp, Nd, cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3, j4=j4,
                                  re=re, min_periapsis=min_periapsis, A_r0=A_r0, A_v0=A_v0,
                                  B_r0=B_r0, B_v0=B_v0, k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v,
-                                 T_max=T_max, miss_tol=miss_tol, maxiter=maxiter, fd_map=fd_map)):
+                                 T_max=T_max, miss_tol=miss_tol, maxiter=maxiter, fd_map=fd_map))
+    best = None
+    for cand in cands:
         if cand["feasible"] and (best is None or cand["score"] > best["score"]):
             best = cand
     return best
+
+
+def _retarget_last(x, N, target, cap, mu, j2, j3, j4, re, B_r0, B_v0):
+    """把 free-ECI 解的最後一棒用 `_shoot_final` 重新瞄準 `target`（抵達時刻不變），回傳新的 x；
+    重瞄後超過 cap 或沒修到 1 m 內回 None。"""
+    x = np.asarray(x, dtype=np.float64).copy()
+    coasts = x[1:1 + N]
+    dvs = x[1 + N:].reshape(N, 3)
+    r, v = propagate_dop853(B_r0, B_v0, float(x[0]), 60.0, mu, j2, j3, j4, re)
+    for i in range(N - 1):
+        r, v = propagate_dop853(r, v + dvs[i], float(coasts[i]), 60.0, mu, j2, j3, j4, re)
+    v_new, miss = _shoot_final(r, v + dvs[N - 1], target, float(coasts[N - 1]),
+                               mu, j2, j3, j4, re, tol_km=1e-6)
+    dv_new = v_new - v
+    if miss > 1e-3 or fast_norm(dv_new) > cap:
+        return None
+    x[1 + N + 3 * (N - 1):] = dv_new
+    return x
 
 
 def _legalize_route_slots(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
@@ -767,7 +807,9 @@ def _legalize_route_core(t0, leading_dvs, leading_coasts, terminal_coast, target
                                          j4=j4, re=re, min_periapsis=min_periapsis, A_r0=A_r0,
                                          A_v0=A_v0, B_r0=B_r0, B_v0=B_v0, k_t=k_t, C_t=C_t, k_v=k_v,
                                          C_v=C_v, T_max=T_max, miss_tol=miss_tol, maxiter=maxiter,
-                                         fd_map=fd_map, deadline=deadline))
+                                         fd_map=fd_map, deadline=deadline,
+                                         require_feasible=(best is None
+                                                           and not cands[0]["feasible"])))
         for cand in cands:
             if cand["feasible"] and (best is None or cand["score"] > best["score"]):
                 best = cand
