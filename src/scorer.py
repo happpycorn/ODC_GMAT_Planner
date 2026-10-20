@@ -40,22 +40,44 @@ def calculate_score(
 DV_LIMIT_TOL_MPS = 1e-5
 # 機動間隔判定吸收浮點雜訊用 (時刻是 t0 + 各段滑行累加出來的，等於下限時可能差幾個 ulp)。
 INTERVAL_TOL_SEC = 1e-6
-# 總 Δv 超標的搜尋軟懲罰：固定 10 分 (跟單棒超標的軟懲罰同一個量級) + 每超 1 m/s 再扣
-# 0.01 分。斜率讓整群候選都超標時 DE 仍有往上限內推的梯度，不會卡在 0 分平台。
-TOTAL_DV_SOFT_PENALTY_POINTS = 10.0
-TOTAL_DV_SOFT_PENALTY_PER_MPS = 0.01
+# 失格層 (2026-10-19 v2，見 docs/RANKING_PENALTY_V2_20261019.md)。排位賽模式 (有設
+# MAX_TOTAL_DV_MPS) 下，總 Δv 超標、或單棒超出拆棒器能處理的範圍的候選，搜尋分數不再是
+# 「官方分數 − 軟懲罰」，而是整層搬到 [−20, −10)：
+#     score = DQ_TIER_TOP − DQ_TIER_SPAN × v / (v + DQ_VIOLATION_SCALE_MPS)
+# v = 違規量 (m/s，總 Δv 超出量 + 單棒超出拆棒範圍的量)。合法層 (含還拆得掉的終端棒超標)
+# 走 calculate_score，地板是 0，所以**任何合法候選 > 任何失格候選**，跟 k_t/C_t/k_v/C_v
+# 怎麼設無關——舊版「−10 − 0.01×超出量」比陡的時間項便宜，DE 會選失格路線
+# (docs/RANKING_MC_20261019.md)。失格層裡只看 v、不看時間/燃料項 (Deb 可行性法則)：
+# v 越大分數越低 (嚴格單調)，DE 有梯度把族群推回可行區，不會為了時間分停在「超一點點」。
+DQ_TIER_TOP = -10.0
+DQ_TIER_SPAN = 10.0
+DQ_VIOLATION_SCALE_MPS = 1000.0
+# 排位賽模式下搜尋失敗 (撞地球、Lambert 解不出) 的分數，低於整個失格層。初賽仍是 0。
+# 不能留 0：全族群都失格時，0 分的撞地球平台會比失格層高，DE 會往那裡跑而不是往可行區靠。
+SEARCH_FAIL_SCORE_RANKED = -30.0
 
 
 @njit(fastmath=True, inline='always')
-def total_dv_soft_penalty(total_dv_mps: float, max_total_dv_mps: float) -> float:
-    """搜尋用的總 Δv 軟懲罰 (分)。max_total_dv_mps <= 0 代表沒有上限 (初賽)，回 0。
-    只給搜尋/挑候選用；最終交件判定看 assess_legality (超標就是失格)。"""
+def total_dv_violation(total_dv_mps: float, max_total_dv_mps: float) -> float:
+    """總 Δv 超出上限的量 (m/s)；max_total_dv_mps <= 0 (沒有上限) 或在容許量內回 0。"""
     if max_total_dv_mps <= 0.0:
         return 0.0
     excess = total_dv_mps - max_total_dv_mps
     if excess <= DV_LIMIT_TOL_MPS:
         return 0.0
-    return TOTAL_DV_SOFT_PENALTY_POINTS + TOTAL_DV_SOFT_PENALTY_PER_MPS * excess
+    return excess
+
+
+@njit(fastmath=True, inline='always')
+def ranked_search_score(score: float, total_dv_mps: float, max_total_dv_mps: float,
+                        single_violation_mps: float) -> float:
+    """排位賽模式的搜尋/挑候選用分數。score = calculate_score (合法層，含可拆終端棒的 −10)；
+    single_violation_mps = 單棒超出拆棒範圍的量 (m/s)。沒有違規回 score 原值，有違規回失格層
+    (見上方 DQ_TIER_*)。只給搜尋/挑候選用；最終交件判定看 assess_legality。"""
+    v = single_violation_mps + total_dv_violation(total_dv_mps, max_total_dv_mps)
+    if v <= 0.0:
+        return score
+    return DQ_TIER_TOP - DQ_TIER_SPAN * v / (v + DQ_VIOLATION_SCALE_MPS)
 
 
 def assess_legality(burn_dvs_mps, burn_times_sec, max_dv_mps, min_interval_sec,

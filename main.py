@@ -10,6 +10,7 @@ import subprocess
 import multiprocessing
 import copy
 import contextlib
+import logging
 import cProfile
 import pstats
 import re
@@ -30,7 +31,7 @@ from src.gmat_env import GMAT_ENV_KEYS, resolve_gmat_env, validate_gmat_env
 from src.retarget import retarget_full_perturbation
 from src.config_validator import validate_config, ConfigValidationError
 from src.core_math import propagate_dop853, fast_norm, to_vnb_frame
-from src.scorer import calculate_score, total_dv_soft_penalty, assess_legality
+from src.scorer import calculate_score, assess_legality, DV_LIMIT_TOL_MPS
 from src.burn_splitter import legalize_route, _simulate_free, prune_null_burns
 from src.runlog import log, setup as setup_logging
 
@@ -456,9 +457,11 @@ def print_score_breakdown(mission_info, optimizer):
     penalty = pen * 10.0
     soft = n_over * 10.0
     total = max(score_dist + score_time + score_dv - penalty - soft, 0.0)
-    cap_total = getattr(optimizer, "MAX_TOTAL_DV_MPS", None)
-    soft_total = 0.0 if cap_total is None else float(total_dv_soft_penalty(dv, cap_total))
-    total = max(total - soft_total, 0.0)
+    # 排位賽模式的失格層 (總 Δv 超標 / 單棒超出拆棒範圍)：搜尋用分數 < 0，只看違規量、不是上面
+    # 幾項相加 (scorer.ranked_search_score)，直接照記錄的分數印。
+    dq_tier = bool(getattr(optimizer, "RANKING_RULES", False)) and float(mission_info["score"]) < 0.0
+    if dq_tier:
+        total = float(mission_info["score"])
 
     # 每單位的邊際價值（sigmoid 斜率，恆為非負，代表「往好的方向改」能拿回的分數）
     val_per_sec = k_t * (25.0 - score_time) * score_time / 25.0     # 分 / 秒
@@ -470,10 +473,11 @@ def print_score_breakdown(mission_info, optimizer):
              f"  燃料   {score_dv:>6.2f} / 25   (ΔV {dv:,.0f} m/s vs C_v {C_v:,.0f} m/s；每省 1 m/s ≈ +{val_per_mps:.4g} 分)",
              f"  違規   {-penalty:>6.2f}        ({pen} 次機動間隔違規 × -10)"]
     if is_disqualified(mission_info):
-        if n_over:
+        if dq_tier:
+            lines.append("  失格層        (總 Δv 超標或單棒超出拆棒範圍：搜尋用分數只看超標量，"
+                         "任何合法解都排在它前面)")
+        elif n_over:
             lines.append(f"  超標   {-soft:>6.2f}        ({n_over} 棒單棒超標 × -10，搜尋用軟懲罰)")
-        if soft_total:
-            lines.append(f"  總Δv   {-soft_total:>6.2f}        (總 Δv 超過 {cap_total:,.0f} m/s，搜尋用軟懲罰)")
         lines += [f"  {'─' * 5}",
                   f"  合計   {total:>6.2f}        (搜尋用分數)",
                   "  🔴 失格：" + "；".join(mission_info.get("dq_reasons") or ["單棒 Δv 超標"])
@@ -686,11 +690,9 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
                           mc, opt.MAX_TOTAL_DV_MPS)
     T_new = float(m["T_team"])
     n_soft = leg["penalty_count"] + leg["over_dv_count"]
-    score_new = (float(res["score"]) if n_soft == 0 else
-                 opt.ranking_score(float(res["miss_km"]), T_new, float(res["total_dv_mps"]), n_soft))
-    if n_soft == 0 and opt.MAX_TOTAL_DV_MPS is not None:
-        score_new = max(score_new - float(total_dv_soft_penalty(float(res["total_dv_mps"]),
-                                                                opt.MAX_TOTAL_DV_MPS)), 0.0)
+    score_new = (float(res["score"]) if n_soft == 0 and not leg["disqualified"] else
+                 opt.search_score(leg, np.linalg.norm(dvsf, axis=1), float(res["miss_km"]), T_new,
+                                  float(res["total_dv_mps"])))
     legality = opt.legality_fields(leg, float(res["miss_km"]), T_new)
     if not legality["disqualified"] and n_soft == 0:
         legality["official_score"] = score_new   # 跟 score 同一個數字，不讓重算的 ulp 差異混淆
@@ -773,12 +775,88 @@ def _legalize_stage(config, burns, times, mi, opt):
     return burns, times, mi
 
 
+# 排位賽模式下搜尋找不到合法路線（所有候選都在失格層）時的結束碼，跟一般錯誤（1）分開，
+# 讓批次腳本 / 現場一眼分得出「沒有合法解」與「程式壞了」。
+EXIT_NO_LEGAL_ROUTE = 3
+
+
+class NoLegalRouteError(RuntimeError):
+    """搜尋只找到失格層的候選（總 Δv 超標或單棒超出拆棒範圍）。不是程式錯誤，是這組題目在目前的
+    預算 / 棒數 / T_max 下找不到合法解。"""
+
+
+def save_no_legal_route(path, optimizer):
+    """把最接近合法的失格候選存成 `no_legal_route.json`（stage = "no_legal_route"，
+    `--from-mission` 讀不進去，所以不會被拿去產繳交腳本），並印出違規量與下一步建議。"""
+    nlr = optimizer.no_legal_route
+    opt = optimizer
+    with patch_report_level(opt):
+        burns, times, mi = opt._replay_mission(nlr["x"], nlr["burns"])
+    dvs = [float(np.linalg.norm(b)) * 1000.0 for b in burns]
+    cap, soft = opt.MAX_DV * 1000.0, opt.MAX_DV_SOFT * 1000.0
+    split_lim = opt.SPLIT_LIMIT * 1000.0
+    over = [{"burn": i + 1, "dv_mps": d, "over_cap_mps": d - cap,
+             "splittable": i == len(dvs) - 1 and d <= split_lim}
+            for i, d in enumerate(dvs) if d > cap + DV_LIMIT_TOL_MPS]
+    total = float(mi["total_dv_mps"])
+    total_cap = opt.MAX_TOTAL_DV_MPS
+    total_excess = None if total_cap is None else max(total - total_cap, 0.0)
+    next_steps = [
+        "加大搜尋預算：optimization.MAXITER（預設 600）、POPSIZE",
+        "多跑幾顆種子：strategy.SEED_PORTFOLIO_N 或換 optimization.SEED",
+        "放寬 optimization.MAX_BURNS（多棒讓每棒小、總 Δv 可能更省）",
+        "核對 rules.T_MAX_SEC 與計分參數有沒有抄錯（check_problem.py）",
+        "用 feasibility.py 看能量 / Δv 下限：下限本身就超過總 Δv 上限時，這題在目前 T_max 內沒有合法解",
+    ]
+    payload = {
+        "schema_version": 1, "stage": "no_legal_route", "provenance": provenance(),
+        "saved_at": datetime.datetime.now().isoformat(timespec="seconds"),
+        "_說明": "排位賽規則下失格，不可繳交；只供檢查。--from-mission 讀不進去（stage 不是 mission）。",
+        "config": opt.config, "burns": burns, "times": times, "mission_info": mi,
+        "violations": {
+            "per_burn_dv_mps": dvs, "max_dv_mps": cap, "max_dv_soft_mps": soft,
+            "splitter_limit_mps": split_lim, "over_cap_burns": over,
+            "total_dv_mps": total, "max_total_dv_mps": total_cap, "total_dv_excess_mps": total_excess,
+            "dq_reasons": mi.get("dq_reasons"), "search_score": float(mi["score"]),
+        },
+        "next_steps": next_steps,
+    }
+    write_json(path, _to_jsonable(payload))
+    lines = ["\n" + "🔴" * 30,
+             "  找不到合法路線：所有候選都會被排位賽規則判失格（總 Δv 超標或單棒超出拆棒範圍）。",
+             f"  最接近合法的候選：{len(dvs)} 棒、總 Δv {total:,.1f} m/s"
+             + ("" if total_cap is None else f"（上限 {total_cap:,.0f}，超 {total_excess:,.1f}）")
+             + f"、T {float(mi['T_team']):,.0f} s"]
+    for o in over:
+        lines.append(f"    第 {o['burn']} 棒 {o['dv_mps']:,.1f} m/s，超過單棒上限 {o['over_cap_mps']:,.1f} m/s"
+                     + ("（拆棒範圍內）" if o["splittable"] else
+                        f"（超出拆棒範圍 {split_lim:,.0f} m/s）" if o["burn"] == len(dvs) else
+                        "（前導棒，拆棒器只拆終端棒）"))
+    lines += [f"  已存檔（不可繳交、不產生任何腳本）：{path}", "  下一步："]
+    lines += [f"    • {t}" for t in next_steps]
+    lines.append("🔴" * 30)
+    log.error("\n".join(lines))
+    return path
+
+
+@contextlib.contextmanager
+def patch_report_level(opt):
+    """_replay_mission 的大塊報告壓成 DEBUG（失格候選不需要整頁任務規劃洗版；log 檔仍有）。"""
+    old = getattr(opt, "_report_level", logging.INFO)
+    opt._report_level = logging.DEBUG
+    try:
+        yield
+    finally:
+        opt._report_level = old
+
+
 def _search_stage(config):
     """搜尋 + C2 primer 條件式重搜（拆棒之前的部分）。回傳 (burns, times, mission_info, optimizer)；
-    搜尋失敗回 (None, None, None, None)。`_solve_pipeline` 與 C4 退路重搜共用。"""
+    搜尋失敗回 (None, None, None, optimizer)——optimizer 可能帶著 no_legal_route（排位賽模式下
+    最接近合法的失格候選）。`_solve_pipeline` 與 C4 退路重搜共用。"""
     burns, times, mi, opt = run_study_over_revs(config)
     if burns is None or times is None:
-        return None, None, None, None
+        return None, None, None, opt
     _c2 = primer_guided_research(config, burns, times, mi, opt)
     if _c2 is not None:
         burns, times, mi, opt = _c2
@@ -850,7 +928,7 @@ def _solve_pipeline(config, output_dir="outputs"):
     拆棒前的贏家會存到本次執行目錄的 `winner_presplit_seed<SEED>.json`（見 save_winner_checkpoint）。"""
     burns, times, mi, opt = _search_stage(config)
     if burns is None or times is None:
-        return None, None, None, None
+        return None, None, None, opt
     seed = config.get("optimization", {}).get("SEED")
     try:
         save_winner_checkpoint(
@@ -882,7 +960,7 @@ def run_seed_portfolio(config, output_dir="outputs"):
 
     base = config.get("optimization", {}).get("SEED")
     base = 0 if base is None else int(base)
-    best = None
+    best, nlr_opt = None, None
     table = [f"\n🎰 Seed-portfolio：跑 {N} 顆 SEED，§6 留拆後分最高（避開低籤）",
              f"   {'SEED':>6}{'Score':>10}{'Δr_min(m)':>13}{'ΔV_team(m/s)':>15}{'棒數':>6}"]
     for i in range(N):
@@ -893,6 +971,10 @@ def run_seed_portfolio(config, output_dir="outputs"):
         b, t, mi, opt = _solve_pipeline(cfg, output_dir)
         if b is None or not isinstance(mi, dict):
             table.append(f"   {sd:>6}   （全軍覆沒，不列入挑選）")
+            nlr = getattr(opt, "no_legal_route", None)
+            if nlr is not None and (nlr_opt is None
+                                    or nlr["fitness"] < nlr_opt.no_legal_route["fitness"]):
+                nlr_opt = opt
             continue
         key = _final_rank_key(mi, eps=opt.TIEBREAK_SCORE_EPS)
         table.append(f"   {sd:>6}{mi['score']:>10.4f}{mi['miss_km'] * 1000:>13,.1f}"
@@ -902,7 +984,7 @@ def run_seed_portfolio(config, output_dir="outputs"):
             best = (key, sd, b, t, mi, opt)
     if best is None:
         log.error("Seed-portfolio：所有 SEED 都沒跑出可用解。")
-        return None, None, None, None
+        return None, None, None, nlr_opt
     table.append(f"   → 採用 SEED={best[1]}（Score {best[4]['score']:.4f}，{best[4]['num_burns']} 棒）")
     log.info("\n".join(table))
     return best[2], best[3], best[4], best[5]
@@ -927,7 +1009,7 @@ def main(argv=None):
         _run_stages(args, run_dir, manifest)
         manifest["status"] = "completed"
     except BaseException as exc:
-        manifest["status"] = "failed"
+        manifest["status"] = "no_legal_route" if isinstance(exc, NoLegalRouteError) else "failed"
         manifest["error"] = f"{type(exc).__name__}: {exc}"
         raise
     finally:
@@ -991,6 +1073,10 @@ def _run_stages(args, run_dir, manifest):
         burns, times, mission_info, optimizer = run_seed_portfolio(config, output_dir=run_dir)
 
     if burns is None or times is None:
+        if getattr(optimizer, "no_legal_route", None) is not None:
+            path = save_no_legal_route(run_dir / "no_legal_route.json", optimizer)
+            manifest["no_legal_route"] = str(path)
+            raise NoLegalRouteError(f"找不到合法路線；最接近的失格候選存在 {path}")
         raise RuntimeError("求解失敗，沒有可保存的方案。")
     config = optimizer.config  # retain actual winning seed, REVS and primer settings
     manifest["timings_sec"]["load_mission" if args.from_mission else "solve"] = time.perf_counter() - started
@@ -1357,4 +1443,7 @@ def run_retarget_stage(config, burns, times, mission_info, optimizer, *, args, r
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except NoLegalRouteError:
+        sys.exit(EXIT_NO_LEGAL_ROUTE)   # 訊息與下一步建議 save_no_legal_route 已經印過

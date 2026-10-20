@@ -79,7 +79,8 @@ sp16 = off._scalar_params()[:16].copy()
 vp = np.vstack([off.A_r0, off.A_v0, off.B_r0, off.B_v0])
 f16 = fast_fitness_evaluator(X, N, sp16, vp)
 check("旗標關時與舊 16 格 scalars 逐位元相同", f16 == off._fitness_wrapper(N)(X))
-check("_scalar_params 是 20 格（19 = 總 Δv 上限）", off._scalar_params().shape == (20,))
+check("_scalar_params 是 21 格（19 = 總 Δv 上限、20 = 拆棒器單棒上限）", off._scalar_params().shape == (21,))
+check("初賽模式（沒設總 Δv 上限）K 維持 5 倍", off.SPLIT_AWARE_TERMINAL_MAX_FACTOR == 5.0)
 
 m = off.mission_metrics(X, N)
 check(f"mission_metrics：可拆終端違規 1 次、拆後估計 = 真實 + 10（{m['score']:.4f} → {m['score_split_est']:.4f}）",
