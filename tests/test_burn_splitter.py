@@ -17,13 +17,19 @@ import json
 import math
 
 import numpy as np
+from threadpoolctl import threadpool_limits
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.optimizer import MissionOptimizer
 from src.core_math import propagate_dop853, fast_norm
 from src.burn_splitter import (legalize_intercept, legalize_route, _lam_best, drop_null_burns, prune_null_burns,
-                               _simulate_free, _slot_after_capped, _shoot_final, split_intercept)
+                               _simulate_free, _slot_after_capped, _shoot_final, split_intercept,
+                               _simulate_free_reuse, joint_nlp_split, FDPool, prune_reopt)
+
+# 逐位元比對（SPLITTER_SPEED 段）要 BLAS 單執行緒：多執行緒 BLAS 下 SLSQP 本身就不可重現
+# （2026-09-25 contest 實測，見 main._legalize_stage）。呼叫即生效、整個行程維持。
+_BLAS1 = threadpool_limits(limits=1, user_api="blas")
 
 _FAILED = []
 
@@ -135,6 +141,44 @@ def main():
                                   opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0,
                                   opt.k_t, opt.C_t, opt.k_v, opt.C_v, opt.MISS_TOLERANCE_SOFT)
             check("prune_null_burns 剔除並重評為 feasible", pr is not None and pr["N"] <= Nexp and pr["feasible"])
+
+            # SPLITTER_SPEED（2026-10-19）：快速有限差分必須逐位元等價，開關才能放心開。
+            print("\n── 拆棒加速開關（SPLITTER_SPEED）──")
+            phys = (mu, j2, j3, j4, re, opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0)
+            sa, sb = _simulate_free(xz, Nz, *phys), _simulate_free_reuse(xz, Nz, *phys)
+            check("_simulate_free_reuse 跟 _simulate_free 逐位元相同",
+                  all(np.array_equal(np.asarray(sa[k]), np.asarray(sb[k])) for k in sa))
+            nl = dict(cap=cap, min_coast=mc, mu=mu, j2=j2, j3=j3, j4=j4, re=re, min_periapsis=mp,
+                      A_r0=opt.A_r0, A_v0=opt.A_v0, B_r0=opt.B_r0, B_v0=opt.B_v0, k_t=opt.k_t,
+                      C_t=opt.C_t, k_v=opt.k_v, C_v=opt.C_v, T_max=T_max,
+                      miss_tol=opt.MISS_TOLERANCE_SOFT, maxiter=25)
+            ctx = dict(mu=mu, j2=j2, j3=j3, j4=j4, re=re, A_r0=opt.A_r0, A_v0=opt.A_v0, B_r0=opt.B_r0,
+                       B_v0=opt.B_v0, cap=cap, min_periapsis=mp, miss_tol=opt.MISS_TOLERANCE_SOFT,
+                       k_t=opt.k_t, C_t=opt.C_t, k_v=opt.k_v, C_v=opt.C_v)
+            xw = np.asarray(xz, dtype=np.float64)    # 帶空燒的解當暖啟：NLP 會真的動
+            ref = joint_nlp_split(xw, Nz, **nl)
+            for w in (1, 2):
+                with FDPool(w, ctx) as fd:
+                    fast = joint_nlp_split(xw, Nz, fd_map=fd, **nl)
+                check(f"joint NLP 疊合差分（workers={w}）跟原路徑逐位元相同",
+                      np.array_equal(ref["x"], fast["x"]) and ref["score"] == fast["score"])
+            lr = dict(t0=0.0, leading_dvs=[k], leading_coasts=[tc], terminal_coast=Tarr - tc, target=r_a,
+                      cap=cap, min_coast=mc, mu=mu, j2=j2, j3=j3, j4=j4, re=re, min_periapsis=mp,
+                      max_revs=mr, A_r0=opt.A_r0, A_v0=opt.A_v0, B_r0=opt.B_r0, B_v0=opt.B_v0,
+                      k_t=opt.k_t, C_t=opt.C_t, k_v=opt.k_v, C_v=opt.C_v, T_max=T_max,
+                      miss_tol=opt.MISS_TOLERANCE_SOFT, n_span=1, maxiter=60)
+            rf = legalize_route(fast_fd=True, **lr)
+            check("legalize_route fast_fd 跟預設逐位元相同",
+                  rf is not None and np.array_equal(rf["x"], res["x"]) and rf["score"] == res["score"])
+            rm_ = legalize_route(fast_fd=True, starts=[0.0, 0.5, 1.0], **lr)
+            check("多起點拆棒 feasible 且分數不低於單起點",
+                  rm_ is not None and rm_["feasible"] and rm_["score"] >= res["score"])
+            check("多起點拆棒每棒 ≤ 上限", rm_ is not None and max(rm_["dv_mps"]) <= cap * 1000.0 + 1e-3)
+            pz = prune_reopt(xz, Nz, tol=1e-6, maxiter=25, fd_map=None,
+                             **{kk: vv for kk, vv in nl.items() if kk != "maxiter"})
+            check("prune_reopt 剔掉插入的空燒並重評 feasible", pz is not None and pz["feasible"] and pz["N"] < Nz)
+            _, Nnz = drop_null_burns(xz, Nz, 1e-6)
+            check("prune_reopt 棒數 = 剔除後棒數", pz is not None and pz["N"] == Nnz)
 
     # _slot_after_capped（C3）：貼 cap 的前導棒後補 min_coast 空位、丟掉無用空燒；滑行總長不變
     print("\n── 前導棒重排（貼 cap 補空位）──")

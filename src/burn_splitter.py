@@ -17,9 +17,13 @@ split_seed_candidates` 那樣被 `num_burns` 綁死 (那裡 `n_final = num_burns
 這裡是純幾何/力學的分解器，不碰計分、不碰搜尋。輸出要再過 `fast_fitness_evaluator` 重驗
 Earth-safe (唯一抓得到撞地球的，見 odc-collision-check-verification-gap 記憶)。
 """
+import concurrent.futures
+import functools
 import math
+import multiprocessing
 import numpy as np
 from scipy.optimize import minimize
+from scipy.optimize._numdiff import approx_derivative
 
 from src.core_math import (propagate_dop853, check_constraints, fast_norm,
                            reaches_perigee, lambert_izzo)
@@ -252,9 +256,114 @@ _NLP_MISS_MARGIN = 5e-3    # km
 _NLP_PERI_MARGIN = 1e-3    # km
 
 
+def _simulate_free_reuse(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0):
+    """`_simulate_free` 的逐位元等價版（SPLITTER_SPEED，2026-10-19）：原版每段弧傳播兩次——
+    `_arc_min_radius` 為了取弧末半徑傳播一次、主迴圈再用**同樣的輸入**傳播一次。這裡傳播一次、
+    兩邊共用。propagate_dop853 是純函式，輸出逐位元相同（tests/test_burn_splitter.py 驗）。"""
+    t0 = float(x[0])
+    coasts = x[1:1 + N]
+    dvs = x[1 + N:].reshape(N, 3)
+    r, v = propagate_dop853(B_r0, B_v0, t0, 60.0, mu, j2, j3, j4, re)
+    total_dv = 0.0
+    dv_mags = np.empty(N)
+    arc_minr = np.empty(N)
+    for i in range(N):
+        v = v + dvs[i]
+        dv_mags[i] = fast_norm(dvs[i])
+        total_dv += dv_mags[i]
+        dt = float(coasts[i])
+        r_end, v_end = propagate_dop853(r, v, dt, 60.0, mu, j2, j3, j4, re)
+        if reaches_perigee(r, v, mu, dt):
+            arc_minr[i] = _osc_perigee(r, v, mu)
+        else:
+            arc_minr[i] = min(fast_norm(r), fast_norm(r_end))
+        r, v = r_end, v_end
+    T_team = t0 + float(np.sum(coasts))
+    r_A, _ = propagate_dop853(A_r0, A_v0, T_team, 60.0, mu, j2, j3, j4, re)
+    return {
+        "r_final": r, "T_team": T_team, "total_dv": total_dv,
+        "miss_km": fast_norm(r - r_A), "dv_mags": dv_mags, "arc_minr": arc_minr,
+    }
+
+
+# ── 快速有限差分（SPLITTER_SPEED，2026-10-19；數據見 docs/SPLITTER_SPEED_20261019.md）────────────
+# SLSQP 沒給 jac 時，目標函數與三組約束**各自**做一次 2-point 有限差分：同一個 x 附近同樣的
+# 4N+1 個擾動點，被 4 個函式各算一遍，而 joint_nlp_split 的 metrics 快取只存一筆，全部 miss——
+# 每次迭代要跑 4×(4N+1) 條完整軌跡。快速路徑把「目標 + 全部約束」疊成一個向量，用 scipy 同一支
+# approx_derivative、同樣的步長（abs_step = SLSQP 預設 eps）與邊界做**一次**差分，再切回各自的
+# Jacobian。每個元素的算術（f(x+h e_i) − f0）/ dx_i 跟原路徑完全相同，所以 SLSQP 走出的每一步
+# 逐位元一致，只是軌跡少算 3/4；擾動點還可以分給行程池並行算（fork 出來的子行程共用父行程已編譯
+# 好的 numba 機器碼，數值也逐位元一致）。
+_FD_EPS = float(np.sqrt(np.finfo(np.float64).eps))   # = scipy SLSQP 的預設 eps
+_FD_CTX = None
+
+
+def _nlp_stack(m, cap, min_periapsis, miss_tol, k_t, C_t, k_v, C_v):
+    """[目標, c_cap..., c_peri..., c_miss]，各項算術跟 joint_nlp_split 的閉包逐字相同。"""
+    obj = -calculate_score(m["miss_km"], m["T_team"], m["total_dv"] * 1000.0,
+                           0, k_t, C_t, k_v, C_v)
+    return np.concatenate(([obj],
+                           (cap - _NLP_CAP_MARGIN) - m["dv_mags"],
+                           m["arc_minr"] - (min_periapsis + _NLP_PERI_MARGIN),
+                           [(miss_tol - _NLP_MISS_MARGIN) - m["miss_km"]]))
+
+
+def _fd_init(ctx):
+    global _FD_CTX
+    _FD_CTX = ctx
+
+
+def _fd_eval(N, x):
+    """行程池 worker：算一個擾動點的疊合向量。物理常數由 _fd_init 放進全域。"""
+    c = _FD_CTX
+    m = _simulate_free_reuse(x, N, c["mu"], c["j2"], c["j3"], c["j4"], c["re"],
+                             c["A_r0"], c["A_v0"], c["B_r0"], c["B_v0"])
+    return _nlp_stack(m, c["cap"], c["min_periapsis"], c["miss_tol"],
+                      c["k_t"], c["C_t"], c["k_v"], c["C_v"])
+
+
+class FDPool:
+    """快速有限差分的執行器。`workers<=1` 時序列算（仍省 3/4 的軌跡），>1 時開 fork 行程池。
+
+    用法：`with FDPool(workers, ctx) as fd: joint_nlp_split(..., fd_map=fd)`。ctx 是物理與計分常數
+    （見 `_fd_eval`）。行程池用 fork：子行程繼承父行程**已經編譯好**的 numba 機器碼，不會各自
+    重新編譯或讀快取（冷編 vs 讀快取會差 1 ulp，見 numba-cache-state-breaks-seed-repro 記憶）。
+    平台沒有 fork 時退回序列。"""
+
+    def __init__(self, workers, ctx):
+        self.workers = max(1, int(workers))
+        self.ctx = ctx
+        self._ex = None
+
+    def __enter__(self):
+        if self.workers > 1 and "fork" in multiprocessing.get_all_start_methods():
+            self._ex = concurrent.futures.ProcessPoolExecutor(
+                max_workers=self.workers, mp_context=multiprocessing.get_context("fork"),
+                initializer=_fd_init, initargs=(self.ctx,))
+        return self
+
+    def __exit__(self, *exc):
+        if self._ex is not None:
+            self._ex.shutdown(wait=True)
+            self._ex = None
+        return False
+
+    def jacobian(self, N, x, f0, bounds):
+        """疊合向量在 x 的 2-point Jacobian，參數與 SLSQP 內部的差分完全相同。"""
+        if self._ex is None:
+            _fd_init(self.ctx)   # 序列：本行程自己當 worker
+            mapper = map
+        else:
+            def mapper(f, it):
+                xs = list(it)
+                return list(self._ex.map(f, xs, chunksize=max(1, -(-len(xs) // self.workers))))
+        return approx_derivative(functools.partial(_fd_eval, N), x, method="2-point",
+                                 abs_step=_FD_EPS, f0=f0, bounds=bounds, workers=mapper)
+
+
 def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
                     A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v,
-                    T_max, miss_tol, maxiter=1000):
+                    T_max, miss_tol, maxiter=1000, fd_map=None):
     """對一個 N 棒暖啟 `x0` (free-ECI 佈局) 做 SLSQP 聯合優化，回傳優化後的解與指標。
 
     目標 = -calculate_score(miss, T_team, 總Δv, penalty=0)；約束 (ineq ≥0)：每棒 ≤cap、
@@ -299,11 +408,49 @@ def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
     ub = [T_max] + [T_max] * N + [cap] * (3 * N)
     bounds = list(zip(lb, ub))
 
-    res = minimize(objective, x0, method="SLSQP", bounds=bounds,
-                   constraints=[{"type": "ineq", "fun": c_cap},
-                                {"type": "ineq", "fun": c_peri},
-                                {"type": "ineq", "fun": c_miss}],
-                   options={"maxiter": maxiter, "ftol": 1e-10})
+    cons = [{"type": "ineq", "fun": c_cap},
+            {"type": "ineq", "fun": c_peri},
+            {"type": "ineq", "fun": c_miss}]
+    jac = None
+    if fd_map is not None:
+        # 快速路徑（見 FDPool 上方說明）：值與 Jacobian 都從同一個疊合向量切出來，逐位元等價。
+        lb_a, ub_a = np.array(lb, dtype=np.float64), np.array(ub, dtype=np.float64)
+        _scache, _jcache = {}, {}
+
+        def stack(x):
+            key = x.tobytes()
+            if key not in _scache:
+                _scache.clear()
+                m = _simulate_free_reuse(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0)
+                _scache[key] = _nlp_stack(m, cap, min_periapsis, miss_tol, k_t, C_t, k_v, C_v)
+            return _scache[key]
+
+        def jac_all(x):
+            xc = np.clip(x, lb_a, ub_a)      # 跟 SLSQP 內部差分一樣先夾回邊界（gh11403）
+            key = xc.tobytes()
+            if key not in _jcache:
+                _jcache.clear()
+                # approx_derivative 回傳 J_transposed.T（F-order），J[0] 是有 stride 的 view；
+                # scipy 1.16 的 SLSQP C 核心直接讀 g 的記憶體、不看 stride，會讀到錯的數字。
+                _jcache[key] = np.ascontiguousarray(
+                    fd_map.jacobian(N, xc, stack(xc), (lb_a, ub_a)))
+            return _jcache[key]
+
+        def objective(x):
+            return stack(x)[0]
+
+        def jac(x):
+            return jac_all(x)[0]
+
+        cons = [{"type": "ineq", "fun": lambda x: stack(x)[1:1 + N],
+                 "jac": lambda x: jac_all(x)[1:1 + N]},
+                {"type": "ineq", "fun": lambda x: stack(x)[1 + N:1 + 2 * N],
+                 "jac": lambda x: jac_all(x)[1 + N:1 + 2 * N]},
+                {"type": "ineq", "fun": lambda x: stack(x)[1 + 2 * N:],
+                 "jac": lambda x: jac_all(x)[1 + 2 * N:]}]
+
+    res = minimize(objective, x0, method="SLSQP", bounds=bounds, jac=jac,
+                   constraints=cons, options={"maxiter": maxiter, "ftol": 1e-10})
     x1 = np.clip(res.x, np.array(lb), np.array(ub))
     m = _simulate_free(x1, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0)
     feasible = (float(np.max(m["dv_mags"])) <= cap + 1e-6
@@ -352,18 +499,132 @@ def _slot_after_capped(leading_dvs, leading_coasts, cap, min_coast, tol=1e-6):
 def legalize_route(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
                    cap, min_coast, mu, j2, j3, j4, re, min_periapsis, max_revs,
                    A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, T_max,
-                   miss_tol, n_span=1, max_seg=14, maxiter=1000, slot_after_capped=True):
+                   miss_tol, n_span=1, max_seg=14, maxiter=1000, slot_after_capped=True,
+                   fast_fd=False, fd_workers=1, starts=None, prune_reopt_tol=None,
+                   prune_reopt_maxiter=None):
     """Stage 2 對外單一入口（見 `_legalize_route_core`）。
 
     `slot_after_capped=True`（預設）先用 `_slot_after_capped` 重排前導棒：丟掉無用空燒、在貼 cap
     的前導棒後補空位給 NLP 分擔溢出量；重排版拆不出合法解才退回原樣。
+
+    SPLITTER_SPEED（2026-10-19）的開關，預設全關＝舊路徑逐位元不變：
+    - `fast_fd=True`：joint NLP 改用疊合有限差分（逐位元等價、軌跡少算 3/4，見 `FDPool`）；
+      `fd_workers>1` 再把擾動點分給行程池並行算。
+    - `starts`：多起點拆棒。每個元素 f 把終端棒的起點往前挪 f×(n_lo−1)×min_coast 秒
+      （n_lo = 終端棒單發 Δv / cap 無條件進位，也就是連續燒的長度），各自拆完取分數最高的 feasible 解。
+      貪婪拆棒只會從原本的脈衝時刻**往後**排燒，整串燒偏晚；f=0.5 讓它大致以原脈衝為中心。
+      None 或 (0.0,) = 只拆原路線（舊行為）。
+    - `prune_reopt_tol`（km/s）：拆完把 |Δv| < 這個值的棒剔掉，對剩下的棒數再跑一次 joint NLP
+      （`prune_reopt_maxiter`，預設同 maxiter），feasible 且分數不低於原解 − `_PRUNE_REOPT_SLACK` 就換掉。
+      處理「NLP 解貼在命中容許邊界、prune_null_burns 剔不掉 0.1 m/s 空棒」的殘留空燒。
     """
     kw = dict(cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3, j4=j4, re=re,
               min_periapsis=min_periapsis, max_revs=max_revs, A_r0=A_r0, A_v0=A_v0,
               B_r0=B_r0, B_v0=B_v0, k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v, T_max=T_max,
               miss_tol=miss_tol, n_span=n_span, max_seg=max_seg, maxiter=maxiter)
+    if not fast_fd and starts is None and prune_reopt_tol is None:
+        return _legalize_route_slots(t0, leading_dvs, leading_coasts, terminal_coast, target,
+                                     slot_after_capped=slot_after_capped, **kw)
+    ctx = dict(mu=mu, j2=j2, j3=j3, j4=j4, re=re, A_r0=A_r0, A_v0=A_v0, B_r0=B_r0, B_v0=B_v0,
+               cap=cap, min_periapsis=min_periapsis, miss_tol=miss_tol,
+               k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v)
+    if fast_fd:
+        # 開行程池前先在本行程跑一次模擬，確保 fork 時 numba 函式都已編譯（子行程直接繼承）。
+        _simulate_free_reuse(np.concatenate([[float(t0)], [float(terminal_coast)], np.zeros(3)]), 1,
+                             mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0)
+    with FDPool(fd_workers if fast_fd else 1, ctx) as pool:
+        fd = pool if fast_fd else None
+        best = None
+        for shifted in _shifted_routes(t0, leading_dvs, leading_coasts, terminal_coast, target,
+                                       starts, cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3,
+                                       j4=j4, re=re, max_revs=max_revs, B_r0=B_r0, B_v0=B_v0):
+            res = _legalize_route_slots(*shifted, slot_after_capped=slot_after_capped,
+                                        fd_map=fd, **kw)
+            if res is not None and res["feasible"] and (best is None or res["score"] > best["score"]):
+                best = res
+        if best is not None and prune_reopt_tol is not None:
+            pr = prune_reopt(best["x"], best["N"], tol=prune_reopt_tol,
+                             maxiter=prune_reopt_maxiter or maxiter, fd_map=fd,
+                             cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3, j4=j4, re=re,
+                             min_periapsis=min_periapsis, A_r0=A_r0, A_v0=A_v0, B_r0=B_r0,
+                             B_v0=B_v0, k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v, T_max=T_max,
+                             miss_tol=miss_tol)
+            if pr is not None and pr["score"] >= best["score"] - _PRUNE_REOPT_SLACK:
+                best = pr
+    return best
+
+
+# prune_reopt 接受「分數掉一點點」的上限：剔掉的都是 <1 m/s 的空棒，重最佳化理論上不會更差，
+# 但 SLSQP 收斂點會飄 1e-6 量級；1e-4 分遠小於官方比到的小數位，換一份乾淨的繳交腳本值得。
+_PRUNE_REOPT_SLACK = 1e-4
+
+
+def _terminal_state(t0, leading_dvs, leading_coasts, *, mu, j2, j3, j4, re, B_r0, B_v0):
+    """B 從 t0 走過前導棒/滑行後的終端棒起點 (r, v, t)。跟 `_legalize_route_core` 步驟 1 相同。"""
+    r, v = propagate_dop853(np.array(B_r0, dtype=np.float64), np.array(B_v0, dtype=np.float64),
+                            float(t0), 60.0, mu, j2, j3, j4, re)
+    t = float(t0)
+    for dv, ct in zip(leading_dvs, leading_coasts):
+        v = v + np.asarray(dv, dtype=np.float64)
+        r, v = propagate_dop853(r, v, float(ct), 60.0, mu, j2, j3, j4, re)
+        t += float(ct)
+    return r, v, t
+
+
+def _shifted_routes(t0, leading_dvs, leading_coasts, terminal_coast, target, starts, *,
+                    cap, min_coast, mu, j2, j3, j4, re, max_revs, B_r0, B_v0):
+    """多起點拆棒的各個起點（見 legalize_route 的 `starts`）。抵達時刻與 target 不動，只把終端棒
+    起點往前挪：最後一段前導滑行（沒有前導棒時是 t0）減 δ、終端滑行加 δ。挪不動（前導滑行
+    已經貼 min_coast）就夾到能挪的最大值；挪完跟已列過的起點重複就跳過。"""
+    yield (t0, leading_dvs, leading_coasts, terminal_coast, target)
+    fracs = [float(f) for f in (starts or ()) if float(f) > 0.0]
+    if not fracs:
+        return
+    r_t, v_t, t_term = _terminal_state(t0, leading_dvs, leading_coasts, mu=mu, j2=j2, j3=j3,
+                                       j4=j4, re=re, B_r0=B_r0, B_v0=B_v0)
+    _, single = _lam_best(r_t, target, float(terminal_coast), v_t, mu, max_revs)
+    n_lo = max(1, math.ceil(single / cap)) if single < 1e17 else 1
+    room = (float(leading_coasts[-1]) - min_coast) if len(leading_dvs) else float(t0)
+    seen = {0.0}
+    for f in fracs:
+        d = min(f * (n_lo - 1) * min_coast, max(room, 0.0))
+        d = round(d, 6)
+        if d <= 0.0 or d in seen:
+            continue
+        seen.add(d)
+        if len(leading_dvs):
+            lc = list(leading_coasts)
+            lc[-1] = float(lc[-1]) - d
+            yield (t0, leading_dvs, lc, float(terminal_coast) + d, target)
+        else:
+            yield (float(t0) - d, leading_dvs, leading_coasts, float(terminal_coast) + d, target)
+
+
+def prune_reopt(x, N, *, tol, maxiter, fd_map, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
+                A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, T_max, miss_tol):
+    """剔除 |Δv| < tol 的棒後對剩下的棒數重跑 joint NLP（SPLITTER_SPEED 3，見 legalize_route）。
+    候選 = 剔除版本身、剔除版的 NLP 結果；回傳 feasible 中分數最高者（`_eval_free` 格式），
+    沒東西可剔或都不可行回 None。"""
+    xd, Nd = drop_null_burns(x, N, tol)
+    if Nd == N:
+        return None
+    best = None
+    for cand in (_eval_free(xd, Nd, cap, min_periapsis, mu, j2, j3, j4, re,
+                            A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, miss_tol),
+                 joint_nlp_split(xd, Nd, cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3, j4=j4,
+                                 re=re, min_periapsis=min_periapsis, A_r0=A_r0, A_v0=A_v0,
+                                 B_r0=B_r0, B_v0=B_v0, k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v,
+                                 T_max=T_max, miss_tol=miss_tol, maxiter=maxiter, fd_map=fd_map)):
+        if cand["feasible"] and (best is None or cand["score"] > best["score"]):
+            best = cand
+    return best
+
+
+def _legalize_route_slots(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
+                          slot_after_capped=True, **kw):
+    """`legalize_route` 原本的主體：先試 `_slot_after_capped` 重排版，拆不出才退回原樣。"""
     if slot_after_capped:
-        aug = _slot_after_capped(leading_dvs, leading_coasts, cap, min_coast)
+        aug = _slot_after_capped(leading_dvs, leading_coasts, kw["cap"], kw["min_coast"])
         if aug is not None:
             res = _legalize_route_core(t0, aug[0], aug[1], terminal_coast, target, **kw)
             if res is not None and res["feasible"]:
@@ -374,7 +635,7 @@ def legalize_route(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
 def _legalize_route_core(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
                          cap, min_coast, mu, j2, j3, j4, re, min_periapsis, max_revs,
                          A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, T_max,
-                         miss_tol, n_span=1, max_seg=14, maxiter=1000):
+                         miss_tol, n_span=1, max_seg=14, maxiter=1000, fd_map=None):
     """Stage 2 核心：吃一條「前導合法棒 + 一發(可能超標的)終端攔截」的 route，
     回傳**合法化 + joint-NLP 優化後**的最佳解（free-ECI），或 None（拆不出）。
 
@@ -428,7 +689,8 @@ def _legalize_route_core(t0, leading_dvs, leading_coasts, terminal_coast, target
                      joint_nlp_split(x0, N, cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3,
                                      j4=j4, re=re, min_periapsis=min_periapsis, A_r0=A_r0, A_v0=A_v0,
                                      B_r0=B_r0, B_v0=B_v0, k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v,
-                                     T_max=T_max, miss_tol=miss_tol, maxiter=maxiter)):
+                                     T_max=T_max, miss_tol=miss_tol, maxiter=maxiter,
+                                     fd_map=fd_map)):
             if cand["feasible"] and (best is None or cand["score"] > best["score"]):
                 best = cand
     return best

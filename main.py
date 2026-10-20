@@ -578,6 +578,22 @@ def primer_guided_research(config, burns, times, mission_info, optimizer):
     return None
 
 
+def split_options(config):
+    """strategy 裡的拆棒旋鈕 → legalize_route 的關鍵字參數（SPLITTER_SPEED，2026-10-19；
+    數據見 docs/SPLITTER_SPEED_20261019.md）。全部沒填時等於舊的呼叫（n_span=1、maxiter=1000、
+    其餘關），拆棒結果逐位元不變。"""
+    st = config.get("strategy", {})
+    reopt = st.get("SPLIT_PRUNE_REOPT_MPS")
+    return {
+        "n_span": int(st.get("SPLIT_N_SPAN", 1)),
+        "maxiter": int(st.get("SPLIT_NLP_MAXITER", 1000)),    # C3：1000
+        "fast_fd": bool(st.get("SPLIT_FAST_FD", False)),
+        "fd_workers": int(st.get("SPLIT_FD_WORKERS", 1)),
+        "starts": st.get("SPLIT_MULTISTART") or None,
+        "prune_reopt_tol": None if not reopt else float(reopt) / 1000.0,
+    }
+
+
 def legalize_violating_winner(config, burns, times, mission_info, optimizer):
     """HAP-67 Stage 2 接線：DE 贏家若有「超標但 Earth-safe」的違規棒，自動把它拆成合法
     多棒版（`burn_splitter.legalize_route`）並回傳新的 (burns_vnb, times, mission_info)；
@@ -632,7 +648,7 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
         min_periapsis=opt.MIN_PERIAPSIS, max_revs=opt.LAMBERT_MAX_REVS,
         A_r0=opt.A_r0, A_v0=opt.A_v0, B_r0=opt.B_r0, B_v0=opt.B_v0,
         k_t=opt.k_t, C_t=opt.C_t, k_v=opt.k_v, C_v=opt.C_v, T_max=T_max,
-        miss_tol=opt.MISS_TOLERANCE_SOFT, n_span=1)  # maxiter 用拆棒器預設（C3：1000）
+        miss_tol=opt.MISS_TOLERANCE_SOFT, **split_options(config))
     if res is None or not res["feasible"]:
         log.info("⚠️ HAP-67 自動拆分：這個違規解在段數上限內拆不出合法版，沿用原解。")
         return None
