@@ -1822,7 +1822,7 @@ class MissionOptimizer:
             # C2 fast 只有一個 (REVS, N+1) 案例，直接跑現有 DE，省去 spawn/Manager
             # 成本；局部階段已精修，收尾只重播，不在牆鐘到期後另開一輪 NLP。
             b = self.burns[0]
-            vectors = np.vstack([self.A_r0, self.A_v0, self.B_r0, self.B_v0])
+            vectors = self._vector_params()   # 含星曆快取列，跟 _scalar_params 的索引一致
             _, x, fitness, epochs, note = self._optimize_burn_case(
                 b, self._scalar_params(), vectors)
             self.burn_case_results[b] = {
