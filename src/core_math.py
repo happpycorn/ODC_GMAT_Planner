@@ -93,8 +93,27 @@ def reaches_perigee(r: np.ndarray, v: np.ndarray, mu: float, dt: float) -> bool:
     rv = r[0]*v[0] + r[1]*v[1] + r[2]*v[2]
 
     if energy >= 0.0:
-        # 雙曲線/拋物線：正在往內掉就當作會通過近地點 (保守)，正在往外飛就不會
-        return rv < 0.0
+        if rv >= 0.0 or dt <= 0.0:
+            return False
+        h = fast_cross(r, v)
+        h2 = np.dot(h, h)
+        e_vec = ((v2 - mu / r_mag) * r - rv * v) / mu
+        e = fast_norm(e_vec)
+        p = h2 / mu
+        # 近拋物線用 Barker 方程，避免 e→1 時雙曲 Kepler 方程相減失準。
+        if energy * r_mag / mu < 1e-8:
+            rp = p / (1.0 + e)
+            D = math.sqrt(max(0.0, r_mag / max(rp, 1e-30) - 1.0))
+            if rp < 1e-20:  # 徑向拋物線落下
+                t_peri = math.sqrt(2.0 / mu) * r_mag**1.5 / 3.0
+            else:
+                t_peri = math.sqrt(2.0 * rp**3 / mu) * D * (1.0 + D*D / 3.0)
+        else:
+            a_abs = mu / (2.0 * energy)
+            sinh_H = -rv / (math.sqrt(mu * a_abs) * e)
+            H = math.asinh(sinh_H)
+            t_peri = math.sqrt(a_abs**3 / mu) * (e * sinh_H - H)
+        return t_peri <= dt + 1e-6  # 邊界保留微秒級數值餘裕
 
     a = -mu / (2.0 * energy)
     h = fast_cross(r, v)
@@ -425,6 +444,55 @@ def build_ephem_table(r0, v0, table_dt, end_time, mu, j2, j3, j4, re):
                                 60.0, mu, j2, j3, j4, re)
         states[2*k], states[2*k + 1] = r, v
     return states
+
+
+@njit(cache=True)
+def arc_radius_from_end(r, v, dt, r_end, mu):
+    """密切近地點（弧內到達時）加實際端點；等待弧不另做傳播。"""
+    radius = min(fast_norm(r), fast_norm(r_end))
+    if dt > 0.0 and reaches_perigee(r, v, mu, dt):
+        rr = fast_norm(r)
+        v2 = fast_norm(v)**2
+        energy = v2 / 2.0 - mu / rr
+        e = fast_norm(((v2 - mu / rr)*r - np.dot(r, v)*v) / mu)
+        if energy < 0.0:
+            rp = (-mu / (2.0 * energy)) * (1.0 - e)
+        else:
+            h = fast_cross(r, v)
+            rp = np.dot(h, h) / (mu * (1.0 + e))
+        radius = min(radius, rp)
+    return radius
+
+
+@njit(cache=True)
+def build_wait_prefix(table, step, mu):
+    """第 k 格保存 [0,k*step] 最低半徑；三欄方便併入搜尋的 vectors ABI。"""
+    n = table.shape[0] // 2
+    prefix = np.zeros((n, 3))
+    prefix[0, 0] = fast_norm(table[0])
+    for k in range(1, n):
+        prefix[k, 0] = min(prefix[k-1, 0], arc_radius_from_end(
+            table[2*k-2], table[2*k-1], step, table[2*k], mu))
+    return prefix
+
+
+@njit(cache=True)
+def cached_wait_min_radius(t, r_end, step, table, prefix, mu):
+    """O(1)：完整區間前綴 + 最後不足一步的弧（使用已傳播的端點）。"""
+    k = min(max(int(math.floor(t / step)), 0), prefix.shape[0]-1)
+    if k*step > t and k > 0:
+        k -= 1
+    if k+1 < prefix.shape[0] and (k+1)*step <= t:
+        k += 1
+    return min(prefix[k, 0], arc_radius_from_end(
+        table[2*k], table[2*k+1], t-k*step, r_end, mu))
+
+
+def initial_wait_min_radius(r0, v0, t, r_end, mu, ephem=None):
+    if ephem is not None and len(ephem) >= 4 and t >= 0.0:
+        return cached_wait_min_radius(t, r_end, ephem[0], ephem[2], ephem[3], mu)
+    # 舊呼叫端／關閉快取：直接以初始根數的密切弧及實際端點檢查。
+    return arc_radius_from_end(r0, v0, t, r_end, mu)
 
 
 def fixed_orbit_state(r0, v0, t, mu, j2, j3, j4, re, ephem=None, body=0):

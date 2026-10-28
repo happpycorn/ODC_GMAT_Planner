@@ -14,8 +14,7 @@ split_seed_candidates` 那樣被 `num_burns` 綁死 (那裡 `n_final = num_burns
 - 物理判定 (碰撞、Lambert 分支) 跟 `fast_fitness_evaluator` / `split_even` **逐字一致**，
   不在第二個地方重寫一份，避免兩邊漂移。
 
-這裡是純幾何/力學的分解器，不碰計分、不碰搜尋。輸出要再過 `fast_fitness_evaluator` 重驗
-Earth-safe (唯一抓得到撞地球的，見 odc-collision-check-verification-gap 記憶)。
+拆棒結果用 `_simulate_free` 的等待弧及燃燒後各弧重新檢查；提交版另經 GMAT 半徑關卡。
 """
 import concurrent.futures
 import functools
@@ -27,7 +26,8 @@ from scipy.optimize import minimize
 from scipy.optimize._numdiff import approx_derivative
 
 from src.core_math import (propagate_dop853, check_constraints, fast_norm,
-                           reaches_perigee, lambert_izzo, fixed_orbit_state)
+                           reaches_perigee, lambert_izzo, fixed_orbit_state,
+                           initial_wait_min_radius)
 from src.scorer import calculate_score
 
 
@@ -205,11 +205,15 @@ def legalize_intercept(r0, v0, t0, target, T, *, cap, min_coast,
 
 def _osc_perigee(r, v, mu):
     """密切軌道近地點半徑 (km)。用連續量當約束，SLSQP 的有限差分梯度才抓得到
-    「還差多少撞地球」。逃逸/拋物線 (a<=0) 回傳當下半徑 (這種弧不會往內鑽)。"""
+    「還差多少撞地球」。非束縛軌道向內飛時也須計算真正近地點。"""
     rr = fast_norm(r)
     energy = fast_norm(v) ** 2 / 2.0 - mu / rr
     if energy >= 0.0:
-        return rr
+        if np.dot(r, v) >= 0.0:
+            return rr
+        e_vec = ((fast_norm(v) ** 2 - mu / rr) * r - np.dot(r, v) * v) / mu
+        h = np.cross(r, v)
+        return np.dot(h, h) / (mu * (1.0 + fast_norm(e_vec)))
     a = -mu / (2.0 * energy)
     e_vec = ((fast_norm(v) ** 2 - mu / rr) * r - np.dot(r, v) * v) / mu
     e = fast_norm(e_vec)
@@ -227,14 +231,15 @@ def _arc_min_radius(r0, v0, dt, mu, j2, j3, j4, re):
 
 def _simulate_free(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0, ephem=None):
     """把 free-ECI 決策向量跑成一條軌跡。回傳 r_final / T_team / total_dv / miss_km /
-    每棒 Δv 大小 / 每段弧最小半徑。目標函數與約束都讀這裡的結果。"""
+    每棒 Δv 大小 / 每段弧最小半徑（末格為第一棒前等待弧）。目標函數與約束都讀這裡的結果。"""
     t0 = float(x[0])
     coasts = x[1:1 + N]
     dvs = x[1 + N:].reshape(N, 3)
     r, v = fixed_orbit_state(B_r0, B_v0, t0, mu, j2, j3, j4, re, ephem, 1)
     total_dv = 0.0
     dv_mags = np.empty(N)
-    arc_minr = np.empty(N)
+    arc_minr = np.empty(N + 1)
+    arc_minr[-1] = initial_wait_min_radius(B_r0, B_v0, t0, r, mu, ephem)
     for i in range(N):
         v = v + dvs[i]
         dv_mags[i] = fast_norm(dvs[i])
@@ -267,7 +272,8 @@ def _simulate_free_reuse(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0, ephem
     r, v = fixed_orbit_state(B_r0, B_v0, t0, mu, j2, j3, j4, re, ephem, 1)
     total_dv = 0.0
     dv_mags = np.empty(N)
-    arc_minr = np.empty(N)
+    arc_minr = np.empty(N + 1)
+    arc_minr[-1] = initial_wait_min_radius(B_r0, B_v0, t0, r, mu, ephem)
     for i in range(N):
         v = v + dvs[i]
         dv_mags[i] = fast_norm(dvs[i])
@@ -446,10 +452,10 @@ def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
 
         cons = [{"type": "ineq", "fun": lambda x: stack(x)[1:1 + N],
                  "jac": lambda x: jac_all(x)[1:1 + N]},
-                {"type": "ineq", "fun": lambda x: stack(x)[1 + N:1 + 2 * N],
-                 "jac": lambda x: jac_all(x)[1 + N:1 + 2 * N]},
-                {"type": "ineq", "fun": lambda x: stack(x)[1 + 2 * N:],
-                 "jac": lambda x: jac_all(x)[1 + 2 * N:]}]
+                {"type": "ineq", "fun": lambda x: stack(x)[1 + N:-1],
+                 "jac": lambda x: jac_all(x)[1 + N:-1]},
+                {"type": "ineq", "fun": lambda x: stack(x)[-1:],
+                 "jac": lambda x: jac_all(x)[-1:]}]
 
     budget_hit = False
     if deadline is None:

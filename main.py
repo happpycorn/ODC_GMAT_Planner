@@ -29,6 +29,7 @@ from src.primer import intercept_primer_profile, insert_node_seed
 from src.script_generator import script_generator
 from src.gmat_env import GMAT_ENV_KEYS, resolve_gmat_env, validate_gmat_env
 from src.retarget import retarget_full_perturbation
+from src.earth_gate import instrument_radius_report, analyze_radius_report, MIN_PERIAPSIS
 from src.config_validator import validate_config, ConfigValidationError
 from src.core_math import propagate_dop853, fast_norm, to_vnb_frame
 from src.scorer import calculate_score, assess_legality, DV_LIMIT_TOL_MPS
@@ -234,7 +235,7 @@ def run_gmat_verification(console_path: str, script_path: str, timeout_sec: floa
                           artifacts_dir=None):
     """Verify an archived script copy with an isolated report destination.
 
-    Only Report_Intercept.Filename changes; mission commands stay byte-for-byte intact.
+    Only the archived copy gets report instrumentation and a maximum 60 s step.
     Each attempt keeps the exact executed script, stdout/stderr and result (including failure).
     """
     source = Path(script_path).resolve()
@@ -249,14 +250,32 @@ def run_gmat_verification(console_path: str, script_path: str, timeout_sec: floa
         lambda _: f"Report_Intercept.Filename = '{report.as_posix()}';", original)
     if count != 1:
         raise ValueError("腳本需包含唯一的 Report_Intercept.Filename（本工具報表格式）。")
+    radius_report = folder / "GMAT_RadiusReport.txt"
+    executed = instrument_radius_report(executed, radius_report)
     script = folder / "executed.script"
     script.write_bytes(executed.encode("ascii"))
     started = time.perf_counter()
     result = _run_gmat_verification(console_path, str(script), timeout_sec,
                                     report_path=str(report), log_dir=folder)
+    if result is not None:
+        try:
+            result.update(analyze_radius_report(radius_report, result["t_team_sec"]))
+            log.info(f"🌍 攔截前最低半徑 {result['min_radius_before_intercept_km']:.6f} km，"
+                     f"發生時刻 {result['min_radius_time_sec']:.6f} s；"
+                     f"門檻 {MIN_PERIAPSIS:.6f} km（容許 −1 m）。")
+        except (OSError, ValueError) as exc:
+            result.update(earth_safe=False, min_radius_before_intercept_km=None,
+                          min_radius_time_sec=None, min_periapsis_km=MIN_PERIAPSIS,
+                          radius_acceptance_km=MIN_PERIAPSIS-1e-3, radius_error=str(exc))
+            log.warning(f"🔴 半徑檢查失敗：{exc}；門檻 {MIN_PERIAPSIS:.6f} km，不可繳交。")
+        if not result["earth_safe"]:
+            log.warning("🔴 攔截前半徑安全關卡未通過，官方會判失格，**不可繳交**。")
     requires_dc = bool(re.search(r"(?m)^[ \t]*Target[ \t]+", original))
     checks_passed = bool(result and result["intercept_success"] and result["final_burn_legal"]
+                         and result["earth_safe"]
                          and (not requires_dc or result["targeter_converged"]))
+    if result is not None:
+        result["checks_passed"] = checks_passed
     write_json(folder / "verification.json", {
         "schema_version": 1, "stage": "verification",
         "source_script": str(source), "source_sha256": hashlib.sha256(original_bytes).hexdigest(),
@@ -1075,9 +1094,9 @@ def _run_stages(args, run_dir, manifest):
         manifest["verification_status"] = "completed"
         manifest["checks_passed"] = evidence["checks_passed"]
         if evidence["checks_passed"]:
-            log.info("✅ GMAT 獨立驗證通過（命中、末棒合規及必要的 DC 收斂檢查）。")
+            log.info("✅ GMAT 獨立驗證通過（命中、末棒合規、最低半徑及必要的 DC 收斂檢查）。")
         else:
-            log.warning("⚠️ GMAT 已執行，但命中、末棒合規或 DC 收斂檢查未通過；詳見 verification.json。")
+            log.warning("⚠️ GMAT 已執行，但命中、末棒合規、最低半徑或 DC 收斂檢查未通過；不可繳交，詳見 verification.json。")
         manifest["last_stage"] = "verify"
         return
 
@@ -1308,13 +1327,16 @@ def run_output_stage(config, burns, times, mission_info, optimizer, *, args, run
                     else "Python 自己算的值 (DC fallback)"
                 # 這是要繳交的那份，結果留一行事件級摘要（命中/合規/Δr）；細節(檔名/來源/Δr精確值)
                 # 收進 DEBUG。
-                log.info(f"📤 固定燃燒版(建議繳交)：命中 {fmatch} "
+                submission_label = "建議繳交" if fixed_script_result.get("checks_passed", False) else "不可繳交"
+                log.info(f"📤 固定燃燒版({submission_label})：命中 {fmatch} "
                          f"{'成功' if fixed_script_result['intercept_success'] else '失敗'}"
                          f"   最後一棒 {fdv_match} {'合規' if fixed_script_result['final_burn_legal'] else '超過每棒上限'}"
                          f"   (Δr {fixed_script_result['miss_km']*1000:,.0f}m, "
                          f"Δv {fixed_script_result['final_burn_dv_mps']:,.0f} m/s)")
                 log.debug(f"  檔案：{fixed_path}　燃燒值來源：{src_label}")
-                if fixed_script_result["intercept_success"] and fixed_script_result["final_burn_legal"]:
+                if not fixed_script_result.get("earth_safe", False):
+                    log.warning("  🔴 固定燃燒版未通過獨立半徑檢查，官方會判失格，**不可繳交**。")
+                elif fixed_script_result["intercept_success"] and fixed_script_result["final_burn_legal"]:
                     log.info("  👉 命中且合規，可以直接繳交。")
                 elif fixed_script_result["intercept_success"]:
                     log.warning("  🔴 命中但最後一棒超過每棒上限：排位賽單棒超標直接失格，不可繳交。"
@@ -1322,7 +1344,7 @@ def run_output_stage(config, burns, times, mission_info, optimizer, *, args, run
                 else:
                     log.warning("  ⚠️ 沒有命中：DC 來源不該發生；Python fallback 代表這組解站不住腳，不建議採用。")
             else:
-                log.warning("  ⚠️ 固定版本沒有跑成功 (GMAT 呼叫失敗)。")
+                log.warning("  ⚠️ 固定版本沒有跑成功 (GMAT 呼叫失敗)，半徑未驗證，不可繳交。")
 
     # 4. 附加寫入執行紀錄，方便之後比較不同設定/軌道跑出來的分數
     append_run_history(config, mission_info, time.perf_counter() - start_time,
@@ -1415,7 +1437,7 @@ def run_retarget_stage(config, burns, times, mission_info, optimizer, *, args, r
         fixed = run_gmat_verification(gmat_console_path, submit_path,
                                       artifacts_dir=run_dir / "gmat_fixed")
         manifest["timings_sec"]["gmat_fixed"] = time.perf_counter() - t0
-        if not (fixed and fixed["intercept_success"] and fixed["final_burn_legal"]):
+        if not (fixed and fixed.get("checks_passed", False)):
             res["accepted"] = False
             why = ("GMAT 執行失敗" if fixed is None else
                    f"命中 {fixed['intercept_success']}、末棒合規 {fixed['final_burn_legal']}、"

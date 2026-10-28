@@ -25,7 +25,9 @@ from src.scorer import (calculate_score, ranked_search_score, assess_legality,
                         SEARCH_FAIL_SCORE_RANKED)
 from src.core_math import (propagate_dop853, check_constraints, fast_norm,
                            to_vnb_frame, reaches_perigee, lambert_izzo,
-                           izzo_max_revs, ephem_state, build_ephem_table, fixed_orbit_state)
+                           izzo_max_revs, ephem_state, build_ephem_table, fixed_orbit_state,
+                           build_wait_prefix, cached_wait_min_radius, arc_radius_from_end,
+                           initial_wait_min_radius)
 from src.runlog import log, is_verbose
 import numba as nb
 from tqdm import tqdm
@@ -118,6 +120,14 @@ def fast_fitness_evaluator(
             vectors[4 + 2*ephem_n:4 + 4*ephem_n], current_time, mu, j2_val, j3_val, j4_val, re_val)
     else:
         r_curr, v_curr = propagate_dop853(B_r0, B_v0, current_time, dt, mu, j2_val, j3_val, j4_val, re_val)
+
+    if use_ephem and vectors.shape[0] >= 4 + 5*ephem_n:
+        wait_min = cached_wait_min_radius(current_time, r_curr, ephem_dt,
+            vectors[4 + 2*ephem_n:4 + 4*ephem_n], vectors[4 + 4*ephem_n:], mu)
+    else:
+        wait_min = arc_radius_from_end(B_r0, B_v0, current_time, r_curr, mu)
+    if wait_min < min_periapsis:
+        return fail
 
     idx = 1
     # 2. 執行前 N-1 次機動 (如果 num_burns > 1)
@@ -689,6 +699,7 @@ class MissionOptimizer:
             self.ephem = (self.EPHEM_CACHE_STEP_SEC,
                           build_ephem_table(self.A_r0, self.A_v0, *args),
                           build_ephem_table(self.B_r0, self.B_v0, *args))
+            self.ephem += (build_wait_prefix(self.ephem[2], self.ephem[0], self.MU),)
             self.ephem_build_seconds = time.perf_counter() - started
         self._vectors = np.vstack([self.A_r0, self.A_v0, self.B_r0, self.B_v0]
                                   + ([] if self.ephem is None else list(self.ephem[1:])))
@@ -2845,6 +2856,8 @@ def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_
     current_time = float(x[0])
     times.append(current_time)
     r_curr, v_curr = fixed_orbit_state(B_r0, B_v0, current_time, mu, j2_val, j3_val, j4_val, re_val, ephem, 1)
+    min_arc_radius_km = initial_wait_min_radius(B_r0, B_v0, current_time, r_curr, mu, ephem)
+    earth_safe = min_arc_radius_km >= min_periapsis
 
     idx = 1
     for i in range(1, num_burns):

@@ -134,6 +134,8 @@ class PipelineStagesTest(unittest.TestCase):
         executed = Path(command[-1]).read_text()
         report = re.search(r"Report_Intercept.Filename = '([^']+)';", executed).group(1)
         Path(report).write_text("T miss hit dv legal v n b\n1100 0.1 1 100 1 0.09 0.01 0\n")
+        radius_report = re.search(r"EarthGate.Filename = '([^']+)';", executed).group(1)
+        Path(radius_report).write_text("0 7500 0 0 0 0 0\n1100 7500 0 0 0 0 0\n")
         return subprocess.CompletedProcess(command, 0, "The Targeter converged!", "")
 
     def test_verification_isolated_and_fixed_burn_uses_dc_result(self):

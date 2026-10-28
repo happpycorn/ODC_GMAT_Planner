@@ -372,7 +372,8 @@ class StageTest(unittest.TestCase):
     def fake_verify(console, script_path, artifacts_dir=None):
         return {"intercept_success": True, "final_burn_legal": True, "miss_km": 0.2,
                 "t_team_sec": 3201.5, "final_burn_dv_mps": 154.0, "targeter_converged": False,
-                "report_path": "x", "final_burn_vnb": (0, 0, 0)}
+                "report_path": "x", "final_burn_vnb": (0, 0, 0),
+                "earth_safe": True, "checks_passed": True}
 
     def test_accept_writes_ranking_full_submission(self):
         folder = self.run_main("ok")
@@ -401,7 +402,8 @@ class StageTest(unittest.TestCase):
 
     def test_failed_fixed_verification_rejects(self):
         def bad_verify(console, script_path, artifacts_dir=None):
-            return dict(self.fake_verify(console, script_path), intercept_success=False, miss_km=6.0)
+            return dict(self.fake_verify(console, script_path), intercept_success=False, miss_km=6.0,
+                        checks_passed=False)
         folder = self.run_main("fixedfail", verify=bad_verify)
         rec = json.loads((folder / "retarget.json").read_text())
         self.assertEqual(rec["status"], "rejected")
