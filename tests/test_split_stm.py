@@ -211,7 +211,7 @@ def test_fd_and_options(opt, x, N):
         cfg['strategy']['SPLIT_JACOBIAN'] = mode
         validate_config(cfg)
         assert split_options(cfg)['jacobian'] == mode
-    assert split_options({})['jacobian'] == 'fd'
+    assert split_options({'strategy': {'SPLIT_JACOBIAN': 'fd'}})['jacobian'] == 'fd'
     for mode in (None, 'STm', 1, [], {}):
         cfg = copy.deepcopy(opt.config)
         cfg['strategy']['SPLIT_JACOBIAN'] = mode

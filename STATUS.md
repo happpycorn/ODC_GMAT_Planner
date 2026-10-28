@@ -8,6 +8,8 @@
 
 ## 目前狀態（2026-09-29）
 
+- **拆棒預設（2026-10-28）**：缺鍵即使用 stm、三起點、1 m/s 剔空棒重最佳化、600 s 預算與 3 行程（依 CPU 數夾住）；覆寫與退回方式見 [README](README.md#strategy-裡幾個值得知道的開關)。
+
 - **運作方式**：`main.py` 可一次求解並產生 GMAT 腳本，也可分段保存 `mission.json`、重產腳本或重驗腳本；新執行各用獨立的 `outputs/runs/<id>/`。正式繳交前仍須確認固定燃燒腳本的 GMAT 驗證結果。指令和產物見 [README](README.md#分段執行修改後不用每次從搜尋重跑)。
 - **已完成的近期工作**：提早停止開關已接通，但消融顯示多個情境掉分，預設維持關閉；REVS=0/4 案例已共用行程池，保留集成結果並縮短實測牆鐘；Numba 中 Izzo 例外造成的記憶體洩漏已修。實驗見 [提早停止](docs/EARLY_STOP_ABLATION_20260929.md)與 [REVS 排程](docs/REVS_SCHEDULING_20260929.md)。
 - **回歸與搜尋預算**：日常跑 `uv run python run_regression.py --quick`，完整跑 `uv run python run_regression.py`；2026-09-29 完整回歸為 14/14。搜尋預算維持 `MAXITER=600`、`POPSIZE=20`，`SEED_PORTFOLIO_N=1`，兩層種子精修與 REVS 集成保留。

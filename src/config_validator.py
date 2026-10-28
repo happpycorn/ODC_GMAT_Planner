@@ -19,6 +19,7 @@ config.json 的欄位驗證。
 import math
 
 from src.runlog import log
+from src.split_defaults import SPLIT_DEFAULTS
 
 _EARTH_RE_KM = 6378.137
 _ORBIT_FIELDS = ("SMA", "ECC", "INC", "RAAN", "AOP", "TA")
@@ -305,7 +306,7 @@ def _validate_strategy(strategy_cfg, errors: list):
             errors.append(f"strategy.{k} 必須是 >=1 的數字，但收到 {strategy_cfg[k]!r}")
 
     # 拆棒旋鈕（SPLITTER_SPEED，2026-10-19；docs/SPLITTER_SPEED_20261020.md）
-    if strategy_cfg.get("SPLIT_JACOBIAN", "fd") not in ("fd", "stm"):
+    if strategy_cfg.get("SPLIT_JACOBIAN", SPLIT_DEFAULTS["SPLIT_JACOBIAN"]) not in ("fd", "stm"):
         errors.append("strategy.SPLIT_JACOBIAN 必須是 'fd' 或 'stm'，但收到 "
                       f"{strategy_cfg['SPLIT_JACOBIAN']!r}")
     if "SPLIT_FAST_FD" in strategy_cfg and not isinstance(strategy_cfg["SPLIT_FAST_FD"], bool):
@@ -316,8 +317,8 @@ def _validate_strategy(strategy_cfg, errors: list):
             errors.append(f"strategy.{k} 必須是 >={lo} 的整數，但收到 {strategy_cfg[k]!r}")
     if "SPLIT_MULTISTART" in strategy_cfg:
         v = strategy_cfg["SPLIT_MULTISTART"]
-        if not (isinstance(v, list) and all(_is_number(f) and 0 <= f <= 2 for f in v)):
-            errors.append("strategy.SPLIT_MULTISTART 必須是 0~2 之間數字的清單（終端棒起點往前挪幾倍"
+        if v is not None and not (isinstance(v, list) and all(_is_number(f) and 0 <= f <= 2 for f in v)):
+            errors.append("strategy.SPLIT_MULTISTART 必須是 null 或 0~2 之間數字的清單（終端棒起點往前挪幾倍"
                           f"「連續燒長度」，例如 [0, 0.5, 1]），但收到 {v!r}")
     if "SPLIT_WALL_BUDGET_SEC" in strategy_cfg:
         v = strategy_cfg["SPLIT_WALL_BUDGET_SEC"]
@@ -325,8 +326,8 @@ def _validate_strategy(strategy_cfg, errors: list):
             errors.append(f"strategy.SPLIT_WALL_BUDGET_SEC 必須是 >=0 的秒數（0/null = 不限），但收到 {v!r}")
     if "SPLIT_PRUNE_REOPT_MPS" in strategy_cfg:
         v = strategy_cfg["SPLIT_PRUNE_REOPT_MPS"]
-        if not (_is_number(v) and 0 <= v <= 50):
-            errors.append(f"strategy.SPLIT_PRUNE_REOPT_MPS 必須是 0~50 的數字（m/s；0 = 關），但收到 {v!r}")
+        if v is not None and not (_is_number(v) and 0 <= v <= 50):
+            errors.append(f"strategy.SPLIT_PRUNE_REOPT_MPS 必須是 0~50 的數字（m/s；0/null = 關），但收到 {v!r}")
 
     if "MISS_TOLERANCE_KM" in strategy_cfg:
         v = strategy_cfg["MISS_TOLERANCE_KM"]

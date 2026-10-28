@@ -245,6 +245,12 @@ uv run sweep_burns.py --config configs/x.json --burns 2-8
 | `MAX_DV_MARGIN_MPS` | `2.0` | 搜尋階段每棒 Δv 上限往內縮多少（安全邊界，見 METHODOLOGY 第 6 節）。最佳解有棒數頂到上限時調小可以白賺幾 m/s，**調完要確認違規次數還是 0**。 |
 | `TIEBREAK_POLISH` | `true` | 規則第 6 節優先序 1 的收尾微調，見下面〈平手判定〉。 |
 | `SPLIT_AWARE_TERMINAL` | `true` | 終端棒超標但拆得掉（≤ `SPLIT_AWARE_TERMINAL_MAX_FACTOR`×上限，預設 5）時，搜尋與挑贏家改用「拆後估計分數」、不扣 10 分，避免收斂到省油但晚到的合法家族。拆棒真的失敗會自動用 `false` 重跑一輪搜尋當退路（最差 = 關閉時的結果，但多花一輪搜尋時間）。只在 `AUTO_SPLIT_LEGALIZE=true` 時生效。見 [docs/C4_TERMINAL_SPLIT_AWARE_PLAN.md](docs/C4_TERMINAL_SPLIT_AWARE_PLAN.md)。 |
+| `SPLIT_JACOBIAN` | `"stm"` | 拆棒 joint NLP 使用 STM Jacobian；設 `"fd"` 退回有限差分。 |
+| `SPLIT_WORKERS` | `3` | 拆棒行程數，最多使用 `os.cpu_count()` 個核心（至少 1）；設 `1` 退回單行程。 |
+| `SPLIT_MULTISTART` | `[0, 0.75, 1]` | 終端棒起點往前挪的倍數，預設三起點；設 `null` 或 `[]` 退回單起點。 |
+| `SPLIT_PRUNE_REOPT_MPS` | `1.0` | 剔除低於此值（m/s）的空棒後重最佳化；設 `0` 或 `null` 關閉。 |
+| `SPLIT_WALL_BUDGET_SEC` | `600` | 拆棒牆鐘預算（秒），軟上限，交目前最好的合法解；觸發時不可逐位元重現。設 `0` 或 `null` 退回不限時。 |
+| `SPLIT_FAST_FD` | `false` | fd 路徑的疊合有限差分開關；stm 下沒作用，保留供明確選用 fd 時使用。 |
 | `TIEBREAK_SCORE_EPS` | `1e-9` | 「分數差多少以內算打平」，見下面〈平手判定〉。 |
 
 ### 測試

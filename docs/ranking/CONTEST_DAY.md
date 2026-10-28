@@ -229,7 +229,7 @@ for s in 0 1 2; do uv run python main.py --config configs/ranking_s$s.json --sto
 
 先停在 solve，拿到 `mission.json` 再做重瞄準和驗證，搜尋就不用重跑。
 DE 先找少棒數的路線，再由 `AUTO_SPLIT_LEGALIZE`（預設開）拆成每棒 ≤ 250 − 2 m/s（`MAX_DV_MARGIN_MPS` = 2）。
-拆棒設定（`SPLIT_FAST_FD`、`SPLIT_WORKERS=3`、多起點、600 s 預算）在範本 `strategy` 裡已經填好，不要動。
+拆棒設定（stm、三起點、剔空棒、600 s 預算、3 行程）已是預設，不需手動填入；覆寫與退回方式見 [README 的 strategy 參數表](../../README.md#strategy-裡幾個值得知道的開關)。
 
 跑完比三顆的 `mission.json`（`score`、`disqualified`），挑分數最高、沒失格的那顆：
 

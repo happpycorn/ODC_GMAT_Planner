@@ -31,6 +31,7 @@ from src.gmat_env import GMAT_ENV_KEYS, resolve_gmat_env, validate_gmat_env
 from src.retarget import retarget_full_perturbation
 from src.earth_gate import instrument_radius_report, analyze_radius_report, MIN_PERIAPSIS
 from src.config_validator import validate_config, ConfigValidationError
+from src.split_defaults import SPLIT_DEFAULTS
 from src.core_math import propagate_dop853, fast_norm, to_vnb_frame
 from src.scorer import calculate_score, assess_legality, DV_LIMIT_TOL_MPS
 from src.burn_splitter import legalize_route, _simulate_free, prune_null_burns
@@ -680,21 +681,22 @@ def _primer_fast_research(cfg2, seed, burns, times, mission_info, optimizer):
 
 
 def split_options(config):
-    """strategy 裡的拆棒旋鈕 → legalize_route 的關鍵字參數（SPLITTER_SPEED，2026-10-19；
-    數據見 docs/SPLITTER_SPEED_20261020.md）。全部沒填時等於舊的呼叫（n_span=1、maxiter=1000、
-    其餘關），拆棒結果逐位元不變。"""
+    """strategy 裡的拆棒旋鈕 → legalize_route 的關鍵字參數。
+
+    缺鍵採比賽設定（SPLIT_DEFAULTS）；明確的 null／0 仍可關閉對應功能。"""
     st = config.get("strategy", {})
-    reopt = st.get("SPLIT_PRUNE_REOPT_MPS")
+    reopt = st.get("SPLIT_PRUNE_REOPT_MPS", SPLIT_DEFAULTS["SPLIT_PRUNE_REOPT_MPS"])
+    budget = st.get("SPLIT_WALL_BUDGET_SEC", SPLIT_DEFAULTS["SPLIT_WALL_BUDGET_SEC"])
+    workers = int(st.get("SPLIT_WORKERS", SPLIT_DEFAULTS["SPLIT_WORKERS"]))
     return {
         "n_span": int(st.get("SPLIT_N_SPAN", 1)),
         "maxiter": int(st.get("SPLIT_NLP_MAXITER", 1000)),    # C3：1000
         "fast_fd": bool(st.get("SPLIT_FAST_FD", False)),
-        "jacobian": st.get("SPLIT_JACOBIAN", "fd"),
-        "workers": int(st.get("SPLIT_WORKERS", 1)),
-        "starts": st.get("SPLIT_MULTISTART") or None,
+        "jacobian": st.get("SPLIT_JACOBIAN", SPLIT_DEFAULTS["SPLIT_JACOBIAN"]),
+        "workers": max(1, min(workers, os.cpu_count() or 1)),
+        "starts": st.get("SPLIT_MULTISTART", SPLIT_DEFAULTS["SPLIT_MULTISTART"]) or None,
         "prune_reopt_tol": None if not reopt else float(reopt) / 1000.0,
-        "wall_budget": (None if not st.get("SPLIT_WALL_BUDGET_SEC")
-                        else float(st["SPLIT_WALL_BUDGET_SEC"])),
+        "wall_budget": None if not budget else float(budget),
     }
 
 
@@ -745,6 +747,7 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
     r_A, _ = opt.state_A(icpt)
     target = r_A + _sph(x[-3], x[-2], x[-1])
 
+    options = split_options(config)
     res = legalize_route(
         t0=t0, leading_dvs=leading_dvs, leading_coasts=leading_coasts,
         terminal_coast=tfin, target=target,
@@ -752,7 +755,7 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
         min_periapsis=opt.MIN_PERIAPSIS, max_revs=opt.LAMBERT_MAX_REVS,
         A_r0=opt.A_r0, A_v0=opt.A_v0, B_r0=opt.B_r0, B_v0=opt.B_v0,
         k_t=opt.k_t, C_t=opt.C_t, k_v=opt.k_v, C_v=opt.C_v, T_max=T_max,
-        miss_tol=opt.MISS_TOLERANCE_SOFT, ephem=opt.ephem, **split_options(config))
+        miss_tol=opt.MISS_TOLERANCE_SOFT, ephem=opt.ephem, **options)
     if res is None or not res["feasible"]:
         log.info("⚠️ HAP-67 自動拆分：這個違規解在段數上限內拆不出合法版，沿用原解。")
         return None
@@ -760,7 +763,7 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
         log.info(f"🔀 多起點拆棒：終端棒起點提前 {res['start_shift_sec']:.0f} s 的那一組最好"
                  f"（{res['score']:.4f}，{res['N']} 棒）。")
     if res.get("budget_hit"):
-        log.warning(f"⏱️ 拆棒牆鐘預算 {config['strategy']['SPLIT_WALL_BUDGET_SEC']} s 到期：交目前最好的"
+        log.warning(f"⏱️ 拆棒牆鐘預算 {options['wall_budget']:g} s 到期：交目前最好的"
                     f"合法拆法（{res['score']:.4f}，{res['N']} 棒），後面的精修略過。")
 
     # free-ECI 結果 → 每棒「燒前狀態」→ VNB；組回 script_generator / mission_info 要的格式
@@ -872,7 +875,8 @@ def _legalize_stage(config, burns, times, mi, opt):
         # SPLIT_FAST_FD 開時不論有沒有 SEED 都鎖：SLSQP 的問題只有幾十維，多執行緒 BLAS 不會更快、
         # 只會空轉（10-20 實測每個行程吃 ~650% CPU、慢 1.7×），3 顆種子並行時會互搶核心。
         lock = (seed_set or bool(config.get("strategy", {}).get("SPLIT_FAST_FD", False))
-                or config.get("strategy", {}).get("SPLIT_JACOBIAN", "fd") == "stm")
+                or config.get("strategy", {}).get(
+                    "SPLIT_JACOBIAN", SPLIT_DEFAULTS["SPLIT_JACOBIAN"]) == "stm")
         with (threadpool_limits(limits=1, user_api="blas") if lock else contextlib.nullcontext()):
             _legal = legalize_violating_winner(config, burns, times, mi, opt)
         if _legal is not None:
