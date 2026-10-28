@@ -1,0 +1,54 @@
+{
+  "name": "global_oracle_bigbudget",
+  "_說明": "GLOBAL_ORACLE 第 4 項：大預算參考解。排位賽題庫 4 情境 × 種子 0–9，MAXITER 放大 3 倍（1800），其他照比賽設定（primer full、拆棒 splitspeed_par3_rec 建議設定），只求解到拆棒為止。見 docs/GLOBAL_ORACLE_20261028.md。",
+  "scenarios": [
+    {
+      "name": "hyper_far",
+      "config": "configs/shared/hyper_far.json"
+    },
+    {
+      "name": "hyperbolic_test_fuel",
+      "config": "configs/shared/hyperbolic_test.json",
+      "overrides": {
+        "rules.k_v": 0.002,
+        "rules.C_v": 2500.0
+      }
+    },
+    {
+      "name": "hyperbolic_smoke",
+      "config": "configs/shared/hyperbolic_smoke.json"
+    },
+    {
+      "name": "ranking_round",
+      "config": "configs/shared/ranking_round.json"
+    }
+  ],
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "base": {
+    "rules.MAX_DV_MPS": 250.0,
+    "rules.MAX_TOTAL_DV_MPS": 3000.0,
+    "optimization.MAXITER": 1800,
+    "optimization.POPSIZE": 20,
+    "optimization.NUM_THREADS": 5,
+    "strategy.SPLIT_FAST_FD": true,
+    "strategy.SPLIT_WORKERS": 3,
+    "strategy.SPLIT_MULTISTART": [
+      0,
+      0.75,
+      1
+    ],
+    "strategy.SPLIT_PRUNE_REOPT_MPS": 1.0,
+    "strategy.SPLIT_WALL_BUDGET_SEC": 600
+  }
+}
