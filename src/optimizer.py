@@ -32,6 +32,32 @@ from src.runlog import log, is_verbose
 import numba as nb
 from tqdm import tqdm
 
+
+class _PrimerSearchTimeout(Exception):
+    """僅限 C2 fast 的評估期限；保留已評估的 incumbent，交回 anytime 解。"""
+
+
+class _DeadlineFitness:
+    """mealpy 原生 max_time 只在代末檢查；補上初始化/代內評估前的期限檢查。"""
+
+    def __init__(self, fitness, deadline):
+        self.fitness = fitness
+        self.deadline = deadline
+        self.best_x = None
+        self.best_fitness = float("inf")
+        self.lock = threading.Lock()
+
+    def __call__(self, x):
+        if time.monotonic() >= self.deadline:
+            raise _PrimerSearchTimeout
+        value = self.fitness(x)
+        with self.lock:
+            if value < self.best_fitness:
+                self.best_x = np.asarray(x, dtype=np.float64).copy()
+                self.best_fitness = float(value)
+        return value
+
+
 # 這裡把所有不變的環境常數傳進來，避免 Numba 抓取外部全域變數
 # nogil=True: 純數值運算 (內部呼叫的 propagate_dop853/izzo/calculate_score 也都是 njit)，
 # 沒有碰任何 Python 物件，執行時可以釋放 GIL，讓 mealpy 的 'thread' 平行模式真的吃到多核。
@@ -1617,7 +1643,10 @@ class MissionOptimizer:
         # solve 前還會再 seed 一次，讓搜尋本身也可重現 (見下 self.seed 分支)。
         if self.seed is not None:
             np.random.seed(self.seed)
-        seed_candidates = self._generate_seed_candidates(current_burns, n_seeds)
+        # fast 已先精修插棒種子，短全域不再支付完整種子家族的粗掃/SLSQP 成本。
+        primer_fast = getattr(self, "_primer_fast_research", False)
+        seed_candidates = ([] if primer_fast else
+                           self._generate_seed_candidates(current_burns, n_seeds))
         # C2：外部注入的插棒種子放在最前面，確保不被 n_seeds 上限擠掉；夾回界內
         # （coast_frac 反解可能微幅越界，clip 後仍是有效起點，DE 會再精修）。
         ext = self.external_seeds.get(current_burns, [])
@@ -1641,6 +1670,12 @@ class MissionOptimizer:
                 vector_params
             )
 
+        deadline = getattr(self, "_primer_search_deadline", None)
+        timed_fitness = None
+        if deadline is not None:
+            timed_fitness = _DeadlineFitness(fitness_wrapper, deadline)
+            fitness_wrapper = timed_fitness
+
         problem = {
             "obj_func": fitness_wrapper,
             "bounds": [FloatVar(lb=l, ub=u) for l, u in zip(lb, ub)],
@@ -1652,6 +1687,11 @@ class MissionOptimizer:
         # mealpy 會在 solve() 開始時以其 termination 參數覆蓋建構子的設定。
         termination = ({"max_early_stop": self.mes, "epsilon": self.tol}
                        if self.early_stop_enabled else None)
+        if deadline is not None:
+            # mealpy 原生支援 TB；其 max_time 合法範圍是 [0.1, 1e6]。
+            # 更短/更長的期限由上面的逐次評估檢查精確涵蓋。
+            termination = dict(termination or {})
+            termination["max_time"] = max(0.1, min(1e6, deadline - time.monotonic()))
         model = L_SHADE(epoch=case_maxiter, pop_size=pop_size)
         if progress_queue is not None:
             self._attach_progress_reporting(
@@ -1681,13 +1721,19 @@ class MissionOptimizer:
         # 每次跑到的順序還是會不一樣 —— 這是實測驗證過的 (同 seed 關執行緒完全重現、
         # 開執行緒就對不上)。所以：有指定 seed 代表你要的是「可重現」，這裡就自動退回
         # 單執行緒換取重現性；沒設 seed (預設) 就照樣用多執行緒換速度，兩者只能選一個。
-        if self.seed is not None:
-            np.random.seed(self.seed)
-            g_best = model.solve(problem, seed=self.seed, starting_solutions=starting_solutions,
-                                 termination=termination)
-        else:
-            g_best = model.solve(problem, mode="thread", n_workers=n_workers, seed=self.seed,
-                                  starting_solutions=starting_solutions, termination=termination)
+        try:
+            if self.seed is not None:
+                np.random.seed(self.seed)
+                g_best = model.solve(problem, seed=self.seed, starting_solutions=starting_solutions,
+                                     termination=termination)
+            else:
+                g_best = model.solve(problem, mode="thread", n_workers=n_workers, seed=self.seed,
+                                      starting_solutions=starting_solutions, termination=termination)
+        except _PrimerSearchTimeout:
+            # 可能在初始族群或某代中途到期，model.g_best 未必已更新；回傳逐次評估
+            # 留下的最佳解。若連第一顆都還沒評估，main 仍有原解與局部解可交。
+            return (current_burns, timed_fitness.best_x, timed_fitness.best_fitness,
+                    len(getattr(model.history, "list_epoch_time", [])), "，primer fast 牆鐘到期")
 
         current_best_x = g_best.solution
         raw_fitness = g_best.target.fitness
@@ -1704,7 +1750,7 @@ class MissionOptimizer:
         # refine_trajectory() 對最終贏家做的事同一招，只是這裡對每個種子各做一次，
         # 而且要在這裡 (子行程) 做，不能留到外層 (run_study 只會對最終贏家精修一次，
         # 其他燃燒次數案例自己的種子沒有第二次機會)。
-        for seed_x in (seed_candidates if self.SEED_LBFGS_POLISH else []):
+        for seed_x in (seed_candidates if self.SEED_LBFGS_POLISH and not primer_fast else []):
             # 2026-08-15：改用共用的 _narrow_tolerance_bounds (跟 refine_trajectory()
             # 同一套規則)，正確處理多棒種子的完整陣列結構 (原本這裡寫死只認識單棒
             # 的 5 元素陣列，多棒種子索引會對不上、精修會用錯容忍度)。
@@ -1731,7 +1777,7 @@ class MissionOptimizer:
         if self.seed is not None:
             note += "，單執行緒 (seed 已設定)"
         if seed_candidates:
-            note += (f"，{len(seed_candidates)} 個種子已獨立精修" if self.SEED_LBFGS_POLISH
+            note += (f"，{len(seed_candidates)} 個種子已獨立精修" if self.SEED_LBFGS_POLISH and not primer_fast
                      else f"，{len(seed_candidates)} 個種子（未獨立精修）")
 
         # note 回傳給主行程印，不在這裡印 (見函式開頭的說明)
@@ -1772,6 +1818,23 @@ class MissionOptimizer:
                         "建議移除這些棒數或先用 feasibility.py 確認。")
 
     def run_study(self):
+        if getattr(self, "_primer_fast_research", False):
+            # C2 fast 只有一個 (REVS, N+1) 案例，直接跑現有 DE，省去 spawn/Manager
+            # 成本；局部階段已精修，收尾只重播，不在牆鐘到期後另開一輪 NLP。
+            b = self.burns[0]
+            vectors = np.vstack([self.A_r0, self.A_v0, self.B_r0, self.B_v0])
+            _, x, fitness, epochs, note = self._optimize_burn_case(
+                b, self._scalar_params(), vectors)
+            self.burn_case_results[b] = {
+                "fitness": fitness, "epochs_run": epochs, "note": note, "best_x": x,
+            }
+            log.info(f"✅ 推進 {b} 次完成：目標值 {fitness:.4f}，"
+                     f"跑了 {epochs}/{self._maxiter_for(b)} 代{note}")
+            picked = self._pick_best_case()
+            if picked is None:
+                return None, None, (None, None)
+            b, x, _ = picked
+            return self._replay_mission(x, b)
         cases = sorted(self.burns, reverse=True)
         log.log(self._report_level,
                 f"🚀 L-SHADE 軌道最佳化：推進次數 {sorted(self.burns)}，"
@@ -2689,6 +2752,10 @@ def run_study_over_revs(config, external_seeds=None):
         return threadpool_limits(limits=1, user_api="blas") if seed_set else contextlib.nullcontext()
 
     strategy = config.get("strategy", {})
+    # 只對明確注入外部種子的 fast 重搜啟用；首次搜尋即使選 fast 仍照舊完整跑。
+    primer_fast = bool(external_seeds) and strategy.get("PRIMER_RESEARCH_MODE", "full") == "fast"
+    wall = strategy.get("PRIMER_RESEARCH_WALL_SEC", 300) if primer_fast else None
+    deadline = time.monotonic() + float(wall) if wall else None
     high_revs = max(0, int(strategy.get("LAMBERT_MAX_REVS", 4)))
     ensemble = bool(strategy.get("REVS_ENSEMBLE", True))
 
@@ -2704,6 +2771,9 @@ def run_study_over_revs(config, external_seeds=None):
         cfg = copy.deepcopy(config)
         cfg.setdefault("strategy", {})["LAMBERT_MAX_REVS"] = revs
         opt = MissionOptimizer(cfg)
+        if primer_fast:
+            opt._primer_fast_research = True
+            opt._primer_search_deadline = deadline
         if external_seeds:                       # C2：primer 指路的插棒種子（見 main）
             opt.external_seeds = external_seeds
         # 集成時把每趟的大塊報告壓成 DEBUG（console 預設不印、-v/log 檔仍看得到），

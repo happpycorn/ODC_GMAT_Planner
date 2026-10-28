@@ -84,13 +84,13 @@
 | 11/08 | **凍結程式碼**，重看 TASA 頁有沒有規則修訂 |
 | 11/09 | 比賽 |
 
-## 附錄：AIAA Capture the Satellite Challenge（Gemini 搜尋，2026-10-28）
+## 附錄：AIAA Capture the Satellite Challenge（2026-10-28）
 
 完整考古見 [AIAA_CTS_RESEARCH.md](AIAA_CTS_RESEARCH.md)。重點：決賽前 3 天才放新元素（要能快速重規劃，不要過度調校單一情境）；
 冠軍用古典＋AI 混合；`pe1` 計分先比最近距離、再比相對速度，然後是燃料，最後是時間；逃方啟發式是近距離往法向全推力噴，或持續順向抬升。
 
 ## 分工與 Token 省法
 
-- Mac 規劃、寫程式交給 Codex、讀長 PDF 交給 Gemini（agy），Claude 只規劃與驗收；Corn 負責搜尋、蒙地卡羅、GMAT 全攝動驗證與計時實測。兩邊透過 `Master` 同步。
+- Mac 規劃、寫程式交給 Codex，研究由 Claude 自己查（WebSearch＋讀原文）或交給 Codex，Claude 負責規劃與驗收；Corn 負責搜尋、蒙地卡羅、GMAT 全攝動驗證與計時實測。兩邊透過 `Master` 同步。
 - 長時間跑（搜尋、批次掃描）丟背景或 Corn，不要讓 Claude 盯著等。
 - 改拆棒器用 `--from-winner`，下游重跑用 `--from-mission`，不要每次從搜尋重跑。

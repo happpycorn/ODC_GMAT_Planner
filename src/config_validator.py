@@ -333,6 +333,19 @@ def _validate_strategy(strategy_cfg, errors: list):
         errors.append("strategy.PRIMER_GUIDED_RESEARCH 必須是 true/false，但收到 "
                       f"{strategy_cfg['PRIMER_GUIDED_RESEARCH']!r}（C2：primer 引導的條件式重搜開關）")
 
+    if "PRIMER_RESEARCH_MODE" in strategy_cfg:
+        v = strategy_cfg["PRIMER_RESEARCH_MODE"]
+        if v not in ("full", "fast"):
+            errors.append(f"strategy.PRIMER_RESEARCH_MODE 必須是 full/fast，但收到 {v!r}")
+    if "PRIMER_RESEARCH_ITER_FRAC" in strategy_cfg:
+        v = strategy_cfg["PRIMER_RESEARCH_ITER_FRAC"]
+        if not (_is_number(v) and 0 < v <= 1):
+            errors.append(f"strategy.PRIMER_RESEARCH_ITER_FRAC 必須是 (0, 1] 的數字，但收到 {v!r}")
+    if "PRIMER_RESEARCH_WALL_SEC" in strategy_cfg:
+        v = strategy_cfg["PRIMER_RESEARCH_WALL_SEC"]
+        if v is not None and not (_is_number(v) and v >= 0):
+            errors.append(f"strategy.PRIMER_RESEARCH_WALL_SEC 必須是 >=0 的秒數（0/null = 不限），但收到 {v!r}")
+
     if "SEED_PORTFOLIO_N" in strategy_cfg:
         v = strategy_cfg["SEED_PORTFOLIO_N"]
         if not (_is_int(v) and v >= 1):
