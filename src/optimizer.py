@@ -132,6 +132,10 @@ def fast_fitness_evaluator(
         ephem_dt = scalars[21]
         ephem_n = int(scalars[22])
     use_ephem = ephem_dt > 0.0 and ephem_n > 0 and vectors.shape[0] >= 4 + 4*ephem_n
+    # 僅前 N-1 棒後的滑行容差；舊呼叫端不足 24 格時維持精確值。
+    coast_rtol = 1e-12
+    if scalars.shape[0] >= 24:
+        coast_rtol = scalars[23]
 
     total_dv = 0.0
     penalty_count = 0
@@ -215,7 +219,11 @@ def fast_fitness_evaluator(
                 return fail # 直接判定 0 分 (極度差的適應度；排位賽模式低於失格層)
 
         # 傳播太空船 B 經過 Coast Time
-        r_curr, v_curr = propagate_dop853(r_curr, v_curr_new, t_coast, dt, mu, j2_val, j3_val, j4_val, re_val)
+        # 精確值保留原本的預設參數呼叫，避免 Numba 動態容差特化造成末位差異。
+        if coast_rtol == 1e-12:
+            r_curr, v_curr = propagate_dop853(r_curr, v_curr_new, t_coast, dt, mu, j2_val, j3_val, j4_val, re_val)
+        else:
+            r_curr, v_curr = propagate_dop853(r_curr, v_curr_new, t_coast, dt, mu, j2_val, j3_val, j4_val, re_val, coast_rtol)
         current_time += t_coast
         if fast_norm(r_curr) < min_periapsis:      # 這段弧的終點
             return fail
@@ -481,6 +489,7 @@ class MissionOptimizer:
         # (我們自己的任務設計選項，不是規則要求)。詳見 main.py 的 DEFAULT_CONFIG 註解。
         rules = config["rules"]
         strategy = config.get("strategy", {})
+        self.SEARCH_COAST_RTOL = float(strategy.get("SEARCH_COAST_RTOL", 1e-12))
 
         # 從 config 提取環境常數 (避免每次呼叫都查字典)
         self.k_t = rules.get("k_t", 0.0001)
@@ -1676,8 +1685,21 @@ class MissionOptimizer:
             timed_fitness = _DeadlineFitness(fitness_wrapper, deadline)
             fitness_wrapper = timed_fitness
 
+        # 只放寬一般 L-SHADE 搜尋；種子精修與 deadline incumbent 比較沿用精確包裝器。
+        search_rtol = getattr(self, "SEARCH_COAST_RTOL", 1e-12)
+        search_relaxed = search_rtol != 1e-12 and deadline is None
+        search_fitness = fitness_wrapper
+        if search_relaxed:
+            search_scalars = scalar_params.copy()
+            search_scalars[23] = search_rtol
+
+            def search_fitness(solution):
+                return fast_fitness_evaluator(
+                    np.asarray(solution, dtype=np.float64), current_burns,
+                    search_scalars, vector_params)
+
         problem = {
-            "obj_func": fitness_wrapper,
+            "obj_func": search_fitness,
             "bounds": [FloatVar(lb=l, ub=u) for l, u in zip(lb, ub)],
             "minmax": "min",    
             "log_to": None
@@ -1737,6 +1759,8 @@ class MissionOptimizer:
 
         current_best_x = g_best.solution
         raw_fitness = g_best.target.fitness
+        if search_relaxed:
+            raw_fitness = fitness_wrapper(current_best_x)
         current_best_score = float(raw_fitness) if raw_fitness is not None else float('inf')
 
         # 種子精修 (2026-08-14)：光把種子丟進初始族群不夠可靠——實測過，種子在整個
@@ -2055,7 +2079,8 @@ class MissionOptimizer:
         """fast_fitness_evaluator 的 scalars 陣列。索引佈局要跟 evaluator 開頭逐格對齊：
         0-12 環境/計分常數、13 lambert_max_revs、14/15 SPLIT_AWARE_SEARCH、16-18 C4 終端棒
         拆後估計 (旗標、K、overhead)、19 總 Δv 上限 (km/s，0 = 沒有)、20 拆棒器能處理的單棒
-        上限 (km/s，排位賽模式才用)、21 檢查點間距 (0=關)、22 檢查點數。
+        上限 (km/s，排位賽模式才用)、21 檢查點間距 (0=關)、22 檢查點數、23 滑行 rtol。
+        這裡的 rtol 永遠是精確值；只有 L-SHADE 搜尋另用搜尋容差。
         只准在這裡組——原本三處各抄一份，改一處忘兩處。"""
         return np.array([
             self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL,
@@ -2068,7 +2093,14 @@ class MissionOptimizer:
             self.SPLIT_LIMIT,
             0.0 if self.ephem is None else self.ephem[0],
             0.0 if self.ephem is None else self.ephem[1].shape[0] // 2,
+            1e-12,
         ], dtype=np.float64)
+
+    def _search_scalar_params(self):
+        """搜尋用的獨立副本；不改變精修、重播及驗證使用的精確參數。"""
+        scalars = self._scalar_params().copy()
+        scalars[23] = self.SEARCH_COAST_RTOL
+        return scalars
 
     def _fitness_wrapper(self, num_burns):
         """包一個給定燃燒次數的目標函式 (= -分數)，方便在最佳化流程外面單獨評估。"""

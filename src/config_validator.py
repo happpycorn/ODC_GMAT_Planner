@@ -226,6 +226,10 @@ def _validate_strategy(strategy_cfg, errors: list):
         v = strategy_cfg["EPHEM_CACHE_STEP_SEC"]
         if not (_is_number(v) and v > 0):
             errors.append("strategy.EPHEM_CACHE_STEP_SEC 必須是有限的正數（預設 60 秒）")
+    if "SEARCH_COAST_RTOL" in strategy_cfg:
+        v = strategy_cfg["SEARCH_COAST_RTOL"]
+        if not (_is_number(v) and 0 < v <= 1e-6):
+            errors.append("strategy.SEARCH_COAST_RTOL 必須是有限的正數且 <=1e-6（預設 1e-12）")
 
     required = ["GRAVITY_DEGREE", "MISS_TOLERANCE_KM"]
     missing = [f for f in required if f not in strategy_cfg]

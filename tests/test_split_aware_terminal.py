@@ -81,7 +81,7 @@ sp16 = off._scalar_params()[:16].copy()
 vp = np.vstack([off.A_r0, off.A_v0, off.B_r0, off.B_v0])
 f16 = fast_fitness_evaluator(X, N, sp16, vp)
 check("旗標關時與舊 16 格 scalars 逐位元相同", f16 == off._fitness_wrapper(N)(X))
-check("_scalar_params 是 23 格（19/20 = Δv 上限、21/22 = 星曆間距/點數）", off._scalar_params().shape == (23,))
+check("_scalar_params 是 24 格（19/20 = Δv 上限、21/22 = 星曆間距/點數、23 = 精確滑行容差）", off._scalar_params().shape == (24,) and off._scalar_params()[23] == 1e-12)
 check("初賽模式（沒設總 Δv 上限）K 維持 5 倍", off.SPLIT_AWARE_TERMINAL_MAX_FACTOR == 5.0)
 
 m = off.mission_metrics(X, N)
