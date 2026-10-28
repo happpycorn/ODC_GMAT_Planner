@@ -1,0 +1,156 @@
+{
+  "hyper_far": {
+    "source": "outputs/runs/macbench-hf-s1/winner_presplit_seed1.json",
+    "config": {
+      "_comment_scenario": "Far-periapsis hyperbolic flyby. ECC=1.2, periapsis 25,000 km (SMA=-125000). Energy floor is 1,887 m/s - above the 1,500 per-burn cap - so 2+ burns are PROVABLY required. T_MAX=162,570s, 18x longer than hyper_fast, so this is the slow end of the spectrum while hyper_fast is the fast end. Cheapest single burn on the 34x34 grid is 2,686 m/s. From sweep_hyperbolic_limits.py.",
+      "_comment_tmax": "T_MAX_SEC = 2x time-to-periapsis, same rule as the other hyperbolic cases. INVENTED - not an official number.",
+      "orbit_A": {
+        "SMA": -125000.0,
+        "ECC": 1.2,
+        "INC": 30.0,
+        "RAAN": 0.0,
+        "AOP": 0.0,
+        "TA": 229.67
+      },
+      "orbit_B": {
+        "SMA": 7000.0,
+        "ECC": 0.001,
+        "INC": 0.0,
+        "RAAN": 0.0,
+        "AOP": 0.0,
+        "TA": 0.0
+      },
+      "rules": {
+        "MAX_DV_MPS": 250.0,
+        "MIN_MANEUVER_INTERVAL_SEC": 100.0,
+        "T_MAX_SEC": 162570.0,
+        "k_t": 2e-05,
+        "C_t": 100000.0,
+        "k_v": 0.0015,
+        "C_v": 2500.0,
+        "MAX_TOTAL_DV_MPS": 3000.0
+      },
+      "strategy": {
+        "GRAVITY_DEGREE": 4,
+        "MISS_TOLERANCE_KM": 5.0,
+        "SPLIT_FAST_FD": true,
+        "SPLIT_WORKERS": 3,
+        "SPLIT_MULTISTART": [
+          0,
+          0.75,
+          1
+        ],
+        "SPLIT_PRUNE_REOPT_MPS": 1.0,
+        "SPLIT_WALL_BUDGET_SEC": 600,
+        "LAMBERT_MAX_REVS": 4
+      },
+      "optimization": {
+        "MAX_BURNS": [
+          2,
+          3
+        ],
+        "MAXITER": 600,
+        "POPSIZE": 20,
+        "NUM_THREADS": 5,
+        "MAX_EARLY_STOP": 40,
+        "TOL": 0.02,
+        "SEED": 1
+      }
+    },
+    "t0": 47843.23654619262,
+    "leading_dvs": [
+      [
+        -0.0,
+        0.0,
+        -0.0
+      ]
+    ],
+    "leading_coasts": [
+      1436.8075951859282
+    ],
+    "terminal_coast": 31975.67400027359,
+    "target": [
+      24996.550436354915,
+      -4.505361918886124,
+      -2.5749941696941954
+    ]
+  },
+  "ranking_round": {
+    "source": "outputs/runs/macbench-s1/winner_presplit_seed1.json",
+    "config": {
+      "_comment_scenario": "排位賽規則範本（rules/排位賽規則_20261006.pdf，摘要 docs/RANKING_ROUND_RULES_20261006.md）。真的規則數字只有 rules.MAX_DV_MPS=250（超過 250+1e-5 m/s 直接失格）、rules.MAX_TOTAL_DV_MPS=3000（總 Δv 超過失格）、MIN_MANEUVER_INTERVAL_SEC=100（違規每次扣 10 分）。",
+      "_comment_placeholders": "佔位值！orbit_A / orbit_B / T_MAX_SEC / k_t / C_t / k_v / C_v 全部照抄 configs/shared/hyperbolic_smoke.json 的雙曲線冒煙情境，不是官方數字——A 的軌道、任務邊界（T_max）和計分參數要開賽當下才公布，拿到後整組換掉（k_v/C_v 官方給 km/s 制，要換成 m/s）。",
+      "_comment_burns": "這組佔位軌道最省單棒 1257 m/s，250 m/s 上限下至少要拆成 6 棒；DE 先找路線、靠 AUTO_SPLIT_LEGALIZE 拆棒。這麼多棒的拆棒收斂與執行時間還沒驗過（另案），MAX_BURNS 先沿用冒煙情境。",
+      "_comment_split": "拆棒設定（docs/SPLITTER_SPEED_20261020.md）：SPLIT_FAST_FD 跟預設逐位元相同、快 4–5 倍；SPLIT_MULTISTART 把 hyper_far 的拆後分數從 81.15–82.24 收到 82.11–82.58；SPLIT_PRUNE_REOPT_MPS 清掉 <1 m/s 的空棒；SPLIT_WALL_BUDGET_SEC 是保險（拆不完就交目前最好的合法解，不可逐位元重現）。SPLIT_WORKERS=3 是 8 實體核心、3 顆種子同時跑的配置；單跑可以設 3–4。並行種子時每個行程要設不同的 optimization.SEED（null 會讓搜尋開多執行緒，三顆互搶核心）。",
+      "orbit_A": {
+        "SMA": -50000.0,
+        "ECC": 1.2,
+        "INC": 30.0,
+        "RAAN": 0.0,
+        "AOP": 0.0,
+        "TA": 230.0
+      },
+      "orbit_B": {
+        "SMA": 7000.0,
+        "ECC": 0.001,
+        "INC": 0.0,
+        "RAAN": 0.0,
+        "AOP": 0.0,
+        "TA": 0.0
+      },
+      "rules": {
+        "MAX_DV_MPS": 250.0,
+        "MAX_TOTAL_DV_MPS": 3000.0,
+        "MIN_MANEUVER_INTERVAL_SEC": 100.0,
+        "T_MAX_SEC": 40000.0,
+        "k_t": 0.0001,
+        "C_t": 25000.0,
+        "k_v": 0.002,
+        "C_v": 1500.0
+      },
+      "strategy": {
+        "GRAVITY_DEGREE": 4,
+        "MISS_TOLERANCE_KM": 5.0,
+        "SPLIT_FAST_FD": true,
+        "SPLIT_WORKERS": 3,
+        "SPLIT_MULTISTART": [
+          0,
+          0.75,
+          1
+        ],
+        "SPLIT_PRUNE_REOPT_MPS": 1.0,
+        "SPLIT_WALL_BUDGET_SEC": 600,
+        "LAMBERT_MAX_REVS": 0
+      },
+      "optimization": {
+        "MAX_BURNS": [
+          1,
+          2
+        ],
+        "MAXITER": 1000,
+        "POPSIZE": 20,
+        "NUM_THREADS": -1,
+        "MAX_EARLY_STOP": 40,
+        "TOL": 0.02,
+        "SEED": 1
+      }
+    },
+    "t0": 2628.0818999585886,
+    "leading_dvs": [
+      [
+        -0.07448458568141239,
+        -0.2365450098167964,
+        0.0015826644061464527
+      ]
+    ],
+    "leading_coasts": [
+      12914.945066842332
+    ],
+    "terminal_coast": 4429.540676033379,
+    "target": [
+      9995.732948217166,
+      -7.6240631714343685,
+      -1.76789854993374
+    ]
+  }
+}

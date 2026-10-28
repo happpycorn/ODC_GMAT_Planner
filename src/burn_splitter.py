@@ -25,7 +25,8 @@ import numpy as np
 from scipy.optimize import minimize
 from scipy.optimize._numdiff import approx_derivative
 
-from src.core_math import (propagate_dop853, check_constraints, fast_norm,
+from src.core_math import (propagate_dop853, propagate_dop853_stm, fast_dynamics,
+                           check_constraints, fast_norm,
                            reaches_perigee, lambert_izzo, fixed_orbit_state,
                            initial_wait_min_radius)
 from src.scorer import calculate_score
@@ -293,6 +294,108 @@ def _simulate_free_reuse(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0, ephem
     }
 
 
+def _perigee_gradient(r, v, mu):
+    """Gradient of the selected _osc_perigee branch, with no propagation.
+
+    For bound/incoming orbits use rp = |r x v|^2 / (mu*(1+e)),
+    algebraically equal to a*(1-e) but stable near parabolic energy.
+    At an exactly circular orbit choose zero for the eccentricity norm's
+    subgradient. The outgoing unbound branch is just |r|.
+    """
+    rr = fast_norm(r)
+    v2 = np.dot(v, v)
+    q = np.dot(r, v)
+    if v2/2.0 - mu/rr >= 0.0 and q >= 0.0:
+        return np.concatenate((r/rr, np.zeros(3)))
+    u = v2 - mu/rr
+    ev = (u*r - q*v)/mu
+    e = fast_norm(ev)
+    de = np.zeros(6)
+    if e > 0.0:
+        de[:3] = (ev/e) @ (u*np.eye(3) + mu*np.outer(r, r)/rr**3 - np.outer(v, v))/mu
+        de[3:] = (ev/e) @ (2.0*np.outer(r, v) - np.outer(v, r) - q*np.eye(3))/mu
+    h = np.cross(r, v)
+    h2 = np.dot(h, h)
+    dh2 = np.concatenate((2.0*(v2*r - q*v), 2.0*(rr**2*v - q*r)))
+    return dh2/(mu*(1.0+e)) - h2/(mu*(1.0+e)**2)*de
+
+
+def _simulate_free_stm(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0, ephem=None):
+    """Metrics and their free-ECI Jacobians from one STM pass through the burns.
+
+    S = d(r,v)/dx. A kick adds [0;I] to its three columns; a coast maps
+    S <- Phi S and adds f(y_end) to its duration column. Waiting changes
+    the first burn's state by f(y_wait); target motion is v_A dT/dx.
+    Piecewise radius constraints differentiate their selected branch only.
+    """
+    t0 = float(x[0])
+    coasts = x[1:1 + N]
+    dvs = x[1 + N:].reshape(N, 3)
+    nx = len(x)
+    r, v = fixed_orbit_state(B_r0, B_v0, t0, mu, j2, j3, j4, re, ephem, 1)
+    S = np.zeros((6, nx))
+    S[:, 0] = fast_dynamics(0.0, np.concatenate((r, v)), mu, j2, j3, j4, re)
+    total_dv = 0.0
+    dv_mags = np.empty(N)
+    dmag = np.zeros((N, nx))
+    arc_minr = np.empty(N + 1)
+    darc = np.zeros((N + 1, nx))
+    arc_minr[-1] = initial_wait_min_radius(B_r0, B_v0, t0, r, mu, ephem)
+    # All other candidates (initial radius, osculating perigee, completed
+    # ephemeris prefix) are constant on the selected waiting-arc branch.
+    if arc_minr[-1] == fast_norm(r):
+        darc[-1, 0] = np.dot(r / fast_norm(r), v)
+    for i in range(N):
+        v = v + dvs[i]
+        k = 1 + N + 3*i
+        S[3:, k:k+3] += np.eye(3)
+        dv_mags[i] = fast_norm(dvs[i])
+        total_dv += dv_mags[i]
+        if dv_mags[i] > 0.0:
+            dmag[i, k:k+3] = dvs[i] / dv_mags[i]
+        # At zero delta-v choose the zero subgradient of its norm.
+        dt = float(coasts[i])
+        r_end, v_end, phi = propagate_dop853_stm(r, v, dt, 60.0, mu, j2, j3, j4, re)
+        S_end = phi @ S
+        S_end[:, 1+i] += fast_dynamics(0.0, np.concatenate((r_end, v_end)),
+                                     mu, j2, j3, j4, re)
+        if reaches_perigee(r, v, mu, dt):
+            arc_minr[i] = _osc_perigee(r, v, mu)
+            darc[i] = _perigee_gradient(r, v, mu) @ S
+        elif fast_norm(r) <= fast_norm(r_end):
+            arc_minr[i] = fast_norm(r)
+            darc[i] = (r / arc_minr[i]) @ S[:3]
+        else:
+            arc_minr[i] = fast_norm(r_end)
+            darc[i] = (r_end / arc_minr[i]) @ S_end[:3]
+        r, v, S = r_end, v_end, S_end
+    T_team = t0 + float(np.sum(coasts))
+    dT = np.zeros(nx)
+    dT[:1+N] = 1.0
+    r_A, v_A = fixed_orbit_state(A_r0, A_v0, T_team, mu, j2, j3, j4, re, ephem, 0)
+    delta = r - r_A
+    miss = fast_norm(delta)
+    dmiss = (delta / miss) @ (S[:3] - np.outer(v_A, dT)) if miss > 0.0 else np.zeros(nx)
+    return ({"r_final": r, "T_team": T_team, "total_dv": total_dv,
+             "miss_km": miss, "dv_mags": dv_mags, "arc_minr": arc_minr},
+            {"r_final": S[:3], "T_team": dT, "total_dv": np.sum(dmag, axis=0),
+             "miss_km": dmiss, "dv_mags": dmag, "arc_minr": darc})
+
+
+def _nlp_stm_jacobian(m, dm, k_t, C_t, k_v, C_v):
+    """Derivative of the unchanged scorer and _nlp_stack, including its clamps."""
+    dobj = np.zeros_like(dm["T_team"])
+    if m["miss_km"] > 5.0:
+        dobj += 0.5 * math.exp(-(m["miss_km"] - 5.0) / 100.0) * dm["miss_km"]
+    for value, deriv, k, C in ((m["T_team"], dm["T_team"], k_t, C_t),
+                                (m["total_dv"]*1000.0, dm["total_dv"]*1000.0, k_v, C_v)):
+        z = k * (value - C)
+        if z < 700.0:
+            q = 1.0 / (1.0 + math.exp(z))
+            dobj += 25.0 * k * q * (1.0 - q) * deriv
+    return np.ascontiguousarray(np.vstack((dobj, -dm["dv_mags"], dm["arc_minr"], -dm["miss_km"])))
+
+
 # ── 快速有限差分（SPLITTER_SPEED，2026-10-19；數據見 docs/SPLITTER_SPEED_20261020.md）────────────
 # SLSQP 沒給 jac 時，目標函數與三組約束**各自**做一次 2-point 有限差分：同一個 x 附近同樣的
 # 4N+1 個擾動點，被 4 個函式各算一遍，而 joint_nlp_split 的 metrics 快取只存一筆，全部 miss——
@@ -371,7 +474,7 @@ class FDPool:
 def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
                     A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v,
                     T_max, miss_tol, maxiter=1000, fd_map=None, deadline=None,
-                    require_feasible=False, ephem=None):
+                    require_feasible=False, ephem=None, jacobian="fd"):
     """對一個 N 棒暖啟 `x0` (free-ECI 佈局) 做 SLSQP 聯合優化，回傳優化後的解與指標。
 
     目標 = -calculate_score(miss, T_team, 總Δv, penalty=0)；約束 (ineq ≥0)：每棒 ≤cap、
@@ -387,6 +490,8 @@ def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
       點常貼著約束邊界、差 1e-3 量級（miss 3.501 vs 3.5、單棒 1498.01 vs 1498.00），用真實邊界
       求解時這種擦邊解會被判不可行丟掉、退回差 0.01 分的 greedy 暖啟——拆後分數的抖動主因。
     """
+    if jacobian not in ("fd", "stm"):
+        raise ValueError("jacobian must be fd or stm")
     x0 = np.asarray(x0, dtype=np.float64)
     _cache = {}
 
@@ -420,7 +525,7 @@ def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
             {"type": "ineq", "fun": c_peri},
             {"type": "ineq", "fun": c_miss}]
     jac = None
-    if fd_map is not None:
+    if fd_map is not None or jacobian == "stm":
         # 快速路徑（見 FDPool 上方說明）：值與 Jacobian 都從同一個疊合向量切出來，逐位元等價。
         lb_a, ub_a = np.array(lb, dtype=np.float64), np.array(ub, dtype=np.float64)
         _scache, _jcache = {}, {}
@@ -440,8 +545,13 @@ def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
                 _jcache.clear()
                 # approx_derivative 回傳 J_transposed.T（F-order），J[0] 是有 stride 的 view；
                 # scipy 1.16 的 SLSQP C 核心直接讀 g 的記憶體、不看 stride，會讀到錯的數字。
-                _jcache[key] = np.ascontiguousarray(
-                    fd_map.jacobian(N, xc, stack(xc), (lb_a, ub_a)))
+                if jacobian == "stm":
+                    m, dm = _simulate_free_stm(xc, N, mu, j2, j3, j4, re,
+                                               A_r0, A_v0, B_r0, B_v0, ephem=ephem)
+                    _jcache[key] = _nlp_stm_jacobian(m, dm, k_t, C_t, k_v, C_v)
+                else:
+                    _jcache[key] = np.ascontiguousarray(
+                        fd_map.jacobian(N, xc, stack(xc), (lb_a, ub_a)))
             return _jcache[key]
 
         def objective(x):
@@ -546,11 +656,13 @@ def legalize_route(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
                    A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, T_max,
                    miss_tol, n_span=1, max_seg=14, maxiter=1000, slot_after_capped=True,
                    fast_fd=False, workers=1, starts=None, prune_reopt_tol=None,
-                   prune_reopt_maxiter=None, wall_budget=None, ephem=None):
+                   prune_reopt_maxiter=None, wall_budget=None, ephem=None, jacobian="fd"):
     """Stage 2 對外單一入口（見 `_legalize_route_core`）。
 
     `slot_after_capped=True`（預設）先用 `_slot_after_capped` 重排前導棒：丟掉無用空燒、在貼 cap
     的前導棒後補空位給 NLP 分擔溢出量；重排版拆不出合法解才退回原樣。
+
+    `jacobian="stm"` 使用 STM 鏈鎖律；預設 "fd" 沿用原本梯度路徑。
 
     SPLITTER_SPEED（2026-10-19）的開關，預設全關＝舊路徑逐位元不變：
     - `fast_fd=True`：joint NLP 改用疊合有限差分（逐位元等價、軌跡少算 3/4，見 `FDPool`）。
@@ -568,10 +680,16 @@ def legalize_route(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
       其他起點、剔空棒重最佳化）全部略過，回傳到目前為止最好的 feasible 解。**結果跟機器快慢有關、
       不可逐位元重現**；沒觸發時（拆得比預算快）跟沒設一樣。
     """
+    if jacobian not in ("fd", "stm"):
+        raise ValueError("jacobian must be fd or stm")
+    # STM parallelizes starts; it never opens a finite-difference worker pool.
+    if jacobian == "stm":
+        fast_fd = False
     kw = dict(cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3, j4=j4, re=re,
               min_periapsis=min_periapsis, max_revs=max_revs, A_r0=A_r0, A_v0=A_v0,
               B_r0=B_r0, B_v0=B_v0, k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v, T_max=T_max,
-              miss_tol=miss_tol, n_span=n_span, max_seg=max_seg, maxiter=maxiter, ephem=ephem)
+              miss_tol=miss_tol, n_span=n_span, max_seg=max_seg, maxiter=maxiter, ephem=ephem,
+              jacobian=jacobian)
     if (not fast_fd and starts is None and prune_reopt_tol is None and wall_budget is None
             and workers <= 1):
         return _legalize_route_slots(t0, leading_dvs, leading_coasts, terminal_coast, target,
@@ -580,6 +698,8 @@ def legalize_route(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
     ctx = dict(mu=mu, j2=j2, j3=j3, j4=j4, re=re, A_r0=A_r0, A_v0=A_v0, B_r0=B_r0, B_v0=B_v0,
                cap=cap, min_periapsis=min_periapsis, miss_tol=miss_tol,
                k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v, ephem=ephem)
+    if jacobian == "stm" and workers > 1:
+        propagate_dop853_stm(B_r0, B_v0, 1.0, 60.0, mu, j2, j3, j4, re)
     if fast_fd or workers > 1:
         # 開行程池前先在本行程跑一次模擬，確保 fork 時 numba 函式都已編譯（子行程直接繼承）。
         _simulate_free_reuse(np.concatenate([[float(t0)], [float(terminal_coast)], np.zeros(3)]), 1,
@@ -622,7 +742,7 @@ def legalize_route(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
                              cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3, j4=j4, re=re,
                              min_periapsis=min_periapsis, A_r0=A_r0, A_v0=A_v0, B_r0=B_r0,
                              B_v0=B_v0, k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v, T_max=T_max,
-                             miss_tol=miss_tol, ephem=ephem)
+                             miss_tol=miss_tol, ephem=ephem, jacobian=jacobian)
             if pr is not None and pr["score"] >= best["score"] - _PRUNE_REOPT_SLACK:
                 pr.update({k: best[k] for k in ("start_shift_sec", "budget_hit") if k in best})
                 best = pr
@@ -690,7 +810,7 @@ def _shifted_routes(t0, leading_dvs, leading_coasts, terminal_coast, target, sta
 
 
 def prune_reopt(x, N, *, tol, maxiter, fd_map, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
-                A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, T_max, miss_tol, ephem=None):
+                A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, T_max, miss_tol, ephem=None, jacobian="fd"):
     """剔除 |Δv| < tol 的棒後對剩下的棒數重跑 joint NLP（SPLITTER_SPEED 3，見 legalize_route）。
     候選 = 剔除版本身、剔除版的 NLP 結果；回傳 feasible 中分數最高者（`_eval_free` 格式），
     沒東西可剔或都不可行回 None。"""
@@ -711,7 +831,8 @@ def prune_reopt(x, N, *, tol, maxiter, fd_map, cap, min_coast, mu, j2, j3, j4, r
     cands.append(joint_nlp_split(x_nlp, Nd, cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3, j4=j4,
                                  re=re, min_periapsis=min_periapsis, A_r0=A_r0, A_v0=A_v0,
                                  B_r0=B_r0, B_v0=B_v0, k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v,
-                                 T_max=T_max, miss_tol=miss_tol, maxiter=maxiter, fd_map=fd_map, ephem=ephem))
+                                 T_max=T_max, miss_tol=miss_tol, maxiter=maxiter, fd_map=fd_map, ephem=ephem,
+                                 jacobian=jacobian))
     best = None
     for cand in cands:
         if cand["feasible"] and (best is None or cand["score"] > best["score"]):
@@ -755,7 +876,7 @@ def _legalize_route_core(t0, leading_dvs, leading_coasts, terminal_coast, target
                          cap, min_coast, mu, j2, j3, j4, re, min_periapsis, max_revs,
                          A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, T_max,
                          miss_tol, n_span=1, max_seg=14, maxiter=1000, fd_map=None,
-                         deadline=None, ephem=None):
+                         deadline=None, ephem=None, jacobian="fd"):
     """Stage 2 核心：吃一條「前導合法棒 + 一發(可能超標的)終端攔截」的 route，
     回傳**合法化 + joint-NLP 優化後**的最佳解（free-ECI），或 None（拆不出）。
 
@@ -815,7 +936,8 @@ def _legalize_route_core(t0, leading_dvs, leading_coasts, terminal_coast, target
                                          C_v=C_v, T_max=T_max, miss_tol=miss_tol, maxiter=maxiter,
                                          fd_map=fd_map, deadline=deadline,
                                          require_feasible=(best is None
-                                                           and not cands[0]["feasible"]), ephem=ephem))
+                                                           and not cands[0]["feasible"]), ephem=ephem,
+                                         jacobian=jacobian))
         for cand in cands:
             if cand["feasible"] and (best is None or cand["score"] > best["score"]):
                 best = cand

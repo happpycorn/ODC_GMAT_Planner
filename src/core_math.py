@@ -397,6 +397,138 @@ def propagate_dop853(
 
     return r_final, v_final
 
+@njit(fastmath=True)
+def acceleration_jacobian(r, mu, j2, j3, j4, re):
+    """Gravity gradient: analytic two-body + central differences of J2--J4.
+
+    h = cbrt(eps)*|r| balances cancellation and truncation in the small
+    perturbation alone; the dominant two-body term is never differenced.
+    """
+    rr = math.sqrt(np.dot(r, r))
+    g = np.empty((3, 3))
+    for k in range(3):
+        for i in range(3):
+            g[i, k] = mu / rr**3 * (3.0*r[i]*r[k]/rr**2 - (1.0 if i == k else 0.0))
+    if j2 != 0.0 or j3 != 0.0 or j4 != 0.0:
+        h = 6.055454452393343e-6 * rr
+        for k in range(3):
+            rp, rm = r.copy(), r.copy()
+            rp[k] += h
+            rm[k] -= h
+            g[:, k] += (perturbation_accel(rp, mu, j2, j3, j4, re)
+                        - perturbation_accel(rm, mu, j2, j3, j4, re)) / (2.0*h)
+    return g
+
+
+@njit(fastmath=True)
+def _stm_rhs(r, phi, mu, j2, j3, j4, re):
+    out = np.empty((6, 6))
+    out[:3] = phi[3:]
+    out[3:] = acceleration_jacobian(r, mu, j2, j3, j4, re) @ phi[:3]
+    return out
+
+
+@njit(fastmath=True)
+def _dop853_stm_step(state, phi, K, h, mu, j2, j3, j4, re):
+    """Remaining 36 components of the 42-D RK step, using its state stages.
+
+    Keeping the original six-component step intact also keeps its floating
+    point arithmetic and error controller independent of STM magnitudes.
+    Rejected steps need no STM calculation.
+    """
+    L = np.empty((DOP853_N_STAGES, 6, 6))
+    L[0] = _stm_rhs(state[:3], phi, mu, j2, j3, j4, re)
+    for s in range(1, DOP853_N_STAGES):
+        dy = np.zeros(6)
+        dp = np.zeros((6, 6))
+        for j in range(s):
+            a = DOP853_A[s, j]
+            if a != 0.0:
+                dy += a * K[j]
+                dp += a * L[j]
+        dy *= h
+        stage = state + dy
+        L[s] = _stm_rhs(stage[:3], phi + h*dp, mu, j2, j3, j4, re)
+    dp_final = np.zeros((6, 6))
+    for j in range(DOP853_N_STAGES):
+        dp_final += DOP853_B[j] * L[j]
+    return phi + h*dp_final
+
+
+@njit(fastmath=True)
+def propagate_dop853_stm(
+    r0: np.ndarray, v0: np.ndarray, tof: float, dt0: float,
+    mu: float, j2: float, j3: float, j4: float, re: float,
+    rtol: float = 1e-12, atol: float = 1e-9
+):
+    """Propagate (r,v,Phi), Phi(0)=I, with the original state-only controller.
+
+    The six state components use dop853_step unchanged; the 36 variational
+    components use the same RK stages on each accepted step. Tolerances,
+    zero/negative-TOF behavior and step sequence match propagate_dop853.
+    """
+    state = np.empty(6, dtype=np.float64)
+    state[0], state[1], state[2] = r0[0], r0[1], r0[2]
+    state[3], state[4], state[5] = v0[0], v0[1], v0[2]
+
+    phi = np.eye(6)
+    if tof <= 0.0:
+        r_final = np.array([state[0], state[1], state[2]], dtype=np.float64)
+        v_final = np.array([state[3], state[4], state[5]], dtype=np.float64)
+        return r_final, v_final, phi
+
+    t = 0.0
+    h = dt0 if dt0 > 0.0 else 60.0
+    h = min(h, tof)
+
+    min_h = 1e-8
+    safety = 0.9
+    min_factor = 0.2
+    max_factor = 10.0
+    error_exponent = -1.0 / 8.0  # error_estimator_order=7 -> -1/(7+1)
+    max_step_attempts = 100
+
+    while t < tof:
+        h = min(h, tof - t)
+        if h < min_h:
+            h = min_h
+
+        accepted = False
+        attempts = 0
+        step_rejected = False
+        while not accepted and attempts < max_step_attempts:
+            y_new, K = dop853_step(t, state, h, mu, j2, j3, j4, re)
+
+            scale = np.empty(6, dtype=np.float64)
+            for i in range(6):
+                scale[i] = atol + rtol * max(abs(state[i]), abs(y_new[i]))
+
+            e_norm = dop853_error_norm(K, h, scale)
+
+            if e_norm < 1.0 or h <= min_h:
+                if e_norm == 0.0:
+                    factor = max_factor
+                else:
+                    factor = min(max_factor, safety * e_norm**error_exponent)
+                if step_rejected:
+                    factor = min(1.0, factor)
+                phi = _dop853_stm_step(state, phi, K, h, mu, j2, j3, j4, re)
+                state = y_new
+                t += h
+                accepted = True
+                h = h * factor
+            else:
+                h = h * max(min_factor, safety * e_norm**error_exponent)
+                step_rejected = True
+                attempts += 1
+                if h < min_h:
+                    h = min_h
+
+    r_final = np.array([state[0], state[1], state[2]], dtype=np.float64)
+    v_final = np.array([state[3], state[4], state[5]], dtype=np.float64)
+
+    return r_final, v_final, phi
+
 @njit(cache=True, fastmath=True)
 def ephem_state(table_t0, table_dt, table_states, t, mu, j2, j3, j4, re):
     """查固定軌道的檢查點，僅用原 DOP853 補積分，完全不插值。
