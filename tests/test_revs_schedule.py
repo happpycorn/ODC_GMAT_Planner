@@ -49,23 +49,27 @@ def optimizers():
     return result
 
 
-thread_errors = []
-original_excepthook = threading.excepthook
+def main():
+    # spawn 啟動子行程時會重新 import 這個檔案；搜尋只能在主行程跑，否則子行程又開子行程。
+    thread_errors = []
+    original_excepthook = threading.excepthook
+
+    def capture_thread_error(args):
+        thread_errors.append(args.exc_value)
+
+    threading.excepthook = capture_thread_error
+    try:
+        with threadpool_limits(limits=1, user_api="blas"):
+            sequential = [opt.run_study() for opt in optimizers()]
+            parallel = _run_studies_unified((0, 4), optimizers(), seed_set=True)
+    finally:
+        threading.excepthook = original_excepthook
+
+    assert not thread_errors, f"背景進度執行緒拋錯：{thread_errors!r}"
+    assert all(isinstance(result[2], dict) for result in sequential), "測試設定必須產生有效解"
+    assert exact(sequential) == exact(parallel), "共用排程改變了固定 SEED 的解或浮點位元"
+    print("  ✅ REVS=0/4 共用排程與逐趟搜尋的回傳值逐位元相同")
 
 
-def capture_thread_error(args):
-    thread_errors.append(args.exc_value)
-
-
-threading.excepthook = capture_thread_error
-try:
-    with threadpool_limits(limits=1, user_api="blas"):
-        sequential = [opt.run_study() for opt in optimizers()]
-        parallel = _run_studies_unified((0, 4), optimizers(), seed_set=True)
-finally:
-    threading.excepthook = original_excepthook
-
-assert not thread_errors, f"背景進度執行緒拋錯：{thread_errors!r}"
-assert all(isinstance(result[2], dict) for result in sequential), "測試設定必須產生有效解"
-assert exact(sequential) == exact(parallel), "共用排程改變了固定 SEED 的解或浮點位元"
-print("  ✅ REVS=0/4 共用排程與逐趟搜尋的回傳值逐位元相同")
+if __name__ == "__main__":
+    main()
