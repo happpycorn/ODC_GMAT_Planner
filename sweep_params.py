@@ -19,7 +19,7 @@ run.log（各棒數案例跑了幾代），整理成一行寫進 results.jsonl�
       "name": "budget_v1",                       # 輸出到 outputs/sweeps/<name>/
       "scenarios": [
         {"name": "contest", "config": "configs/shared/contest.json"},
-        {"name": "contest_w2", "config": "configs/shared/contest.json",
+        {"name": "contest_w2", "config": "configs/shared/contest.json", "seeds": [0, 1],
          "overrides": {"rules.k_t": 0.001, "rules.C_t": 8000}}     # 同幾何換權重
       ],
       "seeds": [0, 1, 2, 3, 4],
@@ -29,6 +29,7 @@ run.log（各棒數案例跑了幾代），整理成一行寫進 results.jsonl�
       "variants": {"revs_off": {"strategy.REVS_ENSEMBLE": false}} # 或/且：具名參數組
     }
 覆寫的套用順序：情境 config → base → 情境 overrides → 參數組 → optimization.SEED。
+情境可選填 seeds（頂層 seeds 的子集）；省略時沿用全部 seeds。
 
 用法：
     uv run python sweep_params.py sweeps/budget_v1.json --dry-run    # 列出要跑哪些、共幾次
@@ -115,6 +116,8 @@ def plan_jobs(spec):
     jobs = []
     for seed in spec["seeds"]:
         for sc in scenarios:
+            if seed not in sc.get("seeds", spec["seeds"]):
+                continue
             for vname, vov in variants:
                 jobs.append({"scenario": sc["name"], "variant": vname, "seed": int(seed),
                              "config": sc["config"],
@@ -534,7 +537,9 @@ def main():
             mark = {"ok": "✅"}.get(done.get(job_key(j)), "❌" if job_key(j) in done else "  ")
             print(f"{mark} {job_key(j)}")
         n_v = len(expand_variants(spec))
-        print(f"\n{len(spec['scenarios'])} 情境 × {n_v} 參數組 × {len(spec['seeds'])} SEED = {len(jobs)} 次"
+        seed_note = ("各情境指定 SEED" if any("seeds" in sc for sc in spec["scenarios"])
+                     else f"{len(spec['seeds'])} SEED")
+        print(f"\n{len(spec['scenarios'])} 情境 × {n_v} 參數組 × {seed_note} = {len(jobs)} 次"
               f"（已完成 {sum(v == 'ok' for v in done.values())}）")
         return
     try:

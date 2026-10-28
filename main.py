@@ -583,6 +583,9 @@ def primer_guided_research(config, burns, times, mission_info, optimizer):
     seed = insert_node_seed(np.asarray(mission_info["x"], dtype=np.float64), N,
                             warc, frac, optimizer.T_max, optimizer.MIN_COAST_TIME)
 
+    if strat.get("PRIMER_RESEARCH_MODE", "full") == "fast":
+        return _primer_fast_research(cfg2, seed, burns, times, mission_info, optimizer)
+
     b2, t2, mi2, opt2 = run_study_over_revs(cfg2, external_seeds={N + 1: [seed]})
     if b2 is None or not isinstance(mi2, dict):
         log.info("🧭 primer 重搜這趟沒跑出可用解，沿用原解。")
@@ -601,6 +604,58 @@ def primer_guided_research(config, burns, times, mission_info, optimizer):
     log.info(f"🧭 primer 重搜未勝過原解（重搜 {mi2['score']:.4f} vs 原 "
              f"{mission_info['score']:.4f}），沿用原解。")
     return None
+
+
+def _primer_fast_research(cfg2, seed, burns, times, mission_info, optimizer):
+    """C2 fast：插棒種子局部精修 → 繼承贏家 REVS 的短 DE → 同尺挑三者。"""
+    n = int(mission_info["num_burns"]) + 1
+    st = cfg2["strategy"]
+    # 插棒向量繼承原贏家的 Lambert 路線；局部與短全域都用同一趟 REVS。
+    st["REVS_ENSEMBLE"] = False
+    st["LAMBERT_MAX_REVS"] = optimizer.LAMBERT_MAX_REVS
+    candidates = [("original", (burns, times, mission_info, optimizer))]
+    seeds = [seed]
+    start = time.monotonic()
+    local_opt = MissionOptimizer(cfg2)
+    ctx = (threadpool_limits(limits=1, user_api="blas")
+           if cfg2["optimization"].get("SEED") is not None else contextlib.nullcontext())
+    try:
+        with ctx, patch_report_level(local_opt):
+            # SLSQP 有顯式可行性約束，且能從插入的零 Δv 節點移動；再沿用正式
+            # refine_trajectory 的 L-BFGS-B、安全回退、§6 polish 與任務重播。
+            refined = local_opt._generate_nlp_refined_seed_candidates(n, 1, [seed])
+            x0 = refined[0] if refined else seed
+            b, t, mi = local_opt.refine_trajectory(x0, n)
+        if b is not None and t is not None and isinstance(mi, dict):
+            candidates.append(("local", (b, t, mi, local_opt)))
+            if mi.get("x") is not None:
+                seeds.append(np.asarray(mi["x"], dtype=np.float64).copy())
+    except Exception as exc:
+        log.warning(f"🧭 primer fast 局部精修失敗，繼續短重搜：{exc}")
+    local_sec = time.monotonic() - start
+
+    frac = st.get("PRIMER_RESEARCH_ITER_FRAC", 0.33)
+    budget = cfg2["optimization"]["MAXITER"]
+    cfg2["optimization"]["MAXITER"] = (
+        {k: max(1, int(v * frac)) for k, v in budget.items()}
+        if isinstance(budget, dict) else max(1, int(budget * frac)))
+    start = time.monotonic()
+    b, t, mi, opt = run_study_over_revs(cfg2, external_seeds={n: seeds})
+    global_sec = time.monotonic() - start
+    if b is not None and t is not None and isinstance(mi, dict):
+        candidates.append(("global", (b, t, mi, opt)))
+    se, eps = optimizer.SPLIT_AWARE_TERMINAL, optimizer.TIEBREAK_SCORE_EPS
+    winner, result = min(candidates, key=lambda c: _mission_rank_key(
+        c[1][2], eps=eps, split_est=se))
+    score_by_stage = {
+        name: f"{r[2]['score']:.4f}"
+        + (f" (split_est={r[2].get('score_split_est', r[2]['score']):.4f})" if se else "")
+        for name, r in candidates}
+    scores = ", ".join(f"{name}={score_by_stage.get(name, 'unavailable')}"
+                       for name in ("original", "local", "global"))
+    log.info(f"🧭 primer fast：winner={winner}，local={local_sec:.2f}s，"
+             f"global={global_sec:.2f}s，{scores}")
+    return None if winner == "original" else result
 
 
 def split_options(config):

@@ -167,3 +167,33 @@ golden test。BLAS 已可 pin（2026-09-22），primer 的 SLSQP/線代若有隨
 - Bounded-impulse convex：Collision Avoidance Multiple-Impulse Convex（arXiv:2101.07403）
   <https://arxiv.org/pdf/2101.07403>；Input-Constrained Impulsive Optimal Control（arXiv:2510.03423）
   <https://arxiv.org/pdf/2510.03423>
+
+## fast 模式（2026-10-28）
+
+`main.primer_guided_research()` 新增三個 `strategy` 旗標：
+
+| 旗標 | 預設 | 合法值與用途 |
+| --- | --- | --- |
+| `PRIMER_RESEARCH_MODE` | `"full"` | `"full"` 沿用原流程；`"fast"` 啟用局部精修與短重搜 |
+| `PRIMER_RESEARCH_ITER_FRAC` | `0.33` | `(0, 1]`；短重搜 `MAXITER` 乘此比例，取整且至少 1 代 |
+| `PRIMER_RESEARCH_WALL_SEC` | `300` | 非負秒數；`0` / `null` 不限，僅限制 fast 的短全域階段 |
+
+只有 primer 判定 add-node 才進入 fast：以 `insert_node_seed` 產生 N+1 棒種子，開啟
+`SPLIT_AWARE_SEARCH`、鎖定 `MAX_BURNS=[N+1]`，先重用
+`_generate_nlp_refined_seed_candidates`（SLSQP 顯式約束）與 `refine_trajectory`
+（L-BFGS-B、安全回退、§6 polish、任務重播）做局部精修。局部與短全域都繼承原贏家
+optimizer 的 `LAMBERT_MAX_REVS`，關閉 `REVS_ENSEMBLE`。
+
+短全域透過 `run_study_over_revs` 注入原插棒種子及局部解的 `x`，縮減代數後跑現有 L-SHADE。
+這一階段省去重新粗掃種子家族、逐顆種子 NLP 和搜尋後 NLP，避免額外精修吃掉時間預算。
+牆鐘從短全域呼叫開始計算：使用 mealpy 原生 `max_time`，並於每次 fitness 評估前檢查
+monotonic 期限；到期交出已評估的最佳向量，連第一顆都未評估時由原解或局部解保底。
+正在執行的物理評估與結果重播不強制中斷，因此回傳時間可能略超過上限。局部階段不受此上限限制。
+
+原解、局部解、短全域解以 `_mission_rank_key(..., split_est=原贏家.SPLIT_AWARE_TERMINAL)`
+比較，原解勝出仍回傳 `None`。INFO 記錄勝出階段、局部/短全域耗時與各候選分數（啟用拆後估計時另列估計分）。
+未設定 mode 或設 `full` 時，沿用既有重搜設定與流程。
+
+效果待 `sweeps/primer_fast_v1.json` 在 Corn 量測。規格共 10 次（smoke seeds 1/2/3、far seeds 0/2，
+各比較 full/fast）；可用 `uv run python sweep_params.py sweeps/primer_fast_v1.json --dry-run`
+檢查展開，移除 `--dry-run` 才執行量測。
