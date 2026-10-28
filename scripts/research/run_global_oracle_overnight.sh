@@ -8,10 +8,11 @@ export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_TH
 LOG=outputs/research/global_oracle; mkdir -p "$LOG"
 while pgrep -f "sweep_params.py sweeps/global_oracle" > /dev/null; do sleep 60; done
 echo "sweeps done $(date)" >> "$LOG/overnight.log"
-for spec in "hyperbolic_test_fuel 100" "hyperbolic_smoke 250" "hyper_far 1626"; do
-  set -- $spec; s=$1; h=$2
+SPECS=${SPECS:-"hyperbolic_test_fuel:100 hyperbolic_smoke:350 hyper_far:1626"}
+for spec in $SPECS; do
+  s=${spec%%:*}; h=${spec##*:}
   echo "== $s oracle $(date)" >> "$LOG/overnight.log"
-  uv run python scripts/research/oracle_twoburn.py "$s" --h "$h" --K 10 > "$LOG/oracle_twoburn_$s.log" 2>&1
+  timeout 5400 uv run python scripts/research/oracle_twoburn.py "$s" --h "$h" --K 10 > "$LOG/oracle_twoburn_$s.log" 2>&1
   uv run python scripts/research/oracle_ceiling.py "$s" > "$LOG/oracle_ceiling_$s.log" 2>&1
   echo "== $s solvers $(date)" >> "$LOG/overnight.log"
   uv run --with cma python scripts/research/oracle_solvers.py "$s" --seeds 3 --random-starts 8 > "$LOG/oracle_solvers_$s.log" 2>&1

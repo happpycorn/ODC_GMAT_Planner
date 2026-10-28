@@ -139,39 +139,50 @@ def porkchop1(RB, VB, RA, times, mc, mu, max_revs, rmin):
 
 
 @njit(cache=True, parallel=True)
-def twoburn(RB, VB, RA, t1s, t2s, t3s, mc, mu, max_revs, rmin, maxev):
-    """三元組 (t1,t2,t3) 網格；回傳每格最小總 Δv、dv1 向量、終端圈數。"""
+def twoburn(RB, VB, RA, t1s, t2s, t3s, mc, mu, max_revs, rmin, maxev, order):
+    """三元組 (t1,t2,t3) 網格；回傳每格最小總 Δv、dv1 向量、終端圈數。
+
+    平行化攤在 (t1,t3) 配對上、照 `order`（隨機排列）分派：t1 越早的配對工作量越大，
+    直接 prange t1 會讓靜態分塊的第一個執行緒包下最重的那段，其他執行緒早早閒置
+    （2026-10-28 h=250 實測 16 執行緒只有 1 個在跑、5 小時沒跑完）。"""
     n1, n2, n3 = t1s.shape[0], t2s.shape[0], t3s.shape[0]
     DV = np.full((n1, n2, n3), BIG)
     D1 = np.zeros((n1, n2, n3, 3))
     MR = np.full((n1, n2, n3), -1, dtype=np.int8)
-    for i in prange(n1):
+    for q in prange(order.shape[0]):
+        p = order[q]
+        i = p // n3
+        k = p % n3
         r1 = RB[i]; v1 = VB[i]
-        for k in range(n3):
-            tf_all = t3s[k] - t1s[i]
-            if tf_all < 2 * mc:
+        tf_all = t3s[k] - t1s[i]
+        if tf_all < 2 * mc:
+            continue
+        # 起點 B：t1 直接 Lambert 打 A(t3) 的那一發
+        dA, _, vA = lam_best(r1, v1, RA[k], tf_all, mu, max_revs, rmin)
+        for j in range(n2):
+            tc = t2s[j] - t1s[i]
+            tf = t3s[k] - t2s[j]
+            if tc < mc or tf < mc:
                 continue
-            # 起點 B：t1 直接 Lambert 打 A(t3) 的那一發
-            dA, _, vA = lam_best(r1, v1, RA[k], tf_all, mu, max_revs, rmin)
-            for j in range(n2):
-                tc = t2s[j] - t1s[i]
-                tf = t3s[k] - t2s[j]
-                if tc < mc or tf < mc:
-                    continue
-                bestf = BIG; bestx = np.zeros(3)
-                x0 = np.zeros(3)
+            bestf = BIG; bestx = np.zeros(3)
+            x0 = np.zeros(3)
+            xs, fs = nelder_mead(x0, 0.05, r1, v1, tc, RA[k], tf, mu, max_revs, rmin, maxev)
+            if fs < bestf:
+                bestf = fs; bestx = xs
+            if dA < BIG:
+                x0 = vA - v1
                 xs, fs = nelder_mead(x0, 0.05, r1, v1, tc, RA[k], tf, mu, max_revs, rmin, maxev)
                 if fs < bestf:
                     bestf = fs; bestx = xs
-                if dA < BIG:
-                    x0 = vA - v1
-                    xs, fs = nelder_mead(x0, 0.05, r1, v1, tc, RA[k], tf, mu, max_revs, rmin, maxev)
-                    if fs < bestf:
-                        bestf = fs; bestx = xs
-                DV[i, j, k] = bestf
-                D1[i, j, k] = bestx
-                MR[i, j, k] = two_cost(bestx, r1, v1, tc, RA[k], tf, mu, max_revs, rmin)[1]
+            DV[i, j, k] = bestf
+            D1[i, j, k] = bestx
+            MR[i, j, k] = two_cost(bestx, r1, v1, tc, RA[k], tf, mu, max_revs, rmin)[1]
     return DV, D1, MR
+
+
+def twoburn_grid(RB, VB, RA, t1s, t2s, t3s, mc, mu, max_revs, rmin, maxev):
+    order = np.random.default_rng(0).permutation(t1s.shape[0] * t3s.shape[0]).astype(np.int64)
+    return twoburn(RB, VB, RA, t1s, t2s, t3s, mc, mu, max_revs, rmin, maxev, order)
 
 
 def est_score(opt, T, dv_kms):
@@ -225,7 +236,7 @@ def run(name, h=None, K=10, finalize=True, maxev=160, refine_top=6, fine_div=5):
     tg = np.arange(0.0, T + 1e-9, h)
     RBg, VBg = ephem(opt, tg, "B"); RAg, _ = ephem(opt, tg, "A")
     t0 = time.time()
-    DV2, D12, MR2 = twoburn(RBg, VBg, RAg, tg, tg, tg, mc, mu, R, rmin, maxev)
+    DV2, D12, MR2 = twoburn_grid(RBg, VBg, RAg, tg, tg, tg, mc, mu, R, rmin, maxev)
     print(f"[{name}] 兩棒粗網格 h={h:.0f}s（{len(tg)}³）：{time.time()-t0:.1f}s", flush=True)
     cands = []
 
@@ -238,7 +249,8 @@ def run(name, h=None, K=10, finalize=True, maxev=160, refine_top=6, fine_div=5):
     out["coarse_sec"] = round(time.time() - t0, 1)
 
     # --- 加密：粗網格前 refine_top 名（去重）周圍 ±h、步長 h/fine_div
-    cands.sort(key=lambda c: -c[0])
+    cap_tot0 = (opt.MAX_TOTAL_DV_MPS or 1e9) / 1000.0
+    cands.sort(key=lambda c: (c[4] > cap_tot0, -c[0]))
     seeds = []
     for c in cands:
         if all(abs(c[1] - s[1]) > 1.5 * h or abs(c[3] - s[3]) > 1.5 * h for s in seeds):
@@ -253,14 +265,15 @@ def run(name, h=None, K=10, finalize=True, maxev=160, refine_top=6, fine_div=5):
             axes.append(np.clip(np.arange(tc_ - h, tc_ + h + 1e-9, hf), 0.0, T))
         t1s, t2s, t3s = (np.unique(a) for a in axes)
         R1, V1 = ephem(opt, t1s, "B"); R3, _ = ephem(opt, t3s, "A")
-        DVf, D1f, MRf = twoburn(R1, V1, R3, t1s, t2s, t3s, mc, mu, R, rmin, maxev)
+        DVf, D1f, MRf = twoburn_grid(R1, V1, R3, t1s, t2s, t3s, mc, mu, R, rmin, maxev)
         collect(t1s, t2s, t3s, DVf, D1f, MRf)
     out["fine_sec"] = round(time.time() - t0, 1)
     # 單棒網格最好的幾格也當候選（兩棒的特例，t2 = t1）
     for (sc, t1, t3, dv, m) in sorted(((S1[i, j], tt[i], tt[j], DV1[i, j], MR1[i, j]) for i, j in zip(ii, jj)),
                                       key=lambda z: -z[0])[:K]:
         cands.append((float(sc), float(t1), float(t1), float(t3), float(dv), None, int(m)))
-    cands.sort(key=lambda c: -c[0])
+    cap_tot = (opt.MAX_TOTAL_DV_MPS or 1e9) / 1000.0
+    cands.sort(key=lambda c: (c[4] > cap_tot, -c[0]))      # 總 Δv ≤ 3 km/s 的排前面
     mins = min(cands, key=lambda c: c[4])
     out["two_best_est"] = {"est_score": cands[0][0], "t1": cands[0][1], "t2": cands[0][2], "t3": cands[0][3],
                            "dv_mps": cands[0][4] * 1000, "dv1_mps": None if cands[0][5] is None else
