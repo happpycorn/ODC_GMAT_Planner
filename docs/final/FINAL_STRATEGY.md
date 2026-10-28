@@ -86,8 +86,8 @@
 
 ## 附錄：AIAA Capture the Satellite Challenge（Gemini 搜尋，2026-10-28）
 
-已驗證：比賽平台 [mit-ll/spacegym-kspdg](https://github.com/mit-ll/spacegym-kspdg) 存在（MIT Lincoln Lab，KSP＋kRPC，Gym／PettingZoo 介面）。
-未驗證（Gemini 說法）：在 AIAA SciTech 舉辦（2024 起）；情境有追逃、Lady-Bandit-Guard、遮光；即時非阻塞模擬、有限推力；KAIST、ERAU、CU Boulder、陽明交大曾得名，方法是 MPC／NMPC／DRL。Gemini 引用的 arXiv 編號是錯的，對應到無關論文。
+完整考古見 [AIAA_CTS_RESEARCH.md](AIAA_CTS_RESEARCH.md)。重點：決賽前 3 天才放新元素（要能快速重規劃，不要過度調校單一情境）；
+冠軍用古典＋AI 混合；`pe1` 計分先比最近距離、再比相對速度，然後是燃料，最後是時間；逃方啟發式是近距離往法向全推力噴，或持續順向抬升。
 
 ## 分工與 Token 省法
 
