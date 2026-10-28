@@ -1,0 +1,59 @@
+{
+  "name": "primer_rescue_scan_v1",
+  "_description": "找 primer 重搜真的救分的種子：hyperbolic_smoke 種子 4–15，只跑 full；設定同 primer_fast_v1。",
+  "scenarios": [
+    {
+      "name": "hyperbolic_smoke",
+      "config": "configs/shared/hyperbolic_smoke.json",
+      "seeds": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ]
+    }
+  ],
+  "seeds": [
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
+  "base": {
+    "rules.MAX_DV_MPS": 250.0,
+    "rules.MAX_TOTAL_DV_MPS": 3000.0,
+    "optimization.MAXITER": 600,
+    "optimization.POPSIZE": 20,
+    "optimization.NUM_THREADS": 5,
+    "strategy.SPLIT_FAST_FD": true,
+    "strategy.SPLIT_WORKERS": 3,
+    "strategy.SPLIT_MULTISTART": [
+      0,
+      0.75,
+      1
+    ],
+    "strategy.SPLIT_PRUNE_REOPT_MPS": 1.0,
+    "strategy.SPLIT_WALL_BUDGET_SEC": 600
+  },
+  "variants": {
+    "full": {
+      "strategy.PRIMER_RESEARCH_MODE": "full"
+    }
+  }
+}
