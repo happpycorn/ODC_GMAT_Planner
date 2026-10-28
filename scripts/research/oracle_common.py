@@ -39,6 +39,7 @@ RANKING_BASE = {
     "strategy.SPLIT_MULTISTART": [0, 0.75, 1],
     "strategy.SPLIT_PRUNE_REOPT_MPS": 1.0,
     "strategy.SPLIT_WALL_BUDGET_SEC": 600,
+    "strategy.SPLIT_JACOBIAN": "stm",
 }
 SCENARIOS = {
     "hyper_far": ("configs/shared/hyper_far.json", {}),
@@ -79,6 +80,7 @@ def split_options(config):
         "prune_reopt_tol": None if not reopt else float(reopt) / 1000.0,
         "wall_budget": (None if not st.get("SPLIT_WALL_BUDGET_SEC")
                         else float(st["SPLIT_WALL_BUDGET_SEC"])),
+        "jacobian": st.get("SPLIT_JACOBIAN", "fd"),
     }
 
 

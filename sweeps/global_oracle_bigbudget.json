@@ -1,6 +1,6 @@
 {
   "name": "global_oracle_bigbudget",
-  "_說明": "GLOBAL_ORACLE 第 4 項：大預算參考解。排位賽題庫 4 情境 × 種子 0–9，MAXITER 放大 3 倍（1800），其他照比賽設定（primer full、拆棒 splitspeed_par3_rec 建議設定），只求解到拆棒為止。見 docs/GLOBAL_ORACLE_20261028.md。",
+  "_說明": "GLOBAL_ORACLE 第 4 項：大預算參考解。排位賽題庫 4 情境 × 種子 0–19（新程式拆棒快，從 10 顆加到 20 顆），MAXITER 放大 3 倍（1800），其他照比賽設定（primer full、拆棒 splitspeed_par3_rec 建議設定），只求解到拆棒為止。見 docs/GLOBAL_ORACLE_20261028.md。 程式版本：origin/Master fb0ff12 起（星曆快取＋撞地球補洞＋拆棒 STM），strategy.SPLIT_JACOBIAN=stm。",
   "scenarios": [
     {
       "name": "hyper_far",
@@ -33,7 +33,17 @@
     6,
     7,
     8,
-    9
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19
   ],
   "base": {
     "rules.MAX_DV_MPS": 250.0,
@@ -49,6 +59,7 @@
       1
     ],
     "strategy.SPLIT_PRUNE_REOPT_MPS": 1.0,
-    "strategy.SPLIT_WALL_BUDGET_SEC": 600
+    "strategy.SPLIT_WALL_BUDGET_SEC": 600,
+    "strategy.SPLIT_JACOBIAN": "stm"
   }
 }
