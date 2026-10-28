@@ -37,8 +37,8 @@ def replay(i, j):
     """單棒方案的忠實重播：真傳播器 + 真計分。"""
     t_dep, t_arr = times[i], times[j]
     tof = t_arr - t_dep
-    r1, v1 = state(m.B_r0, m.B_v0, t_dep)
-    r2, _ = state(m.A_r0, m.A_v0, t_arr)
+    r1, v1 = m.state_B(t_dep)
+    r2, _ = m.state_A(t_arr)
     best = None
     for mv in range(0, 5):
         for lp in (0, 1):

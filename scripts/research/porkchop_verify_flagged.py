@@ -46,8 +46,10 @@ def honest_oracle(opt, h=GRID_H, max_revs=MAX_REVS, topk=TOPK):
     times = np.arange(0.0, opt.T_max + 1e-9, h)
     n = len(times)
     grav = (opt.J2_VAL, opt.J3_VAL, opt.J4_VAL, opt.RE_VAL)
-    RB, VB = build_ephemeris(opt.B_r0, opt.B_v0, times, 60.0, opt.MU, *grav)
-    RA, VA = build_ephemeris(opt.A_r0, opt.A_v0, times, 60.0, opt.MU, *grav)
+    RB, VB = build_ephemeris(opt.B_r0, opt.B_v0, times, 60.0, opt.MU, *grav,
+                            ephem=None if opt.ephem is None else (opt.ephem[0], opt.ephem[2]))
+    RA, VA = build_ephemeris(opt.A_r0, opt.A_v0, times, 60.0, opt.MU, *grav,
+                            ephem=None if opt.ephem is None else (opt.ephem[0], opt.ephem[1]))
     min_tof_steps = max(1, int(math.ceil(opt.MIN_COAST_TIME / h)))
     DV, MREV, NSOL, TANG = porkchop(RB, VB, RA, h, max_revs, min_tof_steps)
     valid = np.isfinite(DV)
@@ -70,8 +72,8 @@ def honest_oracle(opt, h=GRID_H, max_revs=MAX_REVS, topk=TOPK):
             continue
         t_dep, t_arr = float(times[i]), float(times[j])
         tof = t_arr - t_dep
-        r1, v1 = state(opt.B_r0, opt.B_v0, t_dep)
-        r2, _ = state(opt.A_r0, opt.A_v0, t_arr)
+        r1, v1 = opt.state_B(t_dep)
+        r2, _ = opt.state_A(t_arr)
         best = None
         for mv in range(0, max_revs + 1):
             for lp in (0, 1):

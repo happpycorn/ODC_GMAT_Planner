@@ -378,6 +378,62 @@ def propagate_dop853(
 
     return r_final, v_final
 
+@njit(cache=True, fastmath=True)
+def ephem_state(table_t0, table_dt, table_states, t, mu, j2, j3, j4, re):
+    """查固定軌道的檢查點，僅用原 DOP853 補積分，完全不插值。
+
+    為能直接切用 fitness 的 vectors，每個檢查點佔兩列 (r, v)，每列三欄。
+    第 k 點時刻 = table_t0 + k*table_dt；第 0 點必須是原始 t=0 狀態。
+    範圍外（包括負時間）或 dt<=0 時，從第 0 點走原本的傳播路徑。
+    回傳獨立陣列，呼叫端修改結果不會污染表。
+    """
+    n = table_states.shape[0] // 2
+    if n < 1 or table_states.shape[0] % 2 != 0 or table_states.shape[1] != 3:
+        raise ValueError("ephem table must contain r/v row pairs with three columns")
+    if table_t0 != 0.0:
+        raise ValueError("ephem table must start at t=0 for origin fallback")
+    if (table_dt > 0.0 and t >= table_t0
+            and t <= table_t0 + (n - 1) * table_dt):
+        k = int(math.floor((t - table_t0) / table_dt))
+        k = min(k, n - 1)
+        # 浮點除法可能把略早於檢查點的 t 向上捨入，仍必須取不晚於 t 的點。
+        tk = table_t0 + k * table_dt
+        if tk > t and k > 0:
+            k -= 1
+            tk = table_t0 + k * table_dt
+        if k + 1 < n and table_t0 + (k + 1) * table_dt <= t:
+            k += 1
+            tk = table_t0 + k * table_dt
+        r, v = table_states[2*k], table_states[2*k + 1]
+        if t == tk:
+            return r.copy(), v.copy()
+        return propagate_dop853(r, v, t - tk, 60.0, mu, j2, j3, j4, re)
+    return propagate_dop853(table_states[0], table_states[1], t, 60.0,
+                            mu, j2, j3, j4, re)
+
+
+@njit(cache=True, fastmath=True)
+def build_ephem_table(r0, v0, table_dt, end_time, mu, j2, j3, j4, re):
+    """逐段建表；末點向上取整以涵蓋 end_time。輸出是交錯 r/v 的 (2*n, 3)。"""
+    if not math.isfinite(table_dt) or table_dt <= 0.0 or not math.isfinite(end_time) or end_time < 0.0:
+        raise ValueError("ephem step must be positive and end time nonnegative (both finite)")
+    n = int(math.ceil(end_time / table_dt)) + 1
+    states = np.empty((2*n, 3), dtype=np.float64)
+    states[0], states[1] = r0, v0
+    for k in range(1, n):
+        r, v = propagate_dop853(states[2*k - 2], states[2*k - 1], table_dt,
+                                60.0, mu, j2, j3, j4, re)
+        states[2*k], states[2*k + 1] = r, v
+    return states
+
+
+def fixed_orbit_state(r0, v0, t, mu, j2, j3, j4, re, ephem=None, body=0):
+    """Python 呼叫端共用入口；ephem=(dt, A_table, B_table)，可隨參數 pickle。"""
+    if ephem is None:
+        return propagate_dop853(r0, v0, float(t), 60.0, mu, j2, j3, j4, re)
+    return ephem_state(0.0, ephem[0], ephem[body + 1], float(t), mu, j2, j3, j4, re)
+
+
 @njit(cache=True)
 def lambert_izzo(mu, r0, r1, tof, M, prograde, lowpath):
     """Python 端呼叫 Lambert (poliastro izzo) 的唯一入口（numiter=35、rtol=1e-8 寫死）。

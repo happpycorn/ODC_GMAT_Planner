@@ -85,7 +85,7 @@ print(f"     A 比能量 = {sp_A:+.4f} km^2/s^2 "
       f"({'雙曲線 ✓' if sp_A > 0 else '不是雙曲線 ✗'})")
 
 # ---------- 第 2 層：傳播器 ----------
-from src.core_math import propagate_dop853, fast_norm
+from src.core_math import propagate_dop853, fast_norm, build_ephem_table, ephem_state
 
 T_MAX_SEC = 40000.0    # 自己編的，官方還沒公告。
 # 選這個值的理由：A 從 TA=-130 度出發，19,974s 後通過近地點 (10,000 km)，
@@ -95,10 +95,11 @@ T_MAX_SEC = 40000.0    # 自己編的，官方還沒公告。
 
 
 def prop_sweep():
+    table = build_ephem_table(A_r0, A_v0, 60.0, T_MAX_SEC, MU, 0.0, 0.0, 0.0, RE)
     out = []
     for frac in (0.1, 0.25, 0.5, 0.75, 1.0):
         t = T_MAX_SEC*frac
-        r, v = propagate_dop853(A_r0, A_v0, t, 60.0, MU, 0, 0, 0, RE)
+        r, v = ephem_state(0.0, 60.0, table, t, MU, 0.0, 0.0, 0.0, RE)
         out.append((t, fast_norm(r), fast_norm(v)))
     return out
 
@@ -130,15 +131,17 @@ from poliastro.core.iod import izzo
 
 
 def lambert_grid():
+    a_table = build_ephem_table(A_r0, A_v0, 60.0, T_MAX_SEC, MU, 0.0, 0.0, 0.0, RE)
+    b_table = build_ephem_table(B_r0, B_v0, 60.0, T_MAX_SEC, MU, 0.0, 0.0, 0.0, RE)
     hits, best = 0, float("inf")
     total = 0
     for tb in np.linspace(0.0, T_MAX_SEC*0.7, 40):
-        r_b, v_b = propagate_dop853(B_r0, B_v0, float(tb), 60.0, MU, 0, 0, 0, RE)
+        r_b, v_b = ephem_state(0.0, 60.0, b_table, float(tb), MU, 0.0, 0.0, 0.0, RE)
         mf = T_MAX_SEC - tb
         if mf < 600:
             continue
         for ft in np.linspace(600.0, mf, 40):
-            r_a, _ = propagate_dop853(A_r0, A_v0, float(tb+ft), 60.0, MU, 0, 0, 0, RE)
+            r_a, _ = ephem_state(0.0, 60.0, a_table, float(tb+ft), MU, 0.0, 0.0, 0.0, RE)
             for pro in (True, False):
                 total += 1
                 try:

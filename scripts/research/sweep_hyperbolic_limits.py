@@ -22,7 +22,7 @@ sys.path.insert(0, REPO_ROOT)
 
 import warnings
 warnings.filterwarnings("ignore")
-from src.core_math import propagate_dop853, fast_norm
+from src.core_math import propagate_dop853, fast_norm, build_ephem_table, ephem_state
 from poliastro.core.propagation import farnocchia
 from poliastro.core.iod import izzo
 from poliastro.bodies import Earth
@@ -60,15 +60,17 @@ def prop_accuracy(r0, v0, T_max):
 
 
 def lambert_scan(A_r0, A_v0, B_r0, B_v0, T_max, n=34):
+    a_table = build_ephem_table(A_r0, A_v0, 60.0, T_max, MU, 0.0, 0.0, 0.0, RE)
+    b_table = build_ephem_table(B_r0, B_v0, 60.0, T_max, MU, 0.0, 0.0, 0.0, RE)
     conv = tot = legal = 0
     best = float("inf")
     for tb in np.linspace(0.0, T_max*0.7, n):
-        r_b, v_b = propagate_dop853(B_r0, B_v0, float(tb), 60.0, MU, 0, 0, 0, RE)
+        r_b, v_b = ephem_state(0.0, 60.0, b_table, float(tb), MU, 0.0, 0.0, 0.0, RE)
         mf = T_max - tb
         if mf < 600:
             continue
         for ft in np.linspace(600.0, mf, n):
-            r_a, _ = propagate_dop853(A_r0, A_v0, float(tb+ft), 60.0, MU, 0, 0, 0, RE)
+            r_a, _ = ephem_state(0.0, 60.0, a_table, float(tb+ft), MU, 0.0, 0.0, 0.0, RE)
             for pro in (True, False):
                 tot += 1
                 try:

@@ -27,7 +27,7 @@ from scipy.optimize import minimize
 from scipy.optimize._numdiff import approx_derivative
 
 from src.core_math import (propagate_dop853, check_constraints, fast_norm,
-                           reaches_perigee, lambert_izzo)
+                           reaches_perigee, lambert_izzo, fixed_orbit_state)
 from src.scorer import calculate_score
 
 
@@ -225,13 +225,13 @@ def _arc_min_radius(r0, v0, dt, mu, j2, j3, j4, re):
     return min(fast_norm(r0), fast_norm(r_end))
 
 
-def _simulate_free(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0):
+def _simulate_free(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0, ephem=None):
     """把 free-ECI 決策向量跑成一條軌跡。回傳 r_final / T_team / total_dv / miss_km /
     每棒 Δv 大小 / 每段弧最小半徑。目標函數與約束都讀這裡的結果。"""
     t0 = float(x[0])
     coasts = x[1:1 + N]
     dvs = x[1 + N:].reshape(N, 3)
-    r, v = propagate_dop853(B_r0, B_v0, t0, 60.0, mu, j2, j3, j4, re)
+    r, v = fixed_orbit_state(B_r0, B_v0, t0, mu, j2, j3, j4, re, ephem, 1)
     total_dv = 0.0
     dv_mags = np.empty(N)
     arc_minr = np.empty(N)
@@ -243,7 +243,7 @@ def _simulate_free(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0):
         arc_minr[i] = _arc_min_radius(r, v, dt, mu, j2, j3, j4, re)
         r, v = propagate_dop853(r, v, dt, 60.0, mu, j2, j3, j4, re)
     T_team = t0 + float(np.sum(coasts))
-    r_A, _ = propagate_dop853(A_r0, A_v0, T_team, 60.0, mu, j2, j3, j4, re)
+    r_A, _ = fixed_orbit_state(A_r0, A_v0, T_team, mu, j2, j3, j4, re, ephem, 0)
     return {
         "r_final": r, "T_team": T_team, "total_dv": total_dv,
         "miss_km": fast_norm(r - r_A), "dv_mags": dv_mags, "arc_minr": arc_minr,
@@ -257,14 +257,14 @@ _NLP_MISS_MARGIN = 5e-3    # km
 _NLP_PERI_MARGIN = 1e-3    # km
 
 
-def _simulate_free_reuse(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0):
+def _simulate_free_reuse(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0, ephem=None):
     """`_simulate_free` 的逐位元等價版（SPLITTER_SPEED，2026-10-19）：原版每段弧傳播兩次——
     `_arc_min_radius` 為了取弧末半徑傳播一次、主迴圈再用**同樣的輸入**傳播一次。這裡傳播一次、
     兩邊共用。propagate_dop853 是純函式，輸出逐位元相同（tests/test_burn_splitter.py 驗）。"""
     t0 = float(x[0])
     coasts = x[1:1 + N]
     dvs = x[1 + N:].reshape(N, 3)
-    r, v = propagate_dop853(B_r0, B_v0, t0, 60.0, mu, j2, j3, j4, re)
+    r, v = fixed_orbit_state(B_r0, B_v0, t0, mu, j2, j3, j4, re, ephem, 1)
     total_dv = 0.0
     dv_mags = np.empty(N)
     arc_minr = np.empty(N)
@@ -280,7 +280,7 @@ def _simulate_free_reuse(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0):
             arc_minr[i] = min(fast_norm(r), fast_norm(r_end))
         r, v = r_end, v_end
     T_team = t0 + float(np.sum(coasts))
-    r_A, _ = propagate_dop853(A_r0, A_v0, T_team, 60.0, mu, j2, j3, j4, re)
+    r_A, _ = fixed_orbit_state(A_r0, A_v0, T_team, mu, j2, j3, j4, re, ephem, 0)
     return {
         "r_final": r, "T_team": T_team, "total_dv": total_dv,
         "miss_km": fast_norm(r - r_A), "dv_mags": dv_mags, "arc_minr": arc_minr,
@@ -318,7 +318,7 @@ def _fd_eval(N, x):
     """行程池 worker：算一個擾動點的疊合向量。物理常數由 _fd_init 放進全域。"""
     c = _FD_CTX
     m = _simulate_free_reuse(x, N, c["mu"], c["j2"], c["j3"], c["j4"], c["re"],
-                             c["A_r0"], c["A_v0"], c["B_r0"], c["B_v0"])
+                             c["A_r0"], c["A_v0"], c["B_r0"], c["B_v0"], ephem=c.get("ephem"))
     return _nlp_stack(m, c["cap"], c["min_periapsis"], c["miss_tol"],
                       c["k_t"], c["C_t"], c["k_v"], c["C_v"])
 
@@ -365,7 +365,7 @@ class FDPool:
 def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
                     A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v,
                     T_max, miss_tol, maxiter=1000, fd_map=None, deadline=None,
-                    require_feasible=False):
+                    require_feasible=False, ephem=None):
     """對一個 N 棒暖啟 `x0` (free-ECI 佈局) 做 SLSQP 聯合優化，回傳優化後的解與指標。
 
     目標 = -calculate_score(miss, T_team, 總Δv, penalty=0)；約束 (ineq ≥0)：每棒 ≤cap、
@@ -388,7 +388,7 @@ def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
         key = x.tobytes()
         if key not in _cache:
             _cache.clear()
-            _cache[key] = _simulate_free(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0)
+            _cache[key] = _simulate_free(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0, ephem=ephem)
         return _cache[key]
 
     def objective(x):
@@ -423,7 +423,7 @@ def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
             key = x.tobytes()
             if key not in _scache:
                 _scache.clear()
-                m = _simulate_free_reuse(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0)
+                m = _simulate_free_reuse(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0, ephem=ephem)
                 _scache[key] = _nlp_stack(m, cap, min_periapsis, miss_tol, k_t, C_t, k_v, C_v)
             return _scache[key]
 
@@ -468,7 +468,7 @@ def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
             if time.monotonic() > deadline:
                 if require_feasible:
                     mk = _simulate_free_reuse(np.clip(xk, np.array(lb), np.array(ub)), N, mu, j2,
-                                              j3, j4, re, A_r0, A_v0, B_r0, B_v0)
+                                              j3, j4, re, A_r0, A_v0, B_r0, B_v0, ephem=ephem)
                     if not (float(np.max(mk["dv_mags"])) <= cap + 1e-6
                             and float(np.min(mk["arc_minr"])) >= min_periapsis - 1e-3
                             and mk["miss_km"] <= miss_tol + 1e-6):
@@ -482,7 +482,7 @@ def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
         except _BudgetExceeded:
             x_end, budget_hit = last[0], True
     x1 = np.clip(x_end, np.array(lb), np.array(ub))
-    m = _simulate_free(x1, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0)
+    m = _simulate_free(x1, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0, ephem=ephem)
     feasible = (float(np.max(m["dv_mags"])) <= cap + 1e-6
                 and float(np.min(m["arc_minr"])) >= min_periapsis - 1e-3
                 and m["miss_km"] <= miss_tol + 1e-6)
@@ -540,7 +540,7 @@ def legalize_route(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
                    A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, T_max,
                    miss_tol, n_span=1, max_seg=14, maxiter=1000, slot_after_capped=True,
                    fast_fd=False, workers=1, starts=None, prune_reopt_tol=None,
-                   prune_reopt_maxiter=None, wall_budget=None):
+                   prune_reopt_maxiter=None, wall_budget=None, ephem=None):
     """Stage 2 對外單一入口（見 `_legalize_route_core`）。
 
     `slot_after_capped=True`（預設）先用 `_slot_after_capped` 重排前導棒：丟掉無用空燒、在貼 cap
@@ -565,7 +565,7 @@ def legalize_route(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
     kw = dict(cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3, j4=j4, re=re,
               min_periapsis=min_periapsis, max_revs=max_revs, A_r0=A_r0, A_v0=A_v0,
               B_r0=B_r0, B_v0=B_v0, k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v, T_max=T_max,
-              miss_tol=miss_tol, n_span=n_span, max_seg=max_seg, maxiter=maxiter)
+              miss_tol=miss_tol, n_span=n_span, max_seg=max_seg, maxiter=maxiter, ephem=ephem)
     if (not fast_fd and starts is None and prune_reopt_tol is None and wall_budget is None
             and workers <= 1):
         return _legalize_route_slots(t0, leading_dvs, leading_coasts, terminal_coast, target,
@@ -573,14 +573,14 @@ def legalize_route(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
     deadline = None if wall_budget is None else time.monotonic() + float(wall_budget)
     ctx = dict(mu=mu, j2=j2, j3=j3, j4=j4, re=re, A_r0=A_r0, A_v0=A_v0, B_r0=B_r0, B_v0=B_v0,
                cap=cap, min_periapsis=min_periapsis, miss_tol=miss_tol,
-               k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v)
+               k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v, ephem=ephem)
     if fast_fd or workers > 1:
         # 開行程池前先在本行程跑一次模擬，確保 fork 時 numba 函式都已編譯（子行程直接繼承）。
         _simulate_free_reuse(np.concatenate([[float(t0)], [float(terminal_coast)], np.zeros(3)]), 1,
-                             mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0)
+                             mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0, ephem=ephem)
     shifts = list(_shifted_routes(t0, leading_dvs, leading_coasts, terminal_coast, target,
                                   starts, cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3,
-                                  j4=j4, re=re, max_revs=max_revs, B_r0=B_r0, B_v0=B_v0))
+                                  j4=j4, re=re, max_revs=max_revs, B_r0=B_r0, B_v0=B_v0, ephem=ephem))
     results = None
     if workers > 1 and len(shifts) > 1 and "fork" in multiprocessing.get_all_start_methods():
         # 起點之間互不相干：一個起點一個行程（fork，子行程內序列疊合差分），比把差分點分給行程池
@@ -616,7 +616,7 @@ def legalize_route(t0, leading_dvs, leading_coasts, terminal_coast, target, *,
                              cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3, j4=j4, re=re,
                              min_periapsis=min_periapsis, A_r0=A_r0, A_v0=A_v0, B_r0=B_r0,
                              B_v0=B_v0, k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v, T_max=T_max,
-                             miss_tol=miss_tol)
+                             miss_tol=miss_tol, ephem=ephem)
             if pr is not None and pr["score"] >= best["score"] - _PRUNE_REOPT_SLACK:
                 pr.update({k: best[k] for k in ("start_shift_sec", "budget_hit") if k in best})
                 best = pr
@@ -642,10 +642,10 @@ def _run_start(i):
 _PRUNE_REOPT_SLACK = 1e-4
 
 
-def _terminal_state(t0, leading_dvs, leading_coasts, *, mu, j2, j3, j4, re, B_r0, B_v0):
+def _terminal_state(t0, leading_dvs, leading_coasts, *, mu, j2, j3, j4, re, B_r0, B_v0, ephem=None):
     """B 從 t0 走過前導棒/滑行後的終端棒起點 (r, v, t)。跟 `_legalize_route_core` 步驟 1 相同。"""
-    r, v = propagate_dop853(np.array(B_r0, dtype=np.float64), np.array(B_v0, dtype=np.float64),
-                            float(t0), 60.0, mu, j2, j3, j4, re)
+    r, v = fixed_orbit_state(np.array(B_r0, dtype=np.float64), np.array(B_v0, dtype=np.float64),
+                            float(t0), mu, j2, j3, j4, re, ephem, 1)
     t = float(t0)
     for dv, ct in zip(leading_dvs, leading_coasts):
         v = v + np.asarray(dv, dtype=np.float64)
@@ -655,7 +655,7 @@ def _terminal_state(t0, leading_dvs, leading_coasts, *, mu, j2, j3, j4, re, B_r0
 
 
 def _shifted_routes(t0, leading_dvs, leading_coasts, terminal_coast, target, starts, *,
-                    cap, min_coast, mu, j2, j3, j4, re, max_revs, B_r0, B_v0):
+                    cap, min_coast, mu, j2, j3, j4, re, max_revs, B_r0, B_v0, ephem=None):
     """多起點拆棒的各個起點（見 legalize_route 的 `starts`）。抵達時刻與 target 不動，只把終端棒
     起點往前挪：最後一段前導滑行（沒有前導棒時是 t0）減 δ、終端滑行加 δ。挪不動（前導滑行
     已經貼 min_coast）就夾到能挪的最大值；挪完跟已列過的起點重複就跳過。"""
@@ -664,7 +664,7 @@ def _shifted_routes(t0, leading_dvs, leading_coasts, terminal_coast, target, sta
     if not fracs:
         return
     r_t, v_t, t_term = _terminal_state(t0, leading_dvs, leading_coasts, mu=mu, j2=j2, j3=j3,
-                                       j4=j4, re=re, B_r0=B_r0, B_v0=B_v0)
+                                       j4=j4, re=re, B_r0=B_r0, B_v0=B_v0, ephem=ephem)
     _, single = _lam_best(r_t, target, float(terminal_coast), v_t, mu, max_revs)
     n_lo = max(1, math.ceil(single / cap)) if single < 1e17 else 1
     room = (float(leading_coasts[-1]) - min_coast) if len(leading_dvs) else float(t0)
@@ -684,7 +684,7 @@ def _shifted_routes(t0, leading_dvs, leading_coasts, terminal_coast, target, sta
 
 
 def prune_reopt(x, N, *, tol, maxiter, fd_map, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
-                A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, T_max, miss_tol):
+                A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, T_max, miss_tol, ephem=None):
     """剔除 |Δv| < tol 的棒後對剩下的棒數重跑 joint NLP（SPLITTER_SPEED 3，見 legalize_route）。
     候選 = 剔除版本身、剔除版的 NLP 結果；回傳 feasible 中分數最高者（`_eval_free` 格式），
     沒東西可剔或都不可行回 None。"""
@@ -693,19 +693,19 @@ def prune_reopt(x, N, *, tol, maxiter, fd_map, cap, min_coast, mu, j2, j3, j4, r
         return None
     ev = functools.partial(_eval_free, N=Nd, cap=cap, min_periapsis=min_periapsis, mu=mu, j2=j2,
                            j3=j3, j4=j4, re=re, A_r0=A_r0, A_v0=A_v0, B_r0=B_r0, B_v0=B_v0,
-                           k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v, miss_tol=miss_tol)
+                           k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v, miss_tol=miss_tol, ephem=ephem)
     cands = [ev(xd)]
     # 剔掉的殘量乘上長滑行會讓命中點偏掉，原解又貼在命中容許邊界上（hyper_far p0：剔完就不可行、
     # SLSQP 從不可行點也爬不回來）。先用最後一棒把命中點拉回原解的位置，再從那裡重最佳化。
-    target = _simulate_free_reuse(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0)["r_final"]
-    xr = _retarget_last(xd, Nd, target, cap, mu, j2, j3, j4, re, B_r0, B_v0)
+    target = _simulate_free_reuse(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0, ephem=ephem)["r_final"]
+    xr = _retarget_last(xd, Nd, target, cap, mu, j2, j3, j4, re, B_r0, B_v0, ephem=ephem)
     if xr is not None:
         cands.append(ev(xr))
     x_nlp = xr if xr is not None else xd
     cands.append(joint_nlp_split(x_nlp, Nd, cap=cap, min_coast=min_coast, mu=mu, j2=j2, j3=j3, j4=j4,
                                  re=re, min_periapsis=min_periapsis, A_r0=A_r0, A_v0=A_v0,
                                  B_r0=B_r0, B_v0=B_v0, k_t=k_t, C_t=C_t, k_v=k_v, C_v=C_v,
-                                 T_max=T_max, miss_tol=miss_tol, maxiter=maxiter, fd_map=fd_map))
+                                 T_max=T_max, miss_tol=miss_tol, maxiter=maxiter, fd_map=fd_map, ephem=ephem))
     best = None
     for cand in cands:
         if cand["feasible"] and (best is None or cand["score"] > best["score"]):
@@ -713,13 +713,13 @@ def prune_reopt(x, N, *, tol, maxiter, fd_map, cap, min_coast, mu, j2, j3, j4, r
     return best
 
 
-def _retarget_last(x, N, target, cap, mu, j2, j3, j4, re, B_r0, B_v0):
+def _retarget_last(x, N, target, cap, mu, j2, j3, j4, re, B_r0, B_v0, ephem=None):
     """把 free-ECI 解的最後一棒用 `_shoot_final` 重新瞄準 `target`（抵達時刻不變），回傳新的 x；
     重瞄後超過 cap 或沒修到 1 m 內回 None。"""
     x = np.asarray(x, dtype=np.float64).copy()
     coasts = x[1:1 + N]
     dvs = x[1 + N:].reshape(N, 3)
-    r, v = propagate_dop853(B_r0, B_v0, float(x[0]), 60.0, mu, j2, j3, j4, re)
+    r, v = fixed_orbit_state(B_r0, B_v0, float(x[0]), mu, j2, j3, j4, re, ephem, 1)
     for i in range(N - 1):
         r, v = propagate_dop853(r, v + dvs[i], float(coasts[i]), 60.0, mu, j2, j3, j4, re)
     v_new, miss = _shoot_final(r, v + dvs[N - 1], target, float(coasts[N - 1]),
@@ -749,7 +749,7 @@ def _legalize_route_core(t0, leading_dvs, leading_coasts, terminal_coast, target
                          cap, min_coast, mu, j2, j3, j4, re, min_periapsis, max_revs,
                          A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, T_max,
                          miss_tol, n_span=1, max_seg=14, maxiter=1000, fd_map=None,
-                         deadline=None):
+                         deadline=None, ephem=None):
     """Stage 2 核心：吃一條「前導合法棒 + 一發(可能超標的)終端攔截」的 route，
     回傳**合法化 + joint-NLP 優化後**的最佳解（free-ECI），或 None（拆不出）。
 
@@ -764,7 +764,7 @@ def _legalize_route_core(t0, leading_dvs, leading_coasts, terminal_coast, target
     """
     # 1. 傳播到終端棒起點
     r, v, t = np.array(B_r0, dtype=np.float64), np.array(B_v0, dtype=np.float64), 0.0
-    r, v = propagate_dop853(r, v, float(t0), 60.0, mu, j2, j3, j4, re)
+    r, v = fixed_orbit_state(r, v, float(t0), mu, j2, j3, j4, re, ephem, 1)
     t = float(t0)
     for dv, ct in zip(leading_dvs, leading_coasts):
         v = v + np.asarray(dv, dtype=np.float64)
@@ -799,7 +799,7 @@ def _legalize_route_core(t0, leading_dvs, leading_coasts, terminal_coast, target
         # 多圈傳播上有雜訊），那一步就不可行——這時**不能**把暖啟一起丟掉，所以兩個都評，
         # 取 feasible 且分數最高者。
         cands = [_eval_free(x0, N, cap, min_periapsis, mu, j2, j3, j4, re,
-                            A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, miss_tol)]
+                            A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, miss_tol, ephem=ephem)]
         if _past(deadline) and (best is not None or cands[0]["feasible"]):
             cands[0]["budget_hit"] = True          # 預算已到：只收 greedy 暖啟，不再開 NLP
         else:
@@ -809,7 +809,7 @@ def _legalize_route_core(t0, leading_dvs, leading_coasts, terminal_coast, target
                                          C_v=C_v, T_max=T_max, miss_tol=miss_tol, maxiter=maxiter,
                                          fd_map=fd_map, deadline=deadline,
                                          require_feasible=(best is None
-                                                           and not cands[0]["feasible"])))
+                                                           and not cands[0]["feasible"]), ephem=ephem))
         for cand in cands:
             if cand["feasible"] and (best is None or cand["score"] > best["score"]):
                 best = cand
@@ -845,7 +845,7 @@ def drop_null_burns(x, N, tol=1e-6):
 
 
 def prune_null_burns(x, N, cap, min_periapsis, mu, j2, j3, j4, re,
-                     A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, miss_tol, tols=(5e-5, 1e-9)):
+                     A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, miss_tol, tols=(5e-5, 1e-9), ephem=None):
     """`drop_null_burns` 的安全版：依序試每個門檻 (km/s)，剔除後用**真實約束重評**
     （cap / 近地點 / 命中 ≤miss_tol），第一個仍 feasible 的就採用；回傳 `_eval_free` 格式的
     dict（分數/Δr/Δv 全是剔除後重算的，前後自洽），沒東西可剔或都不可行回 None（沿用原解）。
@@ -860,17 +860,17 @@ def prune_null_burns(x, N, cap, min_periapsis, mu, j2, j3, j4, re,
         if Nd == N:
             continue
         ev = _eval_free(xd, Nd, cap, min_periapsis, mu, j2, j3, j4, re,
-                        A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, miss_tol)
+                        A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, miss_tol, ephem=ephem)
         if ev["feasible"]:
             return ev
     return None
 
 
 def _eval_free(x, N, cap, min_periapsis, mu, j2, j3, j4, re,
-               A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, miss_tol):
+               A_r0, A_v0, B_r0, B_v0, k_t, C_t, k_v, C_v, miss_tol, ephem=None):
     """把一個 free-ECI 解評成跟 joint_nlp_split 同形狀的 dict（不優化，只算分數+可行性）。
     用來把 greedy 暖啟當候選，確保可行的 greedy 解不會因為 NLP 那步變差就被丟掉。"""
-    m = _simulate_free(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0)
+    m = _simulate_free(x, N, mu, j2, j3, j4, re, A_r0, A_v0, B_r0, B_v0, ephem=ephem)
     feasible = (float(np.max(m["dv_mags"])) <= cap + 1e-6
                 and float(np.min(m["arc_minr"])) >= min_periapsis - 1e-3
                 and m["miss_km"] <= miss_tol + 1e-6)

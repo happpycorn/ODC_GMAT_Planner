@@ -49,9 +49,11 @@ def porkchop_oracle(opt, h=GRID_H, max_revs=MAX_REVS):
     times = np.arange(0.0, opt.T_max + 1e-9, h)
     n = len(times)
     RB, VB = build_ephemeris(opt.B_r0, opt.B_v0, times, 60.0, opt.MU,
-                             opt.J2_VAL, opt.J3_VAL, opt.J4_VAL, opt.RE_VAL)
+                             opt.J2_VAL, opt.J3_VAL, opt.J4_VAL, opt.RE_VAL,
+                            ephem=None if opt.ephem is None else (opt.ephem[0], opt.ephem[2]))
     RA, VA = build_ephemeris(opt.A_r0, opt.A_v0, times, 60.0, opt.MU,
-                             opt.J2_VAL, opt.J3_VAL, opt.J4_VAL, opt.RE_VAL)
+                             opt.J2_VAL, opt.J3_VAL, opt.J4_VAL, opt.RE_VAL,
+                            ephem=None if opt.ephem is None else (opt.ephem[0], opt.ephem[1]))
     min_tof_steps = max(1, int(math.ceil(opt.MIN_COAST_TIME / h)))
     DV, MREV, NSOL, TANG = porkchop(RB, VB, RA, h, max_revs, min_tof_steps)
     valid = np.isfinite(DV)

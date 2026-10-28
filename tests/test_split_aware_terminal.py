@@ -42,6 +42,8 @@ CKPT = os.path.join(ROOT, "docs", "solutions", "checkpoints", "contest_route88.3
 with open(CKPT, encoding="utf-8") as f:
     _ck = json.load(f)
 BASE = _ck["config"]
+# 這支是跟「舊算法」逐位元比對，舊算法沒有星曆快取；快取本身的精度由 test_ephem_cache.py 驗。
+BASE.setdefault("strategy", {})["EPHEM_CACHE"] = False
 X = np.asarray(_ck["mission_info"]["x"], dtype=np.float64)
 N = int(_ck["mission_info"]["num_burns"])
 
@@ -79,7 +81,7 @@ sp16 = off._scalar_params()[:16].copy()
 vp = np.vstack([off.A_r0, off.A_v0, off.B_r0, off.B_v0])
 f16 = fast_fitness_evaluator(X, N, sp16, vp)
 check("旗標關時與舊 16 格 scalars 逐位元相同", f16 == off._fitness_wrapper(N)(X))
-check("_scalar_params 是 21 格（19 = 總 Δv 上限、20 = 拆棒器單棒上限）", off._scalar_params().shape == (21,))
+check("_scalar_params 是 23 格（19/20 = Δv 上限、21/22 = 星曆間距/點數）", off._scalar_params().shape == (23,))
 check("初賽模式（沒設總 Δv 上限）K 維持 5 倍", off.SPLIT_AWARE_TERMINAL_MAX_FACTOR == 5.0)
 
 m = off.mission_metrics(X, N)

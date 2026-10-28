@@ -20,7 +20,7 @@ if _REPO_ROOT not in sys.path:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # 讓 `import hap47_poc_nlp_split` 找得到
 
 from hap47_poc_nlp_split import (  # noqa: E402
-    run_optimization, unpack, GRAVITY_DEGREE, MU, ORBIT_A, ORBIT_B, K_T, C_T, K_V, C_V,
+    run_optimization, unpack, initial_state, GRAVITY_DEGREE, MU, ORBIT_A, ORBIT_B, K_T, C_T, K_V, C_V,
 )
 from src.core_math import to_vnb_frame, fast_norm  # noqa: E402
 from src.propagator import propagate  # noqa: E402
@@ -28,11 +28,11 @@ from src.script_generator import script_generator  # noqa: E402
 from main import run_gmat_verification, GMAT_CONSOLE_DEFAULT  # noqa: E402
 
 
-def prevburn_states(x, B_r0, B_v0):
+def prevburn_states(x, B_r0, B_v0, ephem=None):
     """複刻 hap47_poc_nlp_split.simulate() 的迴圈，但回傳每一棒『燒之前』的 (r, v)——
     這才是 GMAT Axes=VNB 用來定義那一棒座標系的狀態（燒完之後 v 已經變了，不能拿來轉換）。"""
     t0, dts, dt_final, dvs = unpack(x)
-    r, v = propagate(MU, B_r0, B_v0, t0, GRAVITY_DEGREE)
+    r, v = initial_state(B_r0, B_v0, t0, ephem, 1)
     states = []
     for i in range(5):
         states.append((r.copy(), v.copy()))
@@ -57,7 +57,7 @@ def main():
     # ShipB 的 epoch 本來就是 t=0，兩者都是「從 0 開始算」，直接用 t0 沒問題。
     times = [t0] + list(dts) + [dt_final]
 
-    states = prevburn_states(x1, B_r0, B_v0)
+    states = prevburn_states(x1, B_r0, B_v0, opt["ephem"])
     burns_vnb = []
     for i, (r_pre, v_pre) in enumerate(states):
         v, n, b = to_vnb_frame(r_pre, v_pre, dvs[i])

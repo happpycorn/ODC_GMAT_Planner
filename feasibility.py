@@ -79,12 +79,12 @@ def single_burn_sweep(opt, n_grid):
     T = opt.T_max
     best, best_at, legal, total = float("inf"), None, 0, 0
     for tb in np.linspace(0.0, T * 0.85, n_grid):
-        r_b, v_b = propagate_dop853(opt.B_r0, opt.B_v0, float(tb), dt, mu, j2, j3, j4, re)
+        r_b, v_b = opt.state_B(float(tb))
         max_ft = T - tb
         if max_ft < 600:
             continue
         for ft in np.linspace(600.0, max_ft, n_grid):
-            r_a, _ = propagate_dop853(opt.A_r0, opt.A_v0, float(tb + ft), dt, mu, j2, j3, j4, re)
+            r_a, _ = opt.state_A(float(tb + ft))
             dv = lambert_min_dv(mu, r_b, v_b, r_a, ft)
             if not math.isfinite(dv):
                 continue
@@ -114,7 +114,7 @@ def multi_burn_probe(opt, n_burns):
     kick_levels = np.arange(600.0, cap + 1.0, 150.0)
 
     for t_wait in np.arange(0.0, min(b_per * 3, T * 0.3), b_per / 5):
-        r_c, v_c = propagate_dop853(opt.B_r0, opt.B_v0, float(t_wait), dt, mu, j2, j3, j4, re)
+        r_c, v_c = opt.state_B(float(t_wait))
         t_now = float(t_wait)
         # 逐棒往上疊：每一棒沿速度方向燒，然後滑行 (半圈/整圈) 再燒下一棒
         stack = [(r_c, v_c, t_now, [], 0.0)]
@@ -143,7 +143,7 @@ def multi_burn_probe(opt, n_burns):
             if max_ft < 600:
                 continue
             for ft in np.linspace(600.0, min(max_ft, T * 0.7), 26):
-                r_a, _ = propagate_dop853(opt.A_r0, opt.A_v0, float(t_f + ft), dt, mu, j2, j3, j4, re)
+                r_a, _ = opt.state_A(float(t_f + ft))
                 dv_final = lambert_min_dv(mu, r_f, v_f, r_a, ft)
                 if not math.isfinite(dv_final) or dv_final > cap:
                     continue

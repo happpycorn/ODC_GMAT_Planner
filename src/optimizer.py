@@ -11,6 +11,7 @@ import contextlib
 import multiprocessing
 import queue
 import threading
+import time
 from threadpoolctl import threadpool_limits
 
 from typing import Tuple
@@ -24,7 +25,7 @@ from src.scorer import (calculate_score, ranked_search_score, assess_legality,
                         SEARCH_FAIL_SCORE_RANKED)
 from src.core_math import (propagate_dop853, check_constraints, fast_norm,
                            to_vnb_frame, reaches_perigee, lambert_izzo,
-                           izzo_max_revs)
+                           izzo_max_revs, ephem_state, build_ephem_table, fixed_orbit_state)
 from src.runlog import log, is_verbose
 import numba as nb
 from tqdm import tqdm
@@ -95,6 +96,15 @@ def fast_fitness_evaluator(
     B_r0 = vectors[2]
     B_v0 = vectors[3]
 
+    # scalars[21:23] = (checkpoint step, checkpoint count)。前四列維持原 ABI；
+    # 後面依序是 A、B 的交錯 r/v 表，各 2*n 列。舊的四列呼叫端安全退回直積分。
+    ephem_dt = 0.0
+    ephem_n = 0
+    if scalars.shape[0] >= 23:
+        ephem_dt = scalars[21]
+        ephem_n = int(scalars[22])
+    use_ephem = ephem_dt > 0.0 and ephem_n > 0 and vectors.shape[0] >= 4 + 4*ephem_n
+
     total_dv = 0.0
     penalty_count = 0
     dt = 60.0  # DOP853 初始步長猜測 (自適應積分器會自己調整實際步長)
@@ -103,7 +113,11 @@ def fast_fitness_evaluator(
     current_time = float(x[0])
     
     # 傳播太空船 B 到第一次點火點
-    r_curr, v_curr = propagate_dop853(B_r0, B_v0, current_time, dt, mu, j2_val, j3_val, j4_val, re_val)
+    if use_ephem:
+        r_curr, v_curr = ephem_state(0.0, ephem_dt,
+            vectors[4 + 2*ephem_n:4 + 4*ephem_n], current_time, mu, j2_val, j3_val, j4_val, re_val)
+    else:
+        r_curr, v_curr = propagate_dop853(B_r0, B_v0, current_time, dt, mu, j2_val, j3_val, j4_val, re_val)
 
     idx = 1
     # 2. 執行前 N-1 次機動 (如果 num_burns > 1)
@@ -181,7 +195,11 @@ def fast_fitness_evaluator(
     intercept_time = current_time + t_final_leg
 
     # 傳播太空船 A (目標) 到攔截時間點
-    r_A_target, _ = propagate_dop853(A_r0, A_v0, intercept_time, dt, mu, j2_val, j3_val, j4_val, re_val)
+    if use_ephem:
+        r_A_target, _ = ephem_state(0.0, ephem_dt,
+            vectors[4:4 + 2*ephem_n], intercept_time, mu, j2_val, j3_val, j4_val, re_val)
+    else:
+        r_A_target, _ = propagate_dop853(A_r0, A_v0, intercept_time, dt, mu, j2_val, j3_val, j4_val, re_val)
 
     # 規則只要求 Δr <= 門檻 (預設 5km)，Δr_min 超過命中點的部分不會多加分，所以不用
     # 死盯著 A 的精確位置打：球座標 (offset_r, offset_theta, offset_phi) 讓 Lambert
@@ -650,6 +668,48 @@ class MissionOptimizer:
             self.Ta_sec = 2.0 * np.pi * np.sqrt(a_sma**3 / self.MU)
             self.T_max = float(rules.get("T_MAX_PERIOD_MULTIPLE", 4.0)) * self.Ta_sec
     
+        self.EPHEM_CACHE = bool(strategy.get("EPHEM_CACHE", True))
+        self.EPHEM_CACHE_STEP_SEC = float(strategy.get("EPHEM_CACHE_STEP_SEC", 60.0))
+        if not math.isfinite(self.EPHEM_CACHE_STEP_SEC) or self.EPHEM_CACHE_STEP_SEC <= 0.0:
+            raise ValueError("strategy.EPHEM_CACHE_STEP_SEC 必須是有限的正數")
+        self.ephem = None
+        self.ephem_build_seconds = 0.0
+        if self.EPHEM_CACHE:
+            # NLP: t0<=T_max，每個 coast<=T_max；貼 cap 的前導棒最多各補一空位。
+            # N<=2*(max_burns-1)+SPLITTER_MAX_SEG，故 (N+1)*T_max 涵蓋所有試探。
+            # 多留一步給有限差分；另涵蓋搜尋在 T_max 後被迫加的最短滑行。
+            max_burns = max(self.burns)
+            self.ephem_end_time = max(
+                (2*(max_burns - 1) + SPLITTER_MAX_SEG + 1)*self.T_max,
+                self.T_max + max_burns*self.MIN_COAST_TIME
+            ) + self.EPHEM_CACHE_STEP_SEC
+            started = time.perf_counter()
+            args = (self.EPHEM_CACHE_STEP_SEC, self.ephem_end_time,
+                    self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL, self.RE_VAL)
+            self.ephem = (self.EPHEM_CACHE_STEP_SEC,
+                          build_ephem_table(self.A_r0, self.A_v0, *args),
+                          build_ephem_table(self.B_r0, self.B_v0, *args))
+            self.ephem_build_seconds = time.perf_counter() - started
+        self._vectors = np.vstack([self.A_r0, self.A_v0, self.B_r0, self.B_v0]
+                                  + ([] if self.ephem is None else list(self.ephem[1:])))
+
+    def state_A(self, t):
+        return fixed_orbit_state(self.A_r0, self.A_v0, t, self.MU, self.J2_VAL,
+                                 self.J3_VAL, self.J4_VAL, self.RE_VAL, self.ephem, 0)
+
+    def state_B(self, t):
+        """B 第一棒之前的初始軌道狀態。"""
+        return fixed_orbit_state(self.B_r0, self.B_v0, t, self.MU, self.J2_VAL,
+                                 self.J3_VAL, self.J4_VAL, self.RE_VAL, self.ephem, 1)
+
+    def _vector_params(self):
+        # 旋轉不變性等呼叫端會暫換初始狀態；這時既有表不適用，四列佈局使 evaluator
+        # 自動走原本的直接傳播。正常搜尋只回傳已打包好的陣列，不複製整張表。
+        initial = (self.A_r0, self.A_v0, self.B_r0, self.B_v0)
+        if not all(np.array_equal(state, self._vectors[i]) for i, state in enumerate(initial)):
+            return np.vstack(initial)
+        return self._vectors
+
     def _generate_bounds(self, num_burns: int) -> Tuple[list, list]:
         """
         產生純陣列的上下界。中間燃燒用球座標 (r, theta, phi, coast_frac) 參數化：
@@ -779,7 +839,7 @@ class MissionOptimizer:
         dists = np.empty(n_coarse)
         plane_dists = np.empty(n_coarse)
         for i, t in enumerate(coarse_ts):
-            r, _ = propagate_dop853(self.A_r0, self.A_v0, t, dt, mu, j2, j3, j4, re)
+            r, _ = self.state_A(t)
             dists[i] = fast_norm(r)
             plane_dists[i] = abs(np.dot(r, h_B_hat))
 
@@ -825,8 +885,8 @@ class MissionOptimizer:
                 for tw in local_tws:
                     if ft < self.MIN_COAST_TIME or tw < 0.0 or tw + ft > self.T_max:
                         continue
-                    r_b, v_b = propagate_dop853(self.B_r0, self.B_v0, tw, dt, mu, j2, j3, j4, re)
-                    r_a, _ = propagate_dop853(self.A_r0, self.A_v0, tw + ft, dt, mu, j2, j3, j4, re)
+                    r_b, v_b = self.state_B(tw)
+                    r_a, _ = self.state_A(tw + ft)
                     for prograde in (True, False):
                         try:
                             v1, _ = lambert_izzo(mu, r_b, r_a, ft, M=0, prograde=prograde,
@@ -872,11 +932,11 @@ class MissionOptimizer:
             )
             fine_fts = np.linspace(max(self.MIN_COAST_TIME, rough_ft - fine_ft_span), rough_ft + fine_ft_span, 11)
             for tw in fine_tws:
-                r_b, v_b = propagate_dop853(self.B_r0, self.B_v0, tw, dt, mu, j2, j3, j4, re)
+                r_b, v_b = self.state_B(tw)
                 for ft in fine_fts:
                     if ft < self.MIN_COAST_TIME or tw + ft > self.T_max:
                         continue
-                    r_a, _ = propagate_dop853(self.A_r0, self.A_v0, tw + ft, dt, mu, j2, j3, j4, re)
+                    r_a, _ = self.state_A(tw + ft)
                     for prograde in (True, False):
                         try:
                             v1, _ = lambert_izzo(mu, r_b, r_a, ft, M=0, prograde=prograde,
@@ -1125,8 +1185,7 @@ class MissionOptimizer:
         # 橢圓軌道則會掃到近地點附近，Oberth 效率最高的位置自然勝出)
         for t_wait in np.linspace(0.0, b_period, 5, endpoint=False):
             for mags in mag_plans:
-                r_cur, v_cur = propagate_dop853(self.B_r0, self.B_v0, float(t_wait),
-                                                 dt, mu, j2, j3, j4, re)
+                r_cur, v_cur = self.state_B(float(t_wait))
                 cur_t = float(t_wait)
                 legs = []      # 每棒的 (r, theta, phi, coast_frac)
                 ok = True
@@ -1170,8 +1229,7 @@ class MissionOptimizer:
                 n_ft = int(min(600, max(60, 60 * revs)))
                 best = None
                 for ft in np.linspace(self.MIN_COAST_TIME, max_final, n_ft):
-                    r_a, _ = propagate_dop853(self.A_r0, self.A_v0, cur_t + float(ft),
-                                               dt, mu, j2, j3, j4, re)
+                    r_a, _ = self.state_A(cur_t + float(ft))
                     for prograde in (True, False):
                         try:
                             v1, _ = lambert_izzo(mu, r_cur, r_a, float(ft), M=0, prograde=prograde,
@@ -1289,7 +1347,7 @@ class MissionOptimizer:
         candidates = []  # (neg_score, x) —— 依分數排序，優先高分 (T 早 + 總 Δv 低) 的基底
 
         for t_wait in (0.0, a_period * 0.05):
-            rb, vb = prop(self.B_r0, self.B_v0, t_wait)
+            rb, vb = self.state_B(t_wait)
             Vhat = vb / fast_norm(vb)
             Nhat = np.cross(rb, vb)
             Nhat = Nhat / fast_norm(Nhat)
@@ -1322,7 +1380,7 @@ class MissionOptimizer:
                             if hi <= lo:
                                 continue
                             for Tarr in np.linspace(lo, hi, 8):
-                                r_a, _ = prop(self.A_r0, self.A_v0, float(Tarr))
+                                r_a, _ = self.state_A(float(Tarr))
                                 out = split_even(rm, vm, t_mid, r_a, float(Tarr), n_final)
                                 if out is None:
                                     continue
@@ -1711,9 +1769,7 @@ class MissionOptimizer:
 
         scalar_params = self._scalar_params()
         
-        vector_params = np.vstack([
-            self.A_r0, self.A_v0, self.B_r0, self.B_v0
-        ])  
+        vector_params = self._vector_params()
         
         # 贏家是所有案例都跑完之後才挑的 (見 pbar.close() 之後那段)，這裡不再
         # 邊收邊比，所以也不需要預先放一個「目前最好」的暫存值。
@@ -1841,9 +1897,7 @@ class MissionOptimizer:
 
         scalar_params = self._scalar_params()
         
-        vector_params = np.vstack([
-            self.A_r0, self.A_v0, self.B_r0, self.B_v0
-        ]) 
+        vector_params = self._vector_params()
 
         def fitness_wrapper(solution):
             return fast_fitness_evaluator(
@@ -1927,7 +1981,8 @@ class MissionOptimizer:
         """fast_fitness_evaluator 的 scalars 陣列。索引佈局要跟 evaluator 開頭逐格對齊：
         0-12 環境/計分常數、13 lambert_max_revs、14/15 SPLIT_AWARE_SEARCH、16-18 C4 終端棒
         拆後估計 (旗標、K、overhead)、19 總 Δv 上限 (km/s，0 = 沒有)、20 拆棒器能處理的單棒
-        上限 (km/s，排位賽模式才用)。只准在這裡組——原本三處各抄一份，改一處忘兩處。"""
+        上限 (km/s，排位賽模式才用)、21 檢查點間距 (0=關)、22 檢查點數。
+        只准在這裡組——原本三處各抄一份，改一處忘兩處。"""
         return np.array([
             self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL,
             self.RE_VAL, self.MIN_PERIAPSIS, self.MAX_DV_SOFT, self.k_t, self.C_t, self.k_v, self.C_v,
@@ -1937,12 +1992,14 @@ class MissionOptimizer:
             self.SPLIT_AWARE_TERMINAL_DV_OVERHEAD,
             0.0 if self.MAX_TOTAL_DV_MPS is None else self.MAX_TOTAL_DV_MPS / 1000.0,
             self.SPLIT_LIMIT,
+            0.0 if self.ephem is None else self.ephem[0],
+            0.0 if self.ephem is None else self.ephem[1].shape[0] // 2,
         ], dtype=np.float64)
 
     def _fitness_wrapper(self, num_burns):
         """包一個給定燃燒次數的目標函式 (= -分數)，方便在最佳化流程外面單獨評估。"""
         scalar_params = self._scalar_params()
-        vector_params = np.vstack([self.A_r0, self.A_v0, self.B_r0, self.B_v0])
+        vector_params = self._vector_params()
 
         def _f(solution):
             return fast_fitness_evaluator(np.asarray(solution, dtype=np.float64),
@@ -2290,7 +2347,7 @@ class MissionOptimizer:
                 x, num_burns, self.MIN_COAST_TIME, self.T_max,
                 self.A_r0, self.A_v0, self.B_r0, self.B_v0,
                 self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL, self.RE_VAL,
-                self.LAMBERT_MAX_REVS, self.MIN_PERIAPSIS
+                self.LAMBERT_MAX_REVS, self.MIN_PERIAPSIS, ephem=self.ephem
             )
         total_dv = sum(log['dv_mag'] for log in burn_logs)
         t_team = float(times[-1])
@@ -2318,7 +2375,7 @@ class MissionOptimizer:
                 x, num_burns, self.MIN_COAST_TIME, self.T_max,
                 self.A_r0, self.A_v0, self.B_r0, self.B_v0,
                 self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL, self.RE_VAL,
-                self.LAMBERT_MAX_REVS, self.MIN_PERIAPSIS
+                self.LAMBERT_MAX_REVS, self.MIN_PERIAPSIS, ephem=self.ephem
             )
 
         # 整份任務報告收進 lines、最後一次 log 出去（存進 mission_info["report_text"]，
@@ -2539,7 +2596,7 @@ def _run_studies_unified(revs_values, optimizers, seed_set):
                     futures = {}
                     for revs, opt, b in jobs:
                         scalars = opt._scalar_params()
-                        vectors = np.vstack([opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0])
+                        vectors = opt._vector_params()
                         future = executor.submit(opt._optimize_burn_case, b, scalars, vectors,
                                                  progress_queue, worker_slots, (revs, b))
                         futures[future] = (revs, opt, b)
@@ -2741,7 +2798,7 @@ def refine_lambert_burn(
 
 def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_r0, B_v0,
                               mu, j2_val, j3_val, j4_val, re_val, lambert_max_revs=0,
-                              min_periapsis=None):
+                              min_periapsis=None, ephem=None):
     """
     一步一步重播最佳解，並把 VNB 轉換和時間記錄下來。
     因為不用 JIT，可以盡情使用 list 和 dict。
@@ -2787,7 +2844,7 @@ def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_
 
     current_time = float(x[0])
     times.append(current_time)
-    r_curr, v_curr = propagate_dop853(B_r0, B_v0, current_time, dt, mu, j2_val, j3_val, j4_val, re_val)
+    r_curr, v_curr = fixed_orbit_state(B_r0, B_v0, current_time, mu, j2_val, j3_val, j4_val, re_val, ephem, 1)
 
     idx = 1
     for i in range(1, num_burns):
@@ -2823,7 +2880,7 @@ def reconstruct_mission_logs(x, num_burns, min_coast_time, T_max, A_r0, A_v0, B_
     t_final_leg = min_coast_time + final_leg_frac * (max_final - min_coast_time) if max_final > min_coast_time else min_coast_time
     intercept_time = current_time + t_final_leg
 
-    r_A_target, _ = propagate_dop853(A_r0, A_v0, intercept_time, dt, mu, j2_val, j3_val, j4_val, re_val)
+    r_A_target, _ = fixed_orbit_state(A_r0, A_v0, intercept_time, mu, j2_val, j3_val, j4_val, re_val, ephem, 0)
 
     # 跟 fast_fitness_evaluator 一致：Lambert 瞄準的是 A 附近容許球內的偏移點
     # (offset_r/theta/phi)，不是 A 的精確位置，藉此換取更省油的轉移。

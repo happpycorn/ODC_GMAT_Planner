@@ -21,6 +21,7 @@ import os
 import sys
 import json
 import time
+import copy
 
 import numpy as np
 from scipy.optimize import minimize
@@ -29,9 +30,10 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__f
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from src.propagator import get_r0_v0, propagate  # noqa: E402
-from src.core_math import fast_norm, fast_cross, reaches_perigee  # noqa: E402
+from src.propagator import get_r0_v0, propagate, J2_VAL, J3_VAL, J4_VAL  # noqa: E402
+from src.core_math import fast_norm, fast_cross, reaches_perigee, ephem_state  # noqa: E402
 from src.scorer import calculate_score  # noqa: E402
+from src.optimizer import MissionOptimizer  # noqa: E402
 
 # ----------------------------------------------------------------------------
 # 常數：全部照抄 optimizer.py 的內部安全邊界（不是規則原始值），確保跟
@@ -124,9 +126,18 @@ def pack(t0, dts, dt_final, dvs):
     return np.concatenate([[t0], dts, [dt_final], np.asarray(dvs).ravel()])
 
 
-def simulate(x, A_r0, A_v0, B_r0, B_v0):
+def initial_state(r0, v0, t, ephem=None, body=0):
+    if ephem is None:
+        return propagate(MU, r0, v0, t, GRAVITY_DEGREE)
+    return ephem_state(0.0, ephem[0], ephem[body+1], t, MU,
+                       J2_VAL if GRAVITY_DEGREE >= 2 else 0.0,
+                       J3_VAL if GRAVITY_DEGREE >= 3 else 0.0,
+                       J4_VAL if GRAVITY_DEGREE >= 4 else 0.0, RE_VAL)
+
+
+def simulate(x, A_r0, A_v0, B_r0, B_v0, ephem=None):
     t0, dts, dt_final, dvs = unpack(x)
-    r, v = propagate(MU, B_r0, B_v0, t0, GRAVITY_DEGREE)
+    r, v = initial_state(B_r0, B_v0, t0, ephem, 1)
     arcs = [(B_r0, B_v0, r, v, t0)]
 
     total_dv = 0.0
@@ -139,12 +150,12 @@ def simulate(x, A_r0, A_v0, B_r0, B_v0):
         r, v = r_next, v_next
 
     T_team = t0 + float(np.sum(dts)) + dt_final
-    A_r, _ = propagate(MU, A_r0, A_v0, T_team, GRAVITY_DEGREE)
+    A_r, _ = initial_state(A_r0, A_v0, T_team, ephem, 0)
     miss_km = fast_norm(r - A_r)
     return dict(r_final=r, T_team=T_team, total_dv=total_dv, miss_km=miss_km, arcs=arcs)
 
 
-def reconstruct_warm_start(A_r0, A_v0, B_r0, B_v0):
+def reconstruct_warm_start(A_r0, A_v0, B_r0, B_v0, ephem=None):
     """把 outputs/best_98.31_split5_rebalanced 的 VNB 燒法轉成本腳本的 ECI 決策
     向量，順便當一次正確性檢查（Δv 分量、T_team、miss_km 應該對得上 SUMMARY.md）。"""
     r, v = B_r0.copy(), B_v0.copy()
@@ -156,28 +167,28 @@ def reconstruct_warm_start(A_r0, A_v0, B_r0, B_v0):
         r, v = propagate(MU, r, v, COAST_AFTER_BURN[i], GRAVITY_DEGREE)
 
     x0 = pack(T0_WARM, np.array(COAST_AFTER_BURN[:4]), COAST_AFTER_BURN[4], np.array(dvs))
-    sim = simulate(x0, A_r0, A_v0, B_r0, B_v0)
+    sim = simulate(x0, A_r0, A_v0, B_r0, B_v0, ephem)
     return x0, sim
 
 
-def objective(x, A_r0, A_v0, B_r0, B_v0):
-    sim = simulate(x, A_r0, A_v0, B_r0, B_v0)
+def objective(x, A_r0, A_v0, B_r0, B_v0, ephem=None):
+    sim = simulate(x, A_r0, A_v0, B_r0, B_v0, ephem)
     score = calculate_score(sim["miss_km"], sim["T_team"], sim["total_dv"] * 1000.0, 0, K_T, C_T, K_V, C_V)
     return -score
 
 
-def constraint_dv_cap(x, A_r0, A_v0, B_r0, B_v0):
+def constraint_dv_cap(x, A_r0, A_v0, B_r0, B_v0, ephem=None):
     _, _, _, dvs = unpack(x)
     return np.array([MAX_DV_SOFT - fast_norm(dv) for dv in dvs])
 
 
-def constraint_periapsis(x, A_r0, A_v0, B_r0, B_v0):
-    sim = simulate(x, A_r0, A_v0, B_r0, B_v0)
+def constraint_periapsis(x, A_r0, A_v0, B_r0, B_v0, ephem=None):
+    sim = simulate(x, A_r0, A_v0, B_r0, B_v0, ephem)
     return np.array([arc_min_radius_km(r0, v0, r1, dt) - MIN_PERIAPSIS for (r0, v0, r1, v1, dt) in sim["arcs"]])
 
 
-def constraint_miss(x, A_r0, A_v0, B_r0, B_v0):
-    sim = simulate(x, A_r0, A_v0, B_r0, B_v0)
+def constraint_miss(x, A_r0, A_v0, B_r0, B_v0, ephem=None):
+    sim = simulate(x, A_r0, A_v0, B_r0, B_v0, ephem)
     return np.array([MISS_TOLERANCE_SOFT - sim["miss_km"]])
 
 
@@ -197,8 +208,13 @@ def run_optimization():
     Ta_sec = 2.0 * np.pi * np.sqrt(ORBIT_A["SMA"] ** 3 / MU)
     T_max = 4.0 * Ta_sec
 
+    ephem_config = copy.deepcopy(CONFIG)
+    ephem_config.setdefault("strategy", {})["GRAVITY_DEGREE"] = GRAVITY_DEGREE
+    ephem_config["rules"]["T_MAX_SEC"] = T_max
+    ephem = MissionOptimizer(ephem_config).ephem
+
     print("=== 1. 重建 warm start（應該對得上 SUMMARY.md：Δv≈6191.5 m/s, T_team≈5675.4s, miss≈3.5km）===")
-    x0, sim0 = reconstruct_warm_start(A_r0, A_v0, B_r0, B_v0)
+    x0, sim0 = reconstruct_warm_start(A_r0, A_v0, B_r0, B_v0, ephem)
     dv_each = [fast_norm(dv) * 1000.0 for dv in unpack(x0)[3]]
     print(f"每棒 Δv (m/s): {[round(d, 1) for d in dv_each]}")
     print(f"總 Δv = {sim0['total_dv']*1000.0:.1f} m/s, T_team = {sim0['T_team']:.1f} s, miss = {sim0['miss_km']*1000.0:.1f} m")
@@ -206,9 +222,9 @@ def run_optimization():
     print(f"重建解分數 = {score0:.4f}（應該非常接近官方記錄的 98.31，容許積分器/取數誤差）")
 
     print("\n=== 2. 檢查 warm start 是否已經滿足所有約束（Earth-safe / Δv cap / miss）===")
-    dv_margin = constraint_dv_cap(x0, A_r0, A_v0, B_r0, B_v0)
-    peri_margin = constraint_periapsis(x0, A_r0, A_v0, B_r0, B_v0)
-    miss_margin = constraint_miss(x0, A_r0, A_v0, B_r0, B_v0)
+    dv_margin = constraint_dv_cap(x0, A_r0, A_v0, B_r0, B_v0, ephem)
+    peri_margin = constraint_periapsis(x0, A_r0, A_v0, B_r0, B_v0, ephem)
+    miss_margin = constraint_miss(x0, A_r0, A_v0, B_r0, B_v0, ephem)
     print(f"Δv 上限餘裕 (km/s，全部應該 ≥0): {np.round(dv_margin, 4)}")
     print(f"近地點餘裕 (km，全部應該 ≥0): {np.round(peri_margin, 1)}")
     print(f"命中容許餘裕 (km，應該 ≥0): {np.round(miss_margin, 3)}")
@@ -220,23 +236,23 @@ def run_optimization():
     result = minimize(
         objective,
         x0,
-        args=(A_r0, A_v0, B_r0, B_v0),
+        args=(A_r0, A_v0, B_r0, B_v0, ephem),
         method="SLSQP",
         bounds=build_bounds(T_max),
         constraints=[
-            {"type": "ineq", "fun": constraint_dv_cap, "args": (A_r0, A_v0, B_r0, B_v0)},
-            {"type": "ineq", "fun": constraint_periapsis, "args": (A_r0, A_v0, B_r0, B_v0)},
-            {"type": "ineq", "fun": constraint_miss, "args": (A_r0, A_v0, B_r0, B_v0)},
+            {"type": "ineq", "fun": constraint_dv_cap, "args": (A_r0, A_v0, B_r0, B_v0, ephem)},
+            {"type": "ineq", "fun": constraint_periapsis, "args": (A_r0, A_v0, B_r0, B_v0, ephem)},
+            {"type": "ineq", "fun": constraint_miss, "args": (A_r0, A_v0, B_r0, B_v0, ephem)},
         ],
         options={"maxiter": 200, "ftol": 1e-10},
     )
     elapsed = time.time() - t_start
 
-    sim1 = simulate(result.x, A_r0, A_v0, B_r0, B_v0)
+    sim1 = simulate(result.x, A_r0, A_v0, B_r0, B_v0, ephem)
     score1 = calculate_score(sim1["miss_km"], sim1["T_team"], sim1["total_dv"] * 1000.0, 0, K_T, C_T, K_V, C_V)
-    dv_margin1 = constraint_dv_cap(result.x, A_r0, A_v0, B_r0, B_v0)
-    peri_margin1 = constraint_periapsis(result.x, A_r0, A_v0, B_r0, B_v0)
-    miss_margin1 = constraint_miss(result.x, A_r0, A_v0, B_r0, B_v0)
+    dv_margin1 = constraint_dv_cap(result.x, A_r0, A_v0, B_r0, B_v0, ephem)
+    peri_margin1 = constraint_periapsis(result.x, A_r0, A_v0, B_r0, B_v0, ephem)
+    miss_margin1 = constraint_miss(result.x, A_r0, A_v0, B_r0, B_v0, ephem)
     feasible = np.min(dv_margin1) >= -1e-6 and np.min(peri_margin1) >= -1e-3 and np.min(miss_margin1) >= -1e-6
 
     print(f"SLSQP 結束：success={result.success}, message={result.message!r}, "
@@ -278,7 +294,7 @@ def run_optimization():
     print(f"\n結果存到 {out_path}（outputs/research/ 不進版控）")
 
     return dict(A_r0=A_r0, A_v0=A_v0, B_r0=B_r0, B_v0=B_v0, T_max=T_max,
-                x0=x0, sim0=sim0, score0=score0,
+                x0=x0, sim0=sim0, score0=score0, ephem=ephem,
                 result=result, x1=result.x, sim1=sim1, score1=score1, feasible=feasible)
 
 

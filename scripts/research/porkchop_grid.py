@@ -24,17 +24,20 @@ sys.path.insert(0, REPO)
 import warnings
 warnings.filterwarnings("ignore")
 from src.optimizer import MissionOptimizer          # noqa: E402
-from src.core_math import propagate_dop853, fast_norm   # noqa: E402
+from src.core_math import propagate_dop853, ephem_state, fast_norm   # noqa: E402
 from src.scorer import calculate_score              # noqa: E402
 
 
 @njit(cache=True, parallel=True)
-def build_ephemeris(r0, v0, times, dt, mu, j2, j3, j4, re):
+def build_ephemeris(r0, v0, times, dt, mu, j2, j3, j4, re, ephem=None):
     n = times.shape[0]
     R = np.zeros((n, 3)); V = np.zeros((n, 3))
     for i in prange(n):
-        # 每一格都從 t=0 重新積分，不要累積遞推誤差
-        r, v = propagate_dop853(r0, v0, times[i], dt, mu, j2, j3, j4, re)
+        # 固定軌道檢查點 + 原 DOP853 補積分，無插值。
+        if ephem is None:
+            r, v = propagate_dop853(r0, v0, times[i], dt, mu, j2, j3, j4, re)
+        else:
+            r, v = ephem_state(0.0, ephem[0], ephem[1], times[i], mu, j2, j3, j4, re)
         R[i, 0] = r[0]; R[i, 1] = r[1]; R[i, 2] = r[2]
         V[i, 0] = v[0]; V[i, 1] = v[1]; V[i, 2] = v[2]
     return R, V
@@ -91,9 +94,11 @@ def main(h=30.0, max_revs=4):
 
     t0 = time.time()
     RB, VB = build_ephemeris(m.B_r0, m.B_v0, times, 60.0, m.MU,
-                            m.J2_VAL, m.J3_VAL, m.J4_VAL, m.RE_VAL)
+                            m.J2_VAL, m.J3_VAL, m.J4_VAL, m.RE_VAL,
+                            ephem=None if m.ephem is None else (m.ephem[0], m.ephem[2]))
     RA, VA = build_ephemeris(m.A_r0, m.A_v0, times, 60.0, m.MU,
-                            m.J2_VAL, m.J3_VAL, m.J4_VAL, m.RE_VAL)
+                            m.J2_VAL, m.J3_VAL, m.J4_VAL, m.RE_VAL,
+                            ephem=None if m.ephem is None else (m.ephem[0], m.ephem[1]))
     print("ephemeris: %.1f s" % (time.time() - t0))
 
     min_tof_steps = max(1, int(math.ceil(m.MIN_COAST_TIME / h)))

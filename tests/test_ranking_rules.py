@@ -55,6 +55,8 @@ CKPT = os.path.join(ROOT, "docs", "solutions", "checkpoints", "contest_route88.3
 with open(CKPT, encoding="utf-8") as f:
     _ck = json.load(f)
 BASE = _ck["config"]
+# 這支是跟「舊算法」逐位元比對，舊算法沒有星曆快取；快取本身的精度由 test_ephem_cache.py 驗。
+BASE.setdefault("strategy", {})["EPHEM_CACHE"] = False
 X = np.asarray(_ck["mission_info"]["x"], dtype=np.float64)
 N = int(_ck["mission_info"]["num_burns"])
 

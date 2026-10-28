@@ -220,6 +220,13 @@ def _validate_strategy(strategy_cfg, errors: list):
         errors.append(f"strategy 應該是一個物件，但收到 {type(strategy_cfg).__name__}")
         return
 
+    if "EPHEM_CACHE" in strategy_cfg and not isinstance(strategy_cfg["EPHEM_CACHE"], bool):
+        errors.append("strategy.EPHEM_CACHE 必須是 true/false（預設 true）")
+    if "EPHEM_CACHE_STEP_SEC" in strategy_cfg:
+        v = strategy_cfg["EPHEM_CACHE_STEP_SEC"]
+        if not (_is_number(v) and v > 0):
+            errors.append("strategy.EPHEM_CACHE_STEP_SEC 必須是有限的正數（預設 60 秒）")
+
     required = ["GRAVITY_DEGREE", "MISS_TOLERANCE_KM"]
     missing = [f for f in required if f not in strategy_cfg]
     if missing:

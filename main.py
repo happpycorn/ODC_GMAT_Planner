@@ -88,6 +88,8 @@ DEFAULT_CONFIG = {
         "C_v": 1200.0,
     },
     "strategy": {
+        "EPHEM_CACHE": True,       # A 全程、B 第一棒前的固定軌道檢查點（無插值）
+        "EPHEM_CACHE_STEP_SEC": 60.0,
         "GRAVITY_DEGREE": 2,  # 重力場要算到第幾階 zonal harmonic：0=純點質量, 2=J2,
                               # 3=J2+J3, 4=J2+J3+J4。不確定某一輪/場景實際開多少階擾動時
                               # 用這個切換，Python 端跟產生的 GMAT script 會同步套用
@@ -524,12 +526,12 @@ def _primer_diagnose_winner(mission_info, opt):
         logs, times, *_ = reconstruct_mission_logs(
             np.asarray(x, dtype=np.float64), N, opt.MIN_COAST_TIME, opt.T_max,
             opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0, mu, j2, j3, j4, re,
-            lambert_max_revs=opt.LAMBERT_MAX_REVS)
+            lambert_max_revs=opt.LAMBERT_MAX_REVS, ephem=opt.ephem)
     except Exception as exc:                       # 重播偶發 Lambert 不收斂等，診斷不該擋管線
         log.debug(f"primer 診斷重播失敗，略過：{exc}")
         return None
     t0 = float(logs[0]["time"])
-    r0, v0 = propagate_dop853(opt.B_r0, opt.B_v0, t0, 60.0, mu, j2, j3, j4, re)
+    r0, v0 = opt.state_B(t0)
     impulses = [(float(bl["time"]), np.asarray(bl["dv_vec"], dtype=np.float64)) for bl in logs]
     return intercept_primer_profile(r0, v0, impulses, float(times[-1]), mu)
 
@@ -654,7 +656,7 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
 
     # 解碼標準決策向量 → route（球座標慣例跟 reconstruct_mission_logs 逐字一致）
     t0 = float(x[0]); cur = t0
-    r, v = _p(opt.B_r0, opt.B_v0, t0)
+    r, v = opt.state_B(t0)
     leading_dvs, leading_coasts, idx = [], [], 1
     for _ in range(1, N0):
         dvv = _sph(x[idx], x[idx + 1], x[idx + 2]); cf = x[idx + 3]; idx += 4
@@ -665,7 +667,7 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
     flf = x[-4]; mxf = T_max - cur
     tfin = mc + flf * (mxf - mc) if mxf > mc else mc
     icpt = cur + tfin
-    r_A, _ = _p(opt.A_r0, opt.A_v0, icpt)
+    r_A, _ = opt.state_A(icpt)
     target = r_A + _sph(x[-3], x[-2], x[-1])
 
     res = legalize_route(
@@ -675,7 +677,7 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
         min_periapsis=opt.MIN_PERIAPSIS, max_revs=opt.LAMBERT_MAX_REVS,
         A_r0=opt.A_r0, A_v0=opt.A_v0, B_r0=opt.B_r0, B_v0=opt.B_v0,
         k_t=opt.k_t, C_t=opt.C_t, k_v=opt.k_v, C_v=opt.C_v, T_max=T_max,
-        miss_tol=opt.MISS_TOLERANCE_SOFT, **split_options(config))
+        miss_tol=opt.MISS_TOLERANCE_SOFT, ephem=opt.ephem, **split_options(config))
     if res is None or not res["feasible"]:
         log.info("⚠️ HAP-67 自動拆分：這個違規解在段數上限內拆不出合法版，沿用原解。")
         return None
@@ -692,7 +694,7 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
     # （分數/Δr/Δv 一律用剔除後重算的值，前後自洽；見 prune_null_burns）
     pr = prune_null_burns(xf, Nf, opt.MAX_DV_SOFT, opt.MIN_PERIAPSIS, mu, j2, j3, j4, re,
                           opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0,
-                          opt.k_t, opt.C_t, opt.k_v, opt.C_v, opt.MISS_TOLERANCE_SOFT)
+                          opt.k_t, opt.C_t, opt.k_v, opt.C_v, opt.MISS_TOLERANCE_SOFT, ephem=opt.ephem)
     if pr is not None:
         log.debug(f"拆棒解剔除 {Nf - pr['N']} 發 Δv≈0 空燒：{Nf} → {pr['N']} 棒"
                   f"（重評 {res['score']:.6f} → {pr['score']:.6f}，Δr {res['miss_km']:.4f} → "
@@ -700,10 +702,10 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
         res = pr
         Nf = int(res["N"]); xf = np.asarray(res["x"], dtype=np.float64)
     t0f = float(xf[0]); coastsf = xf[1:1 + Nf]; dvsf = xf[1 + Nf:].reshape(Nf, 3)
-    rr, vv = _p(opt.B_r0, opt.B_v0, t0f); states = []
+    rr, vv = opt.state_B(t0f); states = []
     for i in range(Nf):
         states.append((rr.copy(), vv.copy())); vv = vv + dvsf[i]; rr, vv = _p(rr, vv, coastsf[i])
-    m = _simulate_free(xf, Nf, mu, j2, j3, j4, re, opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0)
+    m = _simulate_free(xf, Nf, mu, j2, j3, j4, re, opt.A_r0, opt.A_v0, opt.B_r0, opt.B_v0, ephem=opt.ephem)
     burns_vnb = [tuple(float(c) for c in to_vnb_frame(rp, vp, dvsf[i]))
                  for i, (rp, vp) in enumerate(states)]
     times_new = [float(t0f)] + [float(c) for c in coastsf]
