@@ -10,7 +10,9 @@ mission.json、winner_presplit_seed<S>.json、oracle_candidates_seed<S>.json、r
   * runs/<題>_<臂>_s<種子>/：mission.json、winner_presplit_seed*.json、oracle_candidates_seed*.json。
   * tables.md：每題每臂的彙整表（summary.md 直接貼）。
 合法 = sweep 狀態 ok、未失格、Earth-safe、miss ≤ 5 km（penalty_count 另列）。
-oracle 勝出 = 最終 mission 的（分數、棒數、總 Δv）對得上 Oracle comparison 表的某一列 oracle、對不上 DE 那列。
+oracle 勝出 = run.log 有兩次「拆棒前贏家已存檔」：_solve_with_oracle 只在選了 oracle 候選時才再存一次
+（2026-10-30 更正：原本用「最終分數對得上 oracle 列、對不上 DE 列」判定，分數差 ~1e-6 的平手會誤判成 DE 勝；
+§6 排名鍵在分數平手時比 Δr／ΔV，oracle 候選常靠這個勝出）。oracle_margin = 最終分數 − 表中 DE 列拆後分數。
 臂 C 的 winner_presplit 在 oracle 勝出時是 oracle 候選的拆前路線（main._solve_with_oracle 會覆寫）；
 DE 自己的拆前前導棒另外從表的 DE 列取（de_leading_mps，只有臂 C 有意義）。
 """
@@ -54,11 +56,6 @@ def oracle_table(run_dir):
     return None
 
 
-def _match(row, mi):
-    return (abs(row["score"] - float(mi["score"])) < 2e-6 and row["burns"] == int(mi["num_burns"])
-            and abs(row["total"] - float(mi["total_dv_mps"])) < 2e-3)
-
-
 def collect(sweeps, out):
     rows = []
     for arm in ARMS:
@@ -82,8 +79,8 @@ def collect(sweeps, out):
             de_row = next((t for t in (table or []) if t["source"] == "DE"), None)
             oracle_won = None
             if table is not None and mi and arm == "C":
-                oracle_won = (any(t["source"] == "oracle" and _match(t, mi) for t in table)
-                              and not (de_row and _match(de_row, mi)))
+                log_text = open(os.path.join(run_dir, "run.log"), encoding="utf-8", errors="replace").read()
+                oracle_won = log_text.count("拆棒前贏家已存檔") >= 2
             orc_scores = [t["score"] for t in (table or []) if t["source"] == "oracle" and not t["dq"]]
             legal = (r["status"] == "ok" and not f.get("disqualified") and bool(f.get("earth_safe", True))
                      and f.get("miss_km") is not None and f["miss_km"] <= MISS_TOL_KM)
@@ -107,6 +104,8 @@ def collect(sweeps, out):
                 "oracle_n_candidates": None if orc is None else len(orc.get("candidates", [])),
                 "oracle_best_post_score": max(orc_scores) if orc_scores else None,
                 "oracle_won": oracle_won,
+                "oracle_margin": (None if de_row is None or not mi or arm != "C"
+                                  else round(float(mi["score"]) - de_row["score"], 6)),
             }
             rows.append(row)
             dest = os.path.join(out, "runs", f"{r['scenario']}_{arm}_s{seed}")
