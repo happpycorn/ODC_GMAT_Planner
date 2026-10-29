@@ -51,8 +51,10 @@ Mac 驗收結果：
 | e1_r5 | 68.6633／68.5243 | 68.5243／68.5243 | **68.7464／68.7463** | 68.7464／68.5243 | 5/5 |
 | e1_r8 | 76.3562／76.3313 | 76.3313／76.3313 | **76.5343／76.5343** | 76.3313／76.3313 | 5/5 |
 | hyper_far | 82.4327／82.4327 | 82.5777／82.5461 | **82.6446／82.6445** | 82.5826／82.5826 | 5/5 |
-| hyperbolic_smoke | **86.7864**／86.7847 | 86.7847／86.7847 | 86.7847／86.7847 | 86.7847／86.7834 | 0/5 |
-| contest | 98.3193／98.3193 | 98.3193／98.3193 | 98.3193／98.3193 | 98.3193／98.3193 | 1/5（差在 ulp 級） |
+| hyperbolic_smoke | **86.7864**／86.7847 | 86.7847／86.7847 | 86.7847／86.7847 | 86.7847／86.7834 | 5/5（平手） |
+| contest | 98.3193／98.3193 | 98.3193／98.3193 | 98.3193／98.3193 | 98.3193／98.3193 | 5/5（平手） |
+
+「oracle 勝出」以 run.log 出現兩次「拆棒前贏家已存檔」判定，因為只有選中 oracle 候選時才會再存一次。smoke 和 contest 的分數差 ≤ 1.1e-5，算是平手，由 §6 排序鍵改比 Δr／ΔV 分出勝負，分數和 A 一樣。（10-30 更正：第一版把這些平手判成 DE 勝出，寫成 0/5 與 1/5。）
 
 護欄：smoke 必須 ≥ 86.7847、contest 必須 ≥ 98.3193。四臂的最好值都過。
 
@@ -150,7 +152,7 @@ Mac 只量過一個 C run：hyper_far C s0 求解 678 s（10 核，其中 4 顆�
 | 旋鈕 | 建議 | 理由 |
 |---|---|---|
 | `SPLIT_LEADING` | 開 | C 臂必須開（驗證器強制）；單開不影響沒有超標前導棒的解，有的話照等分拆，22/22 成功 |
-| `ORACLE_TWOBURN` | 開 | 4 題排位賽題 5/5 種子都由 oracle 勝出，重瞄準＋GMAT 後仍比 A 高 0.10–0.22 分。5 顆種子分數相同，等於把「抽到好種子」變成必然。smoke、contest 打平。代價是 Corn 牆鐘中位比 A 多 −104～+174 s（e1_r8 反而較快）、最多 601 s，Mac 上 hyper_far 678 s，都遠低於 60 分鐘 |
+| `ORACLE_TWOBURN` | 開 | 4 題排位賽題 5/5 種子都由 oracle 勝出，重瞄準＋GMAT 後仍比 A 高 0.10–0.22 分。5 顆種子分數相同，等於把「抽到好種子」變成必然。smoke、contest 也是 5/5 選中 oracle，但只是平手，分數與 A 相同。代價是 Corn 牆鐘中位比 A 多 −104～+174 s（e1_r8 反而較快）、最多 601 s，Mac 上 hyper_far 678 s，都遠低於 60 分鐘 |
 | `ORACLE_TWOBURN_K` / `_WALL_SEC` / `_GRID_DIV` | 維持 10 / 600 / 100 | oracle 最長 325 s，沒碰到 600 s 上限；Mac 上 hyper_far 勝出的那條拆前排 index 5（第 6 名），K=10 有餘裕，再小就有風險 |
 | `SPLIT_AWARE_SEARCH`（B） | 關 | 只在 hyper_far 比 A 好（仍低於 C），而且有 82.1095、75.7968 兩個低分；跨機器非確定性（smoke s0 Mac 86.6855 vs Corn 86.7847，修正前） |
 | `ORACLE_TWOBURN_SEED_DE`（D） | 關 | 不穩定：e1_r4 只有 2/5、e1_r5 只有 1/5 達到 oracle 水準，其餘種子跟 B 差不多；C 全面不輸 D |
@@ -158,7 +160,12 @@ Mac 只量過一個 C run：hyper_far C s0 求解 678 s（10 核，其中 4 顆�
 ## 5. 沒驗證到的地方
 
 - **題目只有 6 題。** e1 系列是人工題，正式賽題的軌道未知。oracle 只在有「中段大前導棒」路線家族的題目上占優，smoke 和 contest 都沒有這個家族。
-- **C 可能錯過 A 抽到的好 DE 解。** smoke s4：A 找到一條 3 棒合法解，86.7864，重瞄準後 86.7825；同一顆種子 C 的 DE 只到 86.7847。可能的原因：C 開了 `SPLIT_LEADING`，primer 重搜因此改走 ef87f65 的新計分，DE 路徑跟 A 不同；但 run.log 沒有傳回來，所以沒查證。差距 0.0018 分，高於噪音底線。
+- **smoke s4 的 86.7864 是種子運氣，SPLIT_LEADING 只在這顆種子上改變了結果。** Corn 對 A、SL（只開 `SPLIT_LEADING`）、C 各跑種子 0–9。3 棒 86.7864 只有 A 的種子 4 拿到（1/10），SL、C 都是 0/10，其餘種子都是 86.7847（SL 種子 5 是 86.7834）。
+  - 種子 4 上，primer 重搜會打開 `SPLIT_AWARE_SEARCH`。C 本來就開 `SPLIT_LEADING`，所以重搜的 DE 目標走 `split_leading_abi` 分支：超標前導棒只預付燃料，不判失格。結果 DE 走到大前導棒盆地，3 棒解根本沒被產生。
+  - SL 與 C 逐值相同，所以和 oracle 無關。14b7849 的舊 C 也一樣，所以和 ef87f65 的修正也無關。
+  - 1/10 對 0/10 無法區分是不是系統性擋掉；差距 0.0017 分。
+  - 查的時候順便發現：拆後估計把兩條路線排反了。A 路線估 86.4464、實際 86.7864；C 路線估 86.6377、實際 86.7847。也就是終端棒拆棒的預付（`SPLIT_AWARE_TERMINAL_DV_OVERHEAD`）相對偏重，前導棒的 2% 預付相對偏輕。這只在 smoke 一題上看到，沒驗證其他題，也沒調參。
+  - 詳見 `docs/oracle_phase2/smoke_s4_diff/summary.md`。
 - **Mac 牆鐘只量過 hyper_far C s0 一個 run。** 其他題在 Mac 上的 C 臂牆鐘，以及比賽當天 Mac 的核心分配，都沒量。
 - **oracle 逾時被砍的路徑**（超過 WALL_SEC 時 killpg、保留已完成候選）沒在實跑中觸發過，只有單元測試覆蓋。
 - **重瞄準＋GMAT 只驗了每題每臂最好的那 1 個 run**，不是 120 個全驗。
@@ -174,5 +181,6 @@ Mac 只量過一個 C run：hyper_far C s0 求解 678 s（10 核，其中 4 顆�
 - `docs/oracle_phase2/runs/<題>_<臂>_s<種子>/`：mission.json、winner_presplit、oracle_candidates。
 - `docs/oracle_phase2/sweeps/`：四臂的 results.jsonl 與 summary，含被取代的舊 C 結果與 14b7849 護欄。
 - `docs/oracle_phase2/split_failures.csv`、`leading_presplit_ok.csv`、`classify_split_failures.py`。
+- `docs/oracle_phase2/smoke_s4_diff/`：smoke 種子 4 差異調查（A／SL／C 各 10 顆種子）。
 - `docs/oracle_phase2/mac_retarget.json`：§3.4 的 Mac 重瞄準＋GMAT 結果。
 - `sweeps/phase2_arm{A,B,C,D}.json`：sweep 規格。
