@@ -1,0 +1,1374 @@
+[
+ {
+  "scenario": "hyper_far",
+  "T_max": 162570.0,
+  "energy_floor_mps": 1884.7156884840635,
+  "pipe_runs": 3,
+  "pipe_legal": 3,
+  "pipe_status": [
+   "ok",
+   "ok",
+   "ok"
+  ],
+  "pipe_scores": [
+   82.43267978058995,
+   82.43267972457672,
+   82.4326792049709
+  ],
+  "pipe_best": 82.43267978058995,
+  "pipe_best_seed": 0,
+  "pipe_best_route": {
+   "num_burns": 8,
+   "total_dv_mps": 1920.3108636662114,
+   "T_team": 81251.67162712122,
+   "presplit_burns": 3
+  },
+  "pipe_wall_max": 598.17,
+  "pipe_wall_median": 317.59,
+  "oracle_done": true,
+  "oracle_wall": 216.5,
+  "oracle_legal": 9,
+  "oracle_best": 82.64454102985388,
+  "oracle_best_rank": 5,
+  "oracle_best_route": {
+   "structure": "2-burn",
+   "M": 0,
+   "t1": 54948.66,
+   "t2": 70880.52,
+   "t3": 81285.0,
+   "pre_total_mps": 1902.6676859322147,
+   "lead_mps": 643.4790972378445,
+   "term_mps": 1259.18858869437,
+   "num_burns": 8,
+   "total_dv_mps": 1892.8734805982222,
+   "T_team": 81255.43687734734
+  },
+  "oracle_top": [
+   {
+    "rank": 0,
+    "est_score": 82.58156348664846,
+    "structure": "2-burn",
+    "lead_mps": 403.090249019982,
+    "pre_total_mps": 1900.5986306664893,
+    "M": 0,
+    "final": 82.61212185381765
+   },
+   {
+    "rank": 1,
+    "est_score": 82.5781590216082,
+    "structure": "2-burn",
+    "lead_mps": 183.01326195794354,
+    "pre_total_mps": 1901.0401808447982,
+    "M": 0,
+    "final": 82.57369335189355
+   },
+   {
+    "rank": 2,
+    "est_score": 82.57714683627832,
+    "structure": "2-burn",
+    "lead_mps": 179.89325371396473,
+    "pre_total_mps": 1901.1714348660237,
+    "M": 1,
+    "final": 82.57788897933634
+   },
+   {
+    "rank": 3,
+    "est_score": 82.57706346942442,
+    "structure": "2-burn",
+    "lead_mps": 99.03211828924944,
+    "pre_total_mps": 1901.1822448861217,
+    "M": 1,
+    "final": 82.54918855375436
+   },
+   {
+    "rank": 4,
+    "est_score": 82.57510875861567,
+    "structure": "2-burn",
+    "lead_mps": 89.50756922686037,
+    "pre_total_mps": 1901.4356873348781,
+    "M": 1,
+    "final": 82.54606474831029
+   },
+   {
+    "rank": 5,
+    "est_score": 82.56560233883881,
+    "structure": "2-burn",
+    "lead_mps": 643.4790972378445,
+    "pre_total_mps": 1902.6676859322147,
+    "M": 0,
+    "final": 82.64454102985388
+   },
+   {
+    "rank": 6,
+    "est_score": 82.55240154316812,
+    "structure": "2-burn",
+    "lead_mps": 56.367579770962884,
+    "pre_total_mps": 1904.3768777827952,
+    "M": 1,
+    "final": 82.54635578969541
+   },
+   {
+    "rank": 7,
+    "est_score": 82.54684758231834,
+    "structure": "2-burn",
+    "lead_mps": 177.88587307522266,
+    "pre_total_mps": 1905.0954358783522,
+    "M": 0,
+    "final": 82.58243591337981
+   },
+   {
+    "rank": 8,
+    "est_score": 82.5424137868878,
+    "structure": "2-burn",
+    "lead_mps": 88.37219632217816,
+    "pre_total_mps": 1905.6688369419655,
+    "M": 1,
+    "final": 82.55989467539833
+   },
+   {
+    "rank": 9,
+    "est_score": 82.53929140813996,
+    "structure": "2-burn",
+    "lead_mps": 244.9781172020933,
+    "pre_total_mps": 1906.0725151058582,
+    "M": 0,
+    "final": "拆不出合法解"
+   }
+  ],
+  "diff": 0.2118612492639329,
+  "oracle_wins": true
+ },
+ {
+  "scenario": "hyperbolic_smoke",
+  "T_max": 40000.0,
+  "energy_floor_mps": 637.0228273669599,
+  "pipe_runs": 3,
+  "pipe_legal": 3,
+  "pipe_status": [
+   "ok",
+   "ok",
+   "ok"
+  ],
+  "pipe_scores": [
+   86.78474175694994,
+   86.78474148632071,
+   86.78474148632523
+  ],
+  "pipe_best": 86.78474175694994,
+  "pipe_best_seed": 0,
+  "pipe_best_route": {
+   "num_burns": 4,
+   "total_dv_mps": 639.3514941988594,
+   "T_team": 19972.99084682607,
+   "presplit_burns": 2
+  },
+  "pipe_wall_max": 189.01,
+  "pipe_wall_median": 176.06,
+  "oracle_done": true,
+  "oracle_wall": 73.6,
+  "oracle_legal": 10,
+  "oracle_best": 86.78508053119748,
+  "oracle_best_rank": 7,
+  "oracle_best_route": {
+   "structure": "2-burn",
+   "M": 0,
+   "t1": 1520.0,
+   "t2": 15520.0,
+   "t3": 20000.0,
+   "pre_total_mps": 748.7580939768011,
+   "lead_mps": 226.60940337721937,
+   "term_mps": 522.1486905995818,
+   "num_burns": 5,
+   "total_dv_mps": 639.2986052174308,
+   "T_team": 19972.993448366018
+  },
+  "oracle_top": [
+   {
+    "rank": 0,
+    "est_score": 86.37548764710408,
+    "structure": "2-burn",
+    "lead_mps": 508.67673332181016,
+    "pre_total_mps": 698.0592668704919,
+    "M": 0,
+    "final": 86.78342115095171
+   },
+   {
+    "rank": 1,
+    "est_score": 86.37532508585502,
+    "structure": "2-burn",
+    "lead_mps": 304.7769255126447,
+    "pre_total_mps": 698.0825888758926,
+    "M": 0,
+    "final": 86.78474175670817
+   },
+   {
+    "rank": 2,
+    "est_score": 86.37496913063956,
+    "structure": "2-burn",
+    "lead_mps": 292.7043328888145,
+    "pre_total_mps": 698.133653805536,
+    "M": 0,
+    "final": 86.78474148632515
+   },
+   {
+    "rank": 3,
+    "est_score": 86.37272964564492,
+    "structure": "2-burn",
+    "lead_mps": 555.5736786704397,
+    "pre_total_mps": 698.4548482431205,
+    "M": 0,
+    "final": 86.78342242726967
+   },
+   {
+    "rank": 4,
+    "est_score": 86.27822703672972,
+    "structure": "2-burn",
+    "lead_mps": 273.626229883426,
+    "pre_total_mps": 711.885637200456,
+    "M": 0,
+    "final": 86.78474158009743
+   },
+   {
+    "rank": 5,
+    "est_score": 86.21301298749869,
+    "structure": "2-burn",
+    "lead_mps": 336.1833352246471,
+    "pre_total_mps": 721.0173659315399,
+    "M": 0,
+    "final": 86.78474175760007
+   },
+   {
+    "rank": 6,
+    "est_score": 86.20722426372511,
+    "structure": "2-burn",
+    "lead_mps": 409.6058010190983,
+    "pre_total_mps": 721.8226999753718,
+    "M": 0,
+    "final": 86.76199540745424
+   },
+   {
+    "rank": 7,
+    "est_score": 86.01009917448454,
+    "structure": "2-burn",
+    "lead_mps": 226.60940337721937,
+    "pre_total_mps": 748.7580939768011,
+    "M": 0,
+    "final": 86.78508053119748
+   },
+   {
+    "rank": 8,
+    "est_score": 86.00071835624348,
+    "structure": "2-burn",
+    "lead_mps": 639.3517748396947,
+    "pre_total_mps": 750.0170070789096,
+    "M": 0,
+    "final": 86.78342242727116
+   },
+   {
+    "rank": 9,
+    "est_score": 85.81338966477722,
+    "structure": "2-burn",
+    "lead_mps": 317.32275724463034,
+    "pre_total_mps": 774.7471308776468,
+    "M": 0,
+    "final": 86.7619945045176
+   }
+  ],
+  "diff": 0.0003387742475382538,
+  "oracle_wins": false
+ },
+ {
+  "scenario": "e1_r1",
+  "T_max": 24719.0,
+  "energy_floor_mps": 939.249987900637,
+  "pipe_runs": 3,
+  "pipe_legal": 3,
+  "pipe_status": [
+   "ok",
+   "ok",
+   "ok"
+  ],
+  "pipe_scores": [
+   89.89413876591604,
+   89.89413870921067,
+   89.8941387683914
+  ],
+  "pipe_best": 89.8941387683914,
+  "pipe_best_seed": 2,
+  "pipe_best_route": {
+   "num_burns": 6,
+   "total_dv_mps": 1460.9824441004184,
+   "T_team": 10607.958955842616,
+   "presplit_burns": 1
+  },
+  "pipe_wall_max": 69.95,
+  "pipe_wall_median": 68.38,
+  "oracle_done": true,
+  "oracle_wall": 84.1,
+  "oracle_legal": 10,
+  "oracle_best": 89.89413940194714,
+  "oracle_best_rank": 7,
+  "oracle_best_route": {
+   "structure": "2-burn",
+   "M": 0,
+   "t1": 4004.4780000000005,
+   "t2": 4696.610000000001,
+   "t3": 10629.17,
+   "pre_total_mps": 1471.729123219177,
+   "lead_mps": 118.34092459913641,
+   "term_mps": 1353.3881986200406,
+   "num_burns": 6,
+   "total_dv_mps": 1460.98233572932,
+   "T_team": 10607.958827613202
+  },
+  "oracle_top": [
+   {
+    "rank": 0,
+    "est_score": 89.84989100088164,
+    "structure": "2-burn",
+    "lead_mps": 13.353430553504229,
+    "pre_total_mps": 1466.6750273996047,
+    "M": 0,
+    "final": 89.89413876592457
+   },
+   {
+    "rank": 1,
+    "est_score": 89.83158481312881,
+    "structure": "2-burn",
+    "lead_mps": 8.662759544268335,
+    "pre_total_mps": 1470.3195792658555,
+    "M": 0,
+    "final": 89.89411097692964
+   },
+   {
+    "rank": 2,
+    "est_score": 89.83031085872575,
+    "structure": "2-burn",
+    "lead_mps": 0.0,
+    "pre_total_mps": 1470.5724005318707,
+    "M": 0,
+    "final": 89.89413881636015
+   },
+   {
+    "rank": 3,
+    "est_score": 89.82967582323094,
+    "structure": "2-burn",
+    "lead_mps": 0.0,
+    "pre_total_mps": 1470.6983867352444,
+    "M": 0,
+    "final": 89.89413881636015
+   },
+   {
+    "rank": 4,
+    "est_score": 89.82861811193737,
+    "structure": "2-burn",
+    "lead_mps": 0.0,
+    "pre_total_mps": 1470.9081709060297,
+    "M": 0,
+    "final": 89.89413881636015
+   },
+   {
+    "rank": 5,
+    "est_score": 89.82703529186612,
+    "structure": "2-burn",
+    "lead_mps": 0.0,
+    "pre_total_mps": 1471.2219694578919,
+    "M": 0,
+    "final": 89.89413881636015
+   },
+   {
+    "rank": 6,
+    "est_score": 89.82571870154062,
+    "structure": "2-burn",
+    "lead_mps": 297.1164898780738,
+    "pre_total_mps": 1471.4828644331114,
+    "M": 0,
+    "final": 89.89413877934498
+   },
+   {
+    "rank": 7,
+    "est_score": 89.82447545582309,
+    "structure": "2-burn",
+    "lead_mps": 118.34092459913641,
+    "pre_total_mps": 1471.729123219177,
+    "M": 0,
+    "final": 89.89413940194714
+   },
+   {
+    "rank": 8,
+    "est_score": 89.82269998348104,
+    "structure": "2-burn",
+    "lead_mps": 0.0,
+    "pre_total_mps": 1472.0806320138834,
+    "M": 0,
+    "final": 89.89413881636015
+   },
+   {
+    "rank": 9,
+    "est_score": 89.82074023249083,
+    "structure": "2-burn",
+    "lead_mps": 914.9021135371181,
+    "pre_total_mps": 1472.4683897305222,
+    "M": 0,
+    "final": 89.89413877130643
+   }
+  ],
+  "diff": 6.335557429792971e-07,
+  "oracle_wins": false
+ },
+ {
+  "scenario": "e1_r2",
+  "T_max": 128866.0,
+  "energy_floor_mps": 1915.0977245556787,
+  "pipe_runs": 3,
+  "pipe_legal": 3,
+  "pipe_status": [
+   "ok",
+   "ok",
+   "ok"
+  ],
+  "pipe_scores": [
+   83.77816125959392,
+   83.77816125925995,
+   84.11110571757334
+  ],
+  "pipe_best": 84.11110571757334,
+  "pipe_best_seed": 2,
+  "pipe_best_route": {
+   "num_burns": 9,
+   "total_dv_mps": 1948.6781286508062,
+   "T_team": 63507.340607428814,
+   "presplit_burns": 2
+  },
+  "pipe_wall_max": 140.63,
+  "pipe_wall_median": 137.14,
+  "oracle_done": true,
+  "oracle_wall": 111.9,
+  "oracle_legal": 5,
+  "oracle_best": 84.10018763496183,
+  "oracle_best_rank": 2,
+  "oracle_best_route": {
+   "structure": "2-burn",
+   "M": 1,
+   "t1": 7474.228000000001,
+   "t2": 33505.16,
+   "t3": 63144.34000000002,
+   "pre_total_mps": 1954.4184299944202,
+   "lead_mps": 368.8669461923559,
+   "term_mps": 1585.5514838020642,
+   "num_burns": 11,
+   "total_dv_mps": 1952.7273213084638,
+   "T_team": 63307.36715421163
+  },
+  "oracle_top": [
+   {
+    "rank": 0,
+    "est_score": 84.21694778802238,
+    "structure": "2-burn",
+    "lead_mps": 80.38121106578647,
+    "pre_total_mps": 1943.0049517159744,
+    "M": 0,
+    "final": 84.04303373157474
+   },
+   {
+    "rank": 1,
+    "est_score": 84.11571276199454,
+    "structure": "2-burn",
+    "lead_mps": 101.0779228730759,
+    "pre_total_mps": 1953.497309643923,
+    "M": 0,
+    "final": 84.0769264870637
+   },
+   {
+    "rank": 2,
+    "est_score": 84.10678303785976,
+    "structure": "2-burn",
+    "lead_mps": 368.8669461923559,
+    "pre_total_mps": 1954.4184299944202,
+    "M": 1,
+    "final": 84.10018763496183
+   },
+   {
+    "rank": 3,
+    "est_score": 84.06547139952882,
+    "structure": "1-burn",
+    "lead_mps": null,
+    "pre_total_mps": 1958.6707217659236,
+    "M": 2,
+    "final": 83.93816030889997
+   },
+   {
+    "rank": 4,
+    "est_score": 84.04849513339437,
+    "structure": "2-burn",
+    "lead_mps": 5.817247680271627,
+    "pre_total_mps": 1960.4138229760504,
+    "M": 0,
+    "final": "拆不出合法解"
+   },
+   {
+    "rank": 5,
+    "est_score": 84.04101267439279,
+    "structure": "2-burn",
+    "lead_mps": 5.130471998911198,
+    "pre_total_mps": 1961.1813230041096,
+    "M": 0,
+    "final": "拆不出合法解"
+   },
+   {
+    "rank": 6,
+    "est_score": 84.03979203185465,
+    "structure": "2-burn",
+    "lead_mps": 8.052431353695523,
+    "pre_total_mps": 1961.306482582989,
+    "M": 0,
+    "final": "拆不出合法解"
+   },
+   {
+    "rank": 7,
+    "est_score": 83.99959638213844,
+    "structure": "2-burn",
+    "lead_mps": 127.54636922908394,
+    "pre_total_mps": 1965.4208598789678,
+    "M": 0,
+    "final": "拆不出合法解"
+   },
+   {
+    "rank": 8,
+    "est_score": 83.99049695169776,
+    "structure": "2-burn",
+    "lead_mps": 5.560883197814292,
+    "pre_total_mps": 1966.3503603164827,
+    "M": 0,
+    "final": "拆不出合法解"
+   },
+   {
+    "rank": 9,
+    "est_score": 83.98406103279221,
+    "structure": "2-burn",
+    "lead_mps": 89.33739477312635,
+    "pre_total_mps": 1967.007362839711,
+    "M": 0,
+    "final": 74.5575127826024
+   }
+  ],
+  "diff": -0.010918082611510727,
+  "oracle_wins": false
+ },
+ {
+  "scenario": "e1_r3",
+  "T_max": 41671.0,
+  "energy_floor_mps": 1253.5997384647137,
+  "pipe_runs": 3,
+  "pipe_legal": 3,
+  "pipe_status": [
+   "ok",
+   "ok",
+   "ok"
+  ],
+  "pipe_scores": [
+   86.36758680521936,
+   86.36795547771563,
+   86.36797974928601
+  ],
+  "pipe_best": 86.36797974928601,
+  "pipe_best_seed": 2,
+  "pipe_best_route": {
+   "num_burns": 6,
+   "total_dv_mps": 1262.270514610294,
+   "T_team": 20719.58543050155,
+   "presplit_burns": 3
+  },
+  "pipe_wall_max": 161.79,
+  "pipe_wall_median": 153.76,
+  "oracle_done": true,
+  "oracle_wall": 94.6,
+  "oracle_legal": 10,
+  "oracle_best": 86.37447285069851,
+  "oracle_best_rank": 3,
+  "oracle_best_route": {
+   "structure": "2-burn",
+   "M": 0,
+   "t1": 8750.91,
+   "t2": 14668.192000000003,
+   "t3": 20752.158000000003,
+   "pre_total_mps": 1312.0946000697854,
+   "lead_mps": 303.39040152674164,
+   "term_mps": 1008.7041985430437,
+   "num_burns": 6,
+   "total_dv_mps": 1260.7953061189025,
+   "T_team": 20719.68146131476
+  },
+  "oracle_top": [
+   {
+    "rank": 0,
+    "est_score": 86.24762283169152,
+    "structure": "1-burn",
+    "lead_mps": null,
+    "pre_total_mps": 1287.4825454597878,
+    "M": 0,
+    "final": 86.2478043232231
+   },
+   {
+    "rank": 1,
+    "est_score": 86.22568303743526,
+    "structure": "1-burn",
+    "lead_mps": null,
+    "pre_total_mps": 1292.2002951967718,
+    "M": 1,
+    "final": 86.25859244914682
+   },
+   {
+    "rank": 2,
+    "est_score": 86.12110058599418,
+    "structure": "2-burn",
+    "lead_mps": 379.513840691369,
+    "pre_total_mps": 1311.9898730225211,
+    "M": 0,
+    "final": 86.37447261806912
+   },
+   {
+    "rank": 3,
+    "est_score": 86.12059529207056,
+    "structure": "2-burn",
+    "lead_mps": 303.39040152674164,
+    "pre_total_mps": 1312.0946000697854,
+    "M": 0,
+    "final": 86.37447285069851
+   },
+   {
+    "rank": 4,
+    "est_score": 86.08874823336407,
+    "structure": "2-burn",
+    "lead_mps": 1256.5347684093767,
+    "pre_total_mps": 1318.6590125153132,
+    "M": 1,
+    "final": 86.25856806600427
+   },
+   {
+    "rank": 5,
+    "est_score": 86.08534260469402,
+    "structure": "2-burn",
+    "lead_mps": 1284.6982957718924,
+    "pre_total_mps": 1319.3568121071266,
+    "M": 0,
+    "final": 86.2477787008456
+   },
+   {
+    "rank": 6,
+    "est_score": 86.06955566651423,
+    "structure": "2-burn",
+    "lead_mps": 90.49107045677219,
+    "pre_total_mps": 1322.5810841374398,
+    "M": 0,
+    "final": 86.24780432319702
+   },
+   {
+    "rank": 7,
+    "est_score": 86.06422190679936,
+    "structure": "2-burn",
+    "lead_mps": 144.05591907225454,
+    "pre_total_mps": 1323.6665882178659,
+    "M": 0,
+    "final": 86.24777867961495
+   },
+   {
+    "rank": 8,
+    "est_score": 86.05709325658651,
+    "structure": "2-burn",
+    "lead_mps": 42.872569636994896,
+    "pre_total_mps": 1325.1143701622395,
+    "M": 0,
+    "final": 86.24780494009845
+   },
+   {
+    "rank": 9,
+    "est_score": 86.03881360998508,
+    "structure": "2-burn",
+    "lead_mps": 22.61131333092451,
+    "pre_total_mps": 1328.8112297076254,
+    "M": 0,
+    "final": 86.24780553061042
+   }
+  ],
+  "diff": 0.006493101412502256,
+  "oracle_wins": false
+ },
+ {
+  "scenario": "e1_r4",
+  "T_max": 93012.0,
+  "energy_floor_mps": 1452.796284221086,
+  "pipe_runs": 3,
+  "pipe_legal": 3,
+  "pipe_status": [
+   "ok",
+   "ok",
+   "ok"
+  ],
+  "pipe_scores": [
+   78.5084300559143,
+   78.37202418650674,
+   78.37202412638766
+  ],
+  "pipe_best": 78.5084300559143,
+  "pipe_best_seed": 0,
+  "pipe_best_route": {
+   "num_burns": 7,
+   "total_dv_mps": 1501.9280638716225,
+   "T_team": 45799.46449757048,
+   "presplit_burns": 1
+  },
+  "pipe_wall_max": 252.04,
+  "pipe_wall_median": 139.74,
+  "oracle_done": true,
+  "oracle_wall": 120.0,
+  "oracle_legal": 10,
+  "oracle_best": 78.60769631632337,
+  "oracle_best_rank": 2,
+  "oracle_best_route": {
+   "structure": "2-burn",
+   "M": 0,
+   "t1": 23625.048000000003,
+   "t2": 39065.03999999997,
+   "t3": 45761.90399999998,
+   "pre_total_mps": 1535.5406673630353,
+   "lead_mps": 804.941039873013,
+   "term_mps": 730.5996274900223,
+   "num_burns": 7,
+   "total_dv_mps": 1494.281690596941,
+   "T_team": 45779.08453117411
+  },
+  "oracle_top": [
+   {
+    "rank": 0,
+    "est_score": 78.61615107351525,
+    "structure": "1-burn",
+    "lead_mps": null,
+    "pre_total_mps": 1493.0146755220464,
+    "M": 3,
+    "final": 78.50843005771259
+   },
+   {
+    "rank": 1,
+    "est_score": 78.40488584080065,
+    "structure": "2-burn",
+    "lead_mps": 1500.4169376033203,
+    "pre_total_mps": 1511.0437325102187,
+    "M": 0,
+    "final": 78.37202421978066
+   },
+   {
+    "rank": 2,
+    "est_score": 78.10063716342921,
+    "structure": "2-burn",
+    "lead_mps": 804.941039873013,
+    "pre_total_mps": 1535.5406673630353,
+    "M": 0,
+    "final": 78.60769631632337
+   },
+   {
+    "rank": 3,
+    "est_score": 77.86670616612531,
+    "structure": "1-burn",
+    "lead_mps": null,
+    "pre_total_mps": 1553.3734723360822,
+    "M": 2,
+    "final": 78.17094940678594
+   },
+   {
+    "rank": 4,
+    "est_score": 77.8569539874699,
+    "structure": "2-burn",
+    "lead_mps": 502.65670709191903,
+    "pre_total_mps": 1555.0595605866695,
+    "M": 0,
+    "final": 78.60342791112274
+   },
+   {
+    "rank": 5,
+    "est_score": 77.69445399176011,
+    "structure": "2-burn",
+    "lead_mps": 1365.5929403183563,
+    "pre_total_mps": 1568.034030922041,
+    "M": 2,
+    "final": 78.17094923944649
+   },
+   {
+    "rank": 6,
+    "est_score": 77.63006233745077,
+    "structure": "2-burn",
+    "lead_mps": 970.1205114146975,
+    "pre_total_mps": 1573.16724171238,
+    "M": 0,
+    "final": 77.88982485881834
+   },
+   {
+    "rank": 7,
+    "est_score": 77.55462776525212,
+    "structure": "2-burn",
+    "lead_mps": 1476.0084235938464,
+    "pre_total_mps": 1579.1755594878732,
+    "M": 2,
+    "final": 78.52171003771647
+   },
+   {
+    "rank": 8,
+    "est_score": 77.39182761174771,
+    "structure": "1-burn",
+    "lead_mps": null,
+    "pre_total_mps": 1591.2242742762467,
+    "M": 1,
+    "final": 77.30766425220455
+   },
+   {
+    "rank": 9,
+    "est_score": 76.51183868834642,
+    "structure": "1-burn",
+    "lead_mps": null,
+    "pre_total_mps": 1660.9957644129056,
+    "M": 2,
+    "final": 76.46409000890077
+   }
+  ],
+  "diff": 0.09926626040906683,
+  "oracle_wins": true
+ },
+ {
+  "scenario": "e1_r5",
+  "T_max": 124960.0,
+  "energy_floor_mps": 1864.6413081023256,
+  "pipe_runs": 3,
+  "pipe_legal": 3,
+  "pipe_status": [
+   "ok",
+   "ok",
+   "ok"
+  ],
+  "pipe_scores": [
+   68.66330888967221,
+   68.52413324046688,
+   68.524319018431
+  ],
+  "pipe_best": 68.66330888967221,
+  "pipe_best_seed": 0,
+  "pipe_best_route": {
+   "num_burns": 11,
+   "total_dv_mps": 2194.2839877507918,
+   "T_team": 68641.80266112869,
+   "presplit_burns": 2
+  },
+  "pipe_wall_max": 300.58,
+  "pipe_wall_median": 126.4,
+  "oracle_done": true,
+  "oracle_wall": 143.6,
+  "oracle_legal": 8,
+  "oracle_best": 68.74623299357894,
+  "oracle_best_rank": 0,
+  "oracle_best_route": {
+   "structure": "2-burn",
+   "M": 0,
+   "t1": 42736.319999999985,
+   "t2": 49734.079999999994,
+   "t3": 68727.99999999999,
+   "pre_total_mps": 2181.3775110746337,
+   "lead_mps": 254.1101152686321,
+   "term_mps": 1927.2673958060016,
+   "num_burns": 11,
+   "total_dv_mps": 2186.693605027155,
+   "T_team": 68643.79331498028
+  },
+  "oracle_top": [
+   {
+    "rank": 0,
+    "est_score": 68.78828280779608,
+    "structure": "2-burn",
+    "lead_mps": 254.1101152686321,
+    "pre_total_mps": 2181.3775110746337,
+    "M": 0,
+    "final": 68.74623299357894
+   },
+   {
+    "rank": 1,
+    "est_score": 68.76210695965894,
+    "structure": "2-burn",
+    "lead_mps": 0.0,
+    "pre_total_mps": 2183.738394320368,
+    "M": 0,
+    "final": 68.5243190092694
+   },
+   {
+    "rank": 2,
+    "est_score": 68.7364152381455,
+    "structure": "2-burn",
+    "lead_mps": 330.6300424061631,
+    "pre_total_mps": 2186.0624231584434,
+    "M": 0,
+    "final": 68.72260309605338
+   },
+   {
+    "rank": 3,
+    "est_score": 68.52850849960117,
+    "structure": "2-burn",
+    "lead_mps": 301.88627686716876,
+    "pre_total_mps": 2205.125945751486,
+    "M": 0,
+    "final": 68.68165111370926
+   },
+   {
+    "rank": 4,
+    "est_score": 68.5248199357648,
+    "structure": "2-burn",
+    "lead_mps": 1.2888649833287151,
+    "pre_total_mps": 2205.4684118927626,
+    "M": 0,
+    "final": 68.5241332657865
+   },
+   {
+    "rank": 5,
+    "est_score": 68.50323657672821,
+    "structure": "2-burn",
+    "lead_mps": 44.01654330491753,
+    "pre_total_mps": 2207.475389242451,
+    "M": 0,
+    "final": "拆不出合法解"
+   },
+   {
+    "rank": 6,
+    "est_score": 68.36460445789777,
+    "structure": "2-burn",
+    "lead_mps": 220.63872092257145,
+    "pre_total_mps": 2220.4938082713497,
+    "M": 0,
+    "final": "拆不出合法解"
+   },
+   {
+    "rank": 7,
+    "est_score": 68.30581237721536,
+    "structure": "2-burn",
+    "lead_mps": 217.30444307707046,
+    "pre_total_mps": 2226.0832752477445,
+    "M": 0,
+    "final": 65.22853918760204
+   },
+   {
+    "rank": 8,
+    "est_score": 68.29948671699478,
+    "structure": "2-burn",
+    "lead_mps": 164.67651044597892,
+    "pre_total_mps": 2226.687164993567,
+    "M": 0,
+    "final": 65.12640525115751
+   },
+   {
+    "rank": 9,
+    "est_score": 68.22087528059483,
+    "structure": "2-burn",
+    "lead_mps": 0.5924212893631261,
+    "pre_total_mps": 2229.4425870774826,
+    "M": 0,
+    "final": 63.92542022498319
+   }
+  ],
+  "diff": 0.0829241039067341,
+  "oracle_wins": true
+ },
+ {
+  "scenario": "e1_r6",
+  "T_max": 49869.0,
+  "energy_floor_mps": 1115.0645345257785,
+  "pipe_runs": 3,
+  "pipe_legal": 3,
+  "pipe_status": [
+   "ok",
+   "ok",
+   "ok"
+  ],
+  "pipe_scores": [
+   82.19324763086956,
+   82.19325166703173,
+   82.19325166561757
+  ],
+  "pipe_best": 82.19325166703173,
+  "pipe_best_seed": 1,
+  "pipe_best_route": {
+   "num_burns": 9,
+   "total_dv_mps": 2193.629315212139,
+   "T_team": 19139.264720034884,
+   "presplit_burns": 2
+  },
+  "pipe_wall_max": 163.27,
+  "pipe_wall_median": 162.28,
+  "oracle_done": true,
+  "oracle_wall": 119.2,
+  "oracle_legal": 10,
+  "oracle_best": 82.19325167142983,
+  "oracle_best_rank": 6,
+  "oracle_best_route": {
+   "structure": "2-burn",
+   "M": 0,
+   "t1": 2094.4979999999996,
+   "t2": 2992.14,
+   "t3": 19648.386000000002,
+   "pre_total_mps": 2230.6147487884846,
+   "lead_mps": 466.1685068315573,
+   "term_mps": 1764.4462419569272,
+   "num_burns": 9,
+   "total_dv_mps": 2193.6291202512066,
+   "T_team": 19139.270552117112
+  },
+  "oracle_top": [
+   {
+    "rank": 0,
+    "est_score": 82.42737945223337,
+    "structure": "2-burn",
+    "lead_mps": 2104.17625667046,
+    "pre_total_mps": 2174.9627146436806,
+    "M": 0,
+    "final": 82.19325166700554
+   },
+   {
+    "rank": 1,
+    "est_score": 82.4034660482697,
+    "structure": "2-burn",
+    "lead_mps": 21.441856574892146,
+    "pre_total_mps": 2177.1813073251737,
+    "M": 0,
+    "final": 82.19325166611728
+   },
+   {
+    "rank": 2,
+    "est_score": 82.39671162313164,
+    "structure": "2-burn",
+    "lead_mps": 12.584912081647714,
+    "pre_total_mps": 2177.8076070713064,
+    "M": 0,
+    "final": 82.19325166683466
+   },
+   {
+    "rank": 3,
+    "est_score": 82.28736388256888,
+    "structure": "2-burn",
+    "lead_mps": 16.705701257090737,
+    "pre_total_mps": 2187.9258210379826,
+    "M": 0,
+    "final": 82.1932516661709
+   },
+   {
+    "rank": 4,
+    "est_score": 82.2480302736764,
+    "structure": "1-burn",
+    "lead_mps": null,
+    "pre_total_mps": 2194.8720507411,
+    "M": 0,
+    "final": 77.36055277315543
+   },
+   {
+    "rank": 5,
+    "est_score": 81.77703687235685,
+    "structure": "2-burn",
+    "lead_mps": 1917.0225740516469,
+    "pre_total_mps": 2214.816179461456,
+    "M": 0,
+    "final": 82.1932516669882
+   },
+   {
+    "rank": 6,
+    "est_score": 81.60389648280871,
+    "structure": "2-burn",
+    "lead_mps": 466.1685068315573,
+    "pre_total_mps": 2230.6147487884846,
+    "M": 0,
+    "final": 82.19325167142983
+   },
+   {
+    "rank": 7,
+    "est_score": 81.40996599026094,
+    "structure": "2-burn",
+    "lead_mps": 221.7375114992226,
+    "pre_total_mps": 2248.220073599452,
+    "M": 0,
+    "final": 82.19298459740659
+   },
+   {
+    "rank": 8,
+    "est_score": 81.33138547571204,
+    "structure": "2-burn",
+    "lead_mps": 1820.356276876243,
+    "pre_total_mps": 2291.0225762976593,
+    "M": 0,
+    "final": 82.1932516664643
+   },
+   {
+    "rank": 9,
+    "est_score": 81.3014742435413,
+    "structure": "2-burn",
+    "lead_mps": 288.95808701175656,
+    "pre_total_mps": 2293.7021017344937,
+    "M": 0,
+    "final": 82.19325166920744
+   }
+  ],
+  "diff": 4.398103214953153e-09,
+  "oracle_wins": false
+ },
+ {
+  "scenario": "e1_r7",
+  "T_max": 34635.0,
+  "energy_floor_mps": 1522.2615462928318,
+  "pipe_runs": 3,
+  "pipe_legal": 0,
+  "pipe_status": [
+   "ok",
+   "ok",
+   "ok"
+  ],
+  "pipe_scores": [
+   null,
+   null,
+   null
+  ],
+  "pipe_best": null,
+  "pipe_best_seed": null,
+  "pipe_best_route": null,
+  "pipe_wall_max": 250.48,
+  "pipe_wall_median": 177.84,
+  "oracle_done": true,
+  "oracle_wall": 33.1,
+  "oracle_legal": 0,
+  "oracle_best": null,
+  "oracle_best_rank": null,
+  "oracle_top": [
+   {
+    "rank": 0,
+    "est_score": 74.3440116829325,
+    "structure": "2-burn",
+    "lead_mps": 0.0,
+    "pre_total_mps": 2730.5527743066787,
+    "M": 0,
+    "final": "拆不出合法解"
+   },
+   {
+    "rank": 1,
+    "est_score": 74.31538093237849,
+    "structure": "2-burn",
+    "lead_mps": 0.0,
+    "pre_total_mps": 2733.391804658205,
+    "M": 0,
+    "final": "拆不出合法解"
+   },
+   {
+    "rank": 2,
+    "est_score": 74.28356959130379,
+    "structure": "2-burn",
+    "lead_mps": 0.0,
+    "pre_total_mps": 2736.5559527843398,
+    "M": 0,
+    "final": "拆不出合法解"
+   },
+   {
+    "rank": 3,
+    "est_score": 74.25806146095533,
+    "structure": "2-burn",
+    "lead_mps": 0.0,
+    "pre_total_mps": 2739.100622935596,
+    "M": 0,
+    "final": "拆不出合法解"
+   },
+   {
+    "rank": 4,
+    "est_score": 74.24061557852413,
+    "structure": "2-burn",
+    "lead_mps": 0.0,
+    "pre_total_mps": 2740.8448776618984,
+    "M": 0,
+    "final": "拆不出合法解"
+   },
+   {
+    "rank": 5,
+    "est_score": 74.19579096509516,
+    "structure": "2-burn",
+    "lead_mps": 0.0,
+    "pre_total_mps": 2745.341045910966,
+    "M": 0,
+    "final": "拆不出合法解"
+   },
+   {
+    "rank": 6,
+    "est_score": 74.19508412077089,
+    "structure": "2-burn",
+    "lead_mps": 0.0,
+    "pre_total_mps": 2745.4121157248087,
+    "M": 0,
+    "final": "拆不出合法解"
+   },
+   {
+    "rank": 7,
+    "est_score": 74.18841758703417,
+    "structure": "2-burn",
+    "lead_mps": 0.0,
+    "pre_total_mps": 2746.082663937636,
+    "M": 0,
+    "final": "拆不出合法解"
+   },
+   {
+    "rank": 8,
+    "est_score": 74.18400470078255,
+    "structure": "2-burn",
+    "lead_mps": 0.0,
+    "pre_total_mps": 2746.526789876483,
+    "M": 0,
+    "final": "拆不出合法解"
+   },
+   {
+    "rank": 9,
+    "est_score": 74.17898201066421,
+    "structure": "2-burn",
+    "lead_mps": 0.0,
+    "pre_total_mps": 2747.032539972415,
+    "M": 0,
+    "final": "拆不出合法解"
+   }
+  ],
+  "diff": null,
+  "oracle_wins": false
+ },
+ {
+  "scenario": "e1_r8",
+  "T_max": 77443.0,
+  "energy_floor_mps": 1351.8018349038634,
+  "pipe_runs": 3,
+  "pipe_legal": 3,
+  "pipe_status": [
+   "ok",
+   "ok",
+   "ok"
+  ],
+  "pipe_scores": [
+   76.35616114440037,
+   76.33130212323168,
+   76.33130279836404
+  ],
+  "pipe_best": 76.35616114440037,
+  "pipe_best_seed": 0,
+  "pipe_best_route": {
+   "num_burns": 8,
+   "total_dv_mps": 1868.497819603872,
+   "T_team": 35832.226519890326,
+   "presplit_burns": 3
+  },
+  "pipe_wall_max": 398.02,
+  "pipe_wall_median": 392.67,
+  "oracle_done": true,
+  "oracle_wall": 109.5,
+  "oracle_legal": 8,
+  "oracle_best": 76.53429407903295,
+  "oracle_best_rank": 3,
+  "oracle_best_route": {
+   "structure": "2-burn",
+   "M": 0,
+   "t1": 16263.030000000002,
+   "t2": 25556.189999999984,
+   "t3": 35933.55199999999,
+   "pre_total_mps": 1918.811756334659,
+   "lead_mps": 1130.395005495595,
+   "term_mps": 788.4167508390642,
+   "num_burns": 8,
+   "total_dv_mps": 1852.1791096582556,
+   "T_team": 35847.367979127084
+  },
+  "oracle_top": [
+   {
+    "rank": 0,
+    "est_score": 76.41067001091544,
+    "structure": "1-burn",
+    "lead_mps": null,
+    "pre_total_mps": 1864.0083428167613,
+    "M": 0,
+    "final": 76.33130194427494
+   },
+   {
+    "rank": 1,
+    "est_score": 76.07796688122585,
+    "structure": "2-burn",
+    "lead_mps": 1835.6439764252243,
+    "pre_total_mps": 1890.8313246830992,
+    "M": 0,
+    "final": 76.44284801301289
+   },
+   {
+    "rank": 2,
+    "est_score": 76.01007269866113,
+    "structure": "2-burn",
+    "lead_mps": 1832.2957277137289,
+    "pre_total_mps": 1901.0950806370174,
+    "M": 0,
+    "final": 76.33130194475467
+   },
+   {
+    "rank": 3,
+    "est_score": 75.76958939171234,
+    "structure": "2-burn",
+    "lead_mps": 1130.395005495595,
+    "pre_total_mps": 1918.811756334659,
+    "M": 0,
+    "final": 76.53429407903295
+   },
+   {
+    "rank": 4,
+    "est_score": 75.75342175684989,
+    "structure": "2-burn",
+    "lead_mps": 206.91538338053724,
+    "pre_total_mps": 1924.4525776081755,
+    "M": 0,
+    "final": 76.35616105851831
+   },
+   {
+    "rank": 5,
+    "est_score": 75.69854629496515,
+    "structure": "2-burn",
+    "lead_mps": 284.67877913385314,
+    "pre_total_mps": 1929.4749655349906,
+    "M": 0,
+    "final": 76.35616082417027
+   },
+   {
+    "rank": 6,
+    "est_score": 75.62412111306946,
+    "structure": "2-burn",
+    "lead_mps": 99.82518971911455,
+    "pre_total_mps": 1932.1174497517582,
+    "M": 0,
+    "final": "拆不出合法解"
+   },
+   {
+    "rank": 7,
+    "est_score": 75.50306722656401,
+    "structure": "2-burn",
+    "lead_mps": 100.50070737673626,
+    "pre_total_mps": 1947.4528607503546,
+    "M": 0,
+    "final": 76.33130195145603
+   },
+   {
+    "rank": 8,
+    "est_score": 75.45582141238157,
+    "structure": "2-burn",
+    "lead_mps": 113.27399989557635,
+    "pre_total_mps": 1947.6049408692643,
+    "M": 0,
+    "final": "拆不出合法解"
+   },
+   {
+    "rank": 9,
+    "est_score": 75.40125950292165,
+    "structure": "2-burn",
+    "lead_mps": 668.4085673056967,
+    "pre_total_mps": 1952.6485680825895,
+    "M": 0,
+    "final": 76.47829285275235
+   }
+  ],
+  "diff": 0.17813293463257196,
+  "oracle_wins": true
+ }
+]

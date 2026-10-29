@@ -59,7 +59,8 @@ def _set(d, dotted, val):
 
 def load_scenario(name, seed=0, extra=None):
     """回傳 (config, MissionOptimizer)。覆寫順序同 sweep_params：情境 → base → 情境覆寫 → extra。"""
-    path, ov = SCENARIOS[name]
+    # E1（2026-10-29）：不在題庫裡的名字到 configs/research/e1/ 找隨機題（e1_gen_scenarios.py 產生）
+    path, ov = SCENARIOS.get(name) or (f"configs/research/e1/{name}.json", {})
     with open(os.path.join(REPO, path), encoding="utf-8") as f:
         cfg = json.load(f)
     for k, v in {**RANKING_BASE, **ov, **(extra or {}), "optimization.SEED": seed}.items():

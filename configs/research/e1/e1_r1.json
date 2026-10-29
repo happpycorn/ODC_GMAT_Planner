@@ -1,0 +1,54 @@
+{
+  "orbit_A": {
+    "SMA": -24985.2,
+    "ECC": 1.4866,
+    "INC": 26.0,
+    "RAAN": 195.81,
+    "AOP": 3.61,
+    "TA": 247.0
+  },
+  "orbit_B": {
+    "SMA": 6997.9,
+    "ECC": 0.00961,
+    "INC": 58.68,
+    "RAAN": 310.27,
+    "AOP": 289.31,
+    "TA": 177.87
+  },
+  "rules": {
+    "MAX_DV_MPS": 250.0,
+    "MAX_TOTAL_DV_MPS": 3000.0,
+    "MIN_MANEUVER_INTERVAL_SEC": 100.0,
+    "T_MAX_SEC": 24719.0,
+    "k_t": 0.000143,
+    "C_t": 16600.0,
+    "k_v": 0.00209,
+    "C_v": 2480.0
+  },
+  "strategy": {
+    "GRAVITY_DEGREE": 4,
+    "MISS_TOLERANCE_KM": 5.0,
+    "SPLIT_FAST_FD": true,
+    "SPLIT_WORKERS": 3,
+    "SPLIT_MULTISTART": [
+      0,
+      0.75,
+      1
+    ],
+    "SPLIT_PRUNE_REOPT_MPS": 1.0,
+    "SPLIT_WALL_BUDGET_SEC": 600
+  },
+  "optimization": {
+    "MAX_BURNS": [
+      1,
+      2
+    ],
+    "MAXITER": 1000,
+    "POPSIZE": 20,
+    "NUM_THREADS": -1,
+    "MAX_EARLY_STOP": 40,
+    "TOL": 0.02,
+    "SEED": null
+  },
+  "_comment_e1": "E1 隨機題（e1_gen_scenarios.py --seed 20261029，第 1 抽）。rp_A=12158 km、能量下限 939 m/s、T_max = 2×到近地點時間。佔位題，不是官方題目。"
+}

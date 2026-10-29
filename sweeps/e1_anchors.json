@@ -1,0 +1,36 @@
+{
+  "name": "e1_anchors",
+  "_說明": "E1 頻率實驗錨點（2026-10-29）：hyper_far、hyperbolic_smoke 用比賽當天設定（同 global_oracle_contest：MAXITER 600、種子 0–2、SPLIT_JACOBIAN=stm），--slots 3（現場 3 顆並行）。預期 82.4327／86.7847。",
+  "scenarios": [
+    {
+      "name": "hyper_far",
+      "config": "configs/shared/hyper_far.json"
+    },
+    {
+      "name": "hyperbolic_smoke",
+      "config": "configs/shared/hyperbolic_smoke.json"
+    }
+  ],
+  "seeds": [
+    0,
+    1,
+    2
+  ],
+  "base": {
+    "rules.MAX_DV_MPS": 250.0,
+    "rules.MAX_TOTAL_DV_MPS": 3000.0,
+    "optimization.MAXITER": 600,
+    "optimization.POPSIZE": 20,
+    "optimization.NUM_THREADS": 5,
+    "strategy.SPLIT_FAST_FD": true,
+    "strategy.SPLIT_WORKERS": 3,
+    "strategy.SPLIT_MULTISTART": [
+      0,
+      0.75,
+      1
+    ],
+    "strategy.SPLIT_PRUNE_REOPT_MPS": 1.0,
+    "strategy.SPLIT_WALL_BUDGET_SEC": 600,
+    "strategy.SPLIT_JACOBIAN": "stm"
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "name": "e1_random",
+  "_說明": "E1 隨機題（e1_gen_scenarios.py --seed 20261029 --n 8）× 比賽當天設定（同 global_oracle_contest 的 base）、種子 0–2、--slots 3。",
+  "scenarios": [
+    {
+      "name": "e1_r1",
+      "config": "configs/research/e1/e1_r1.json"
+    },
+    {
+      "name": "e1_r2",
+      "config": "configs/research/e1/e1_r2.json"
+    },
+    {
+      "name": "e1_r3",
+      "config": "configs/research/e1/e1_r3.json"
+    },
+    {
+      "name": "e1_r4",
+      "config": "configs/research/e1/e1_r4.json"
+    },
+    {
+      "name": "e1_r5",
+      "config": "configs/research/e1/e1_r5.json"
+    },
+    {
+      "name": "e1_r6",
+      "config": "configs/research/e1/e1_r6.json"
+    },
+    {
+      "name": "e1_r7",
+      "config": "configs/research/e1/e1_r7.json"
+    },
+    {
+      "name": "e1_r8",
+      "config": "configs/research/e1/e1_r8.json"
+    }
+  ],
+  "seeds": [
+    0,
+    1,
+    2
+  ],
+  "base": {
+    "rules.MAX_DV_MPS": 250.0,
+    "rules.MAX_TOTAL_DV_MPS": 3000.0,
+    "optimization.MAXITER": 600,
+    "optimization.POPSIZE": 20,
+    "optimization.NUM_THREADS": 5,
+    "strategy.SPLIT_FAST_FD": true,
+    "strategy.SPLIT_WORKERS": 3,
+    "strategy.SPLIT_MULTISTART": [
+      0,
+      0.75,
+      1
+    ],
+    "strategy.SPLIT_PRUNE_REOPT_MPS": 1.0,
+    "strategy.SPLIT_WALL_BUDGET_SEC": 600,
+    "strategy.SPLIT_JACOBIAN": "stm"
+  }
+}

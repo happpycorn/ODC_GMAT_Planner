@@ -27,16 +27,62 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from oracle_common import (OUT, finalize_route, jdump, load_scenario)  # noqa: E402
 from porkchop_grid import build_ephemeris                                # noqa: E402
 from src.core_math import izzo_max_revs, lambert_izzo, check_constraints, reaches_perigee  # noqa: E402
-from poliastro.core.propagation import vallado                          # noqa: E402
+from poliastro._math.special import stumpff_c2 as c2, stumpff_c3 as c3   # noqa: E402
 
 BIG = 1.0e9
 
 
 @njit(cache=True)
+def vallado_safe(k, r0, v0, tof, numiter):
+    """poliastro.core.propagation.vallado 的逐行複本，只多一個 NaN 防護（E1，2026-10-29）。
+
+    原版的 Newton 迭代在某些雙曲線輸入會發散成 NaN，NaN 再進 stumpff_c2/c3 的級數分支
+    （`while res + delta != res`，NaN 永遠不等於自己）就是無窮迴圈：hyperbolic_smoke 的兩棒網格
+    h=400 s 在 (t1, t2, t3) = (4000, 5200, 10800) 卡死 2 小時（10-28 h=250 s 跑 5 小時沒結束應該也是這個）。
+    psi 不是有限值就回傳 NaN，不呼叫 stumpff。正常輸入的算式與原版相同，結果逐位元一致。"""
+    dot_r0v0 = r0 @ v0
+    norm_r0 = np.sqrt(r0 @ r0)
+    sqrt_mu = k**0.5
+    alpha = -(v0 @ v0) / k + 2 / norm_r0
+    if alpha > 0:
+        xi_new = sqrt_mu * tof * alpha
+    elif alpha < 0:
+        xi_new = (np.sign(tof) * (-1 / alpha) ** 0.5
+                  * np.log((-2 * k * alpha * tof)
+                           / (dot_r0v0 + np.sign(tof) * np.sqrt(-k / alpha) * (1 - norm_r0 * alpha))))
+    else:
+        xi_new = sqrt_mu * tof / norm_r0
+    count = 0
+    xi = xi_new
+    psi = c2_psi = c3_psi = norm_r = np.nan
+    while count < numiter:
+        xi = xi_new
+        psi = xi * xi * alpha
+        if not np.isfinite(psi):
+            return np.nan, np.nan, np.nan, np.nan
+        c2_psi = c2(psi)
+        c3_psi = c3(psi)
+        norm_r = (xi * xi * c2_psi + dot_r0v0 / sqrt_mu * xi * (1 - psi * c3_psi)
+                  + norm_r0 * (1 - psi * c2_psi))
+        xi_new = (xi + (sqrt_mu * tof - xi * xi * xi * c3_psi - dot_r0v0 / sqrt_mu * xi * xi * c2_psi
+                        - norm_r0 * xi * (1 - psi * c3_psi)) / norm_r)
+        if abs(xi_new - xi) < 1e-7:
+            break
+        else:
+            count += 1
+    else:
+        return np.nan, np.nan, np.nan, np.nan
+    f = 1 - xi**2 / norm_r0 * c2_psi
+    g = tof - xi**3 / sqrt_mu * c3_psi
+    gdot = 1 - xi**2 / norm_r * c2_psi
+    fdot = sqrt_mu / (norm_r * norm_r0) * xi * (psi * c3_psi - 1)
+    return f, g, fdot, gdot
+
+
+@njit(cache=True)
 def kepler(r0, v0, dt, mu):
-    try:
-        f, g, fd, gd = vallado(mu, r0, v0, dt, 350)
-    except Exception:
+    f, g, fd, gd = vallado_safe(mu, r0, v0, dt, 350)
+    if not np.isfinite(f):
         return r0 * np.nan, v0 * np.nan
     return f * r0 + g * v0, fd * r0 + gd * v0
 
