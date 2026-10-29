@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "stage": "presplit",
+  "provenance": {
+    "git_commit": "14b78493a8a5b0e7b8ea7b61d0676c83e0ea0ecb",
+    "python": "3.12.3",
+    "files": {
+      "src/core_math.py": "1eefddb136d75684f58c419e1f52fdce9fab511a25b93901f6ca8b2bddd10853",
+      "src/propagator.py": "229127d027a57982e17433a878e0c852a74dacc4e3162da6c0954268fa9a76bd",
+      "src/scorer.py": "ada8dcd408ea565ad6983a0b1df94fe8ea99315c39f16c406626c133f4d438bd",
+      "src/optimizer.py": "1a99fbbf62ad45b9cce341f9d14f0455285f1199cffc4df0c0da610cdccedb0a",
+      "src/burn_splitter.py": "4436f74cc309866b0635550b132bd5b3ba690aea37764f0cc3dffeef17f3576c",
+      "src/config_validator.py": "b1746e146df4eb40d2e77dc741bef13bfebb7c94b99a154193dd6a243de58837",
+      "uv.lock": "57650664982b28eaa921e68e653c2076d034d6440e7f862999d28a8543040b01",
+      "main.py": "bd76f7952ccc7de33db4cd65425d0421def96e6e097a6542e4a6cccec92e9c4d",
+      "src/script_generator.py": "f77063cd350b1c895372eff1e3c21c881caa6b048d4a569130a6a12d066d165a",
+      "src/pipeline_artifacts.py": "92168ae61bacdc5b4676d7790152ec29f2bdfa8776eb2b924232ac1663d5022a",
+      "src/gmat_env.py": "cde82fa6c78605ca69cea8f252be9478e5c7dd75d2d4d9c859276c8c2d245475",
+      "src/retarget.py": "778d4c42bdee976edf1a3e07150a9bc4e8739ca11790a4d3099d762e8f972227"
+    }
+  },
+  "saved_at": "2026-10-29T22:19:15",
+  "config": {
+    "_comment_scenario": "Far-periapsis hyperbolic flyby. ECC=1.2, periapsis 25,000 km (SMA=-125000). Energy floor is 1,887 m/s - above the 1,500 per-burn cap - so 2+ burns are PROVABLY required. T_MAX=162,570s, 18x longer than hyper_fast, so this is the slow end of the spectrum while hyper_fast is the fast end. Cheapest single burn on the 34x34 grid is 2,686 m/s. From sweep_hyperbolic_limits.py.",
+    "_comment_tmax": "T_MAX_SEC = 2x time-to-periapsis, same rule as the other hyperbolic cases. INVENTED - not an official number.",
+    "orbit_A": {
+      "SMA": -125000.0,
+      "ECC": 1.2,
+      "INC": 30.0,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 229.67
+    },
+    "orbit_B": {
+      "SMA": 7000.0,
+      "ECC": 0.001,
+      "INC": 0.0,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 0.0
+    },
+    "rules": {
+      "MAX_DV_MPS": 250.0,
+      "MIN_MANEUVER_INTERVAL_SEC": 100.0,
+      "T_MAX_SEC": 162570.0,
+      "k_t": 2e-05,
+      "C_t": 100000.0,
+      "k_v": 0.0015,
+      "C_v": 2500.0,
+      "MAX_TOTAL_DV_MPS": 3000.0
+    },
+    "strategy": {
+      "GRAVITY_DEGREE": 4,
+      "MISS_TOLERANCE_KM": 5.0,
+      "SPLIT_FAST_FD": true,
+      "SPLIT_WORKERS": 3,
+      "SPLIT_MULTISTART": [
+        0,
+        0.75,
+        1
+      ],
+      "SPLIT_PRUNE_REOPT_MPS": 1.0,
+      "SPLIT_WALL_BUDGET_SEC": 600,
+      "SPLIT_JACOBIAN": "stm",
+      "SPLIT_AWARE_SEARCH": true,
+      "LAMBERT_MAX_REVS": 4
+    },
+    "optimization": {
+      "MAX_BURNS": [
+        3
+      ],
+      "MAXITER": 600,
+      "POPSIZE": 20,
+      "NUM_THREADS": 5,
+      "MAX_EARLY_STOP": 40,
+      "TOL": 0.02,
+      "SEED": 4
+    }
+  },
+  "burns": [
+    [
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      1.8991128596535556,
+      0.007072241619087033,
+      0.019081864267126252
+    ]
+  ],
+  "times": [
+    36071.42850107767,
+    11224.087675920171,
+    1984.6150592750855,
+    31973.972130659567
+  ],
+  "mission_info": {
+    "x": [
+      36071.42850107767,
+      0.0,
+      0.7503465968368577,
+      0.0,
+      0.08807769988130937,
+      0.0,
+      0.0,
+      0.0,
+      0.016377349666619776,
+      0.2815973945264784,
+      3.4836910280352535,
+      0.0,
+      4.876121436211836
+    ],
+    "num_burns": 3,
+    "score": 72.59590209952543,
+    "miss_km": 3.4837440673550355,
+    "total_dv_mps": 1899.221890103137,
+    "T_team": 81254.1033669325,
+    "score_split_est": 82.59590209952543,
+    "split_terminal_count": 1,
+    "split_leading_count": 0,
+    "penalty_count": 0,
+    "over_dv_count": 1,
+    "total_dv_over": false,
+    "disqualified": true,
+    "dq_reasons": [
+      "1 棒超過單棒上限 250 m/s（最大 1,899.222 m/s）"
+    ],
+    "official_score": null,
+    "dc_converged": true,
+    "aim_point": [
+      24999.664615530663,
+      -11.938940841977669,
+      -2.557187939907833
+    ],
+    "final_burn_dv_mps": 1899.221890103137,
+    "earth_safe": true,
+    "min_arc_radius_km": 6988.058624534105,
+    "report_text": "\n── 任務規劃 ──────────────────────────────────────────────\n  等待 36,071.4s 後開始，最後一棒 Lambert 走順向 (prograde)\n  [Burn 1    ] t=    36,071.4s   Δv=     0.0 m/s\n  [Burn 2    ] t=    47,295.5s   Δv=     0.0 m/s\n  [Final Burn] t=    49,280.1s   Δv=  1899.2 m/s  🔴 超過 250 m/s 上限（失格）\n  ⚠️ 這是 3 棒的方案，但實際只用到 1 棒（其餘是 Δv≈0 的空燒）——等價於 1 棒解。\n\n── Python 預測 (J2+J3+J4，不用開 GMAT) ─────────────────────────\n  Δr_min          3,483.7 m   (門檻 5,000 m)\n  ΔV_team         1,899.2 m/s   (上限 3,000 m/s)\n  T_team         81,254.1 s\n  間隔違規              0\n  Score            🔴 失格   ——1 棒超過單棒上限 250 m/s（最大 1,899.222 m/s）\n             (搜尋用分數 72.60，只代表路線值得拆棒，不是交件分數)\n  拆後估計          82.60 / 100   (終端棒可拆，搜尋/挑贏家用這個)\n  Earth-safe    ✅   (全程最低高度        610 km,門檻 100 km)\n  🔴 最大單棒超標 8 倍上限（1,899 vs 上限 250 m/s）——實務上交不出去(DC 收斂不到)，通常代表 T_max 內無合法解，見 feasibility.py。"
+  }
+}

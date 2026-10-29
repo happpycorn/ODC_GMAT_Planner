@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "stage": "mission",
+  "saved_at": "2026-10-29T23:18:30",
+  "provenance": {
+    "git_commit": "ef87f65917a2a3e46dcdcf5e825918a3b592b194",
+    "python": "3.12.3",
+    "files": {
+      "src/core_math.py": "1eefddb136d75684f58c419e1f52fdce9fab511a25b93901f6ca8b2bddd10853",
+      "src/propagator.py": "229127d027a57982e17433a878e0c852a74dacc4e3162da6c0954268fa9a76bd",
+      "src/scorer.py": "ada8dcd408ea565ad6983a0b1df94fe8ea99315c39f16c406626c133f4d438bd",
+      "src/optimizer.py": "2fac4bca6627fbe916217faf0ae42aa399bc769d0a1cd35cf2fdace7b74091a3",
+      "src/burn_splitter.py": "4436f74cc309866b0635550b132bd5b3ba690aea37764f0cc3dffeef17f3576c",
+      "src/config_validator.py": "b1746e146df4eb40d2e77dc741bef13bfebb7c94b99a154193dd6a243de58837",
+      "uv.lock": "57650664982b28eaa921e68e653c2076d034d6440e7f862999d28a8543040b01",
+      "main.py": "bd76f7952ccc7de33db4cd65425d0421def96e6e097a6542e4a6cccec92e9c4d",
+      "src/script_generator.py": "f77063cd350b1c895372eff1e3c21c881caa6b048d4a569130a6a12d066d165a",
+      "src/pipeline_artifacts.py": "92168ae61bacdc5b4676d7790152ec29f2bdfa8776eb2b924232ac1663d5022a",
+      "src/gmat_env.py": "cde82fa6c78605ca69cea8f252be9478e5c7dd75d2d4d9c859276c8c2d245475",
+      "src/retarget.py": "778d4c42bdee976edf1a3e07150a9bc4e8739ca11790a4d3099d762e8f972227"
+    }
+  },
+  "source": null,
+  "config": {
+    "_comment_scenario": "Far-periapsis hyperbolic flyby. ECC=1.2, periapsis 25,000 km (SMA=-125000). Energy floor is 1,887 m/s - above the 1,500 per-burn cap - so 2+ burns are PROVABLY required. T_MAX=162,570s, 18x longer than hyper_fast, so this is the slow end of the spectrum while hyper_fast is the fast end. Cheapest single burn on the 34x34 grid is 2,686 m/s. From sweep_hyperbolic_limits.py.",
+    "_comment_tmax": "T_MAX_SEC = 2x time-to-periapsis, same rule as the other hyperbolic cases. INVENTED - not an official number.",
+    "orbit_A": {
+      "SMA": -125000.0,
+      "ECC": 1.2,
+      "INC": 30.0,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 229.67
+    },
+    "orbit_B": {
+      "SMA": 7000.0,
+      "ECC": 0.001,
+      "INC": 0.0,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 0.0
+    },
+    "rules": {
+      "MAX_DV_MPS": 250.0,
+      "MIN_MANEUVER_INTERVAL_SEC": 100.0,
+      "T_MAX_SEC": 162570.0,
+      "k_t": 2e-05,
+      "C_t": 100000.0,
+      "k_v": 0.0015,
+      "C_v": 2500.0,
+      "MAX_TOTAL_DV_MPS": 3000.0
+    },
+    "strategy": {
+      "GRAVITY_DEGREE": 4,
+      "MISS_TOLERANCE_KM": 5.0,
+      "SPLIT_LEADING": true,
+      "ORACLE_TWOBURN": true,
+      "SPLIT_FAST_FD": true,
+      "SPLIT_WORKERS": 3,
+      "SPLIT_MULTISTART": [
+        0,
+        0.75,
+        1
+      ],
+      "SPLIT_PRUNE_REOPT_MPS": 1.0,
+      "SPLIT_WALL_BUDGET_SEC": 351.0290102721192,
+      "SPLIT_JACOBIAN": "stm"
+    },
+    "optimization": {
+      "MAX_BURNS": [
+        2,
+        3
+      ],
+      "MAXITER": 600,
+      "POPSIZE": 20,
+      "NUM_THREADS": 5,
+      "MAX_EARLY_STOP": 40,
+      "TOL": 0.02,
+      "SEED": 0
+    }
+  },
+  "burns": [
+    [
+      0.19547106879845716,
+      0.00045270706669062286,
+      -0.0053938308476088
+    ],
+    [
+      0.24797799411250976,
+      0.00011233568403447719,
+      -0.0009910722023002915
+    ],
+    [
+      0.24794888053531947,
+      -0.0003388859969196814,
+      0.003913847944999025
+    ],
+    [
+      0.24785221173428612,
+      0.0008504015362259329,
+      -0.007914440545625855
+    ],
+    [
+      0.24794290451404485,
+      0.00038031417045584245,
+      -0.004272221403598028
+    ],
+    [
+      0.24797584051995772,
+      -7.425554945736468e-05,
+      -0.0014343701421193728
+    ],
+    [
+      0.24797848266572634,
+      -0.0005158084437905363,
+      0.0006974877640046706
+    ],
+    [
+      0.20943459306684778,
+      -0.0007994502309192937,
+      0.0018600613320782521
+    ]
+  ],
+  "times": [
+    55105.624215062744,
+    100.00000000000001,
+    100.00000000000001,
+    15733.486458418356,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    9816.326681985489
+  ],
+  "mission_info": {
+    "x": [
+      55105.624215062744,
+      100.00000000000001,
+      100.00000000000001,
+      15733.486458418356,
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      9816.326681985489,
+      -0.019018266901635057,
+      -0.19461844125783936,
+      0.00045270137962891995,
+      -0.0036968890215997247,
+      -0.247952409447596,
+      0.00012676030008399694,
+      0.016722330108769234,
+      -0.24741532078942585,
+      -0.00032112703473649823,
+      -0.03832073480102784,
+      -0.2449997277030312,
+      0.0008573932880094302,
+      -0.018107445024150765,
+      -0.24731767274303149,
+      0.0004118217071825186,
+      0.0022929286890540986,
+      -0.24796939696168388,
+      -3.2583070403357104e-05,
+      0.02257474239591012,
+      -0.2469498609138608,
+      -0.00047708815815658925,
+      0.03582243696991714,
+      -0.20635671337052677,
+      -0.0007794731281478051
+    ],
+    "num_burns": 8,
+    "score": 82.64456478792064,
+    "miss_km": 3.4950142913285656,
+    "total_dv_mps": 1892.870376107605,
+    "T_team": 81255.4373554666,
+    "penalty_count": 0,
+    "over_dv_count": 0,
+    "total_dv_over": false,
+    "disqualified": false,
+    "dq_reasons": [],
+    "official_score": 82.64456478792064,
+    "dc_converged": true,
+    "aim_point": [
+      24996.19575226921,
+      -5.09846102544293,
+      -1.6732133765111632
+    ],
+    "final_burn_dv_mps": 209.44437858750695,
+    "earth_safe": true,
+    "min_arc_radius_km": 6988.058482213195
+  },
+  "verification": "python_only",
+  "artifact_id": "f099bd6a2ccafc96aeb0f56281b3cbf5bbee3767bde45c84573f312458dc763b"
+}

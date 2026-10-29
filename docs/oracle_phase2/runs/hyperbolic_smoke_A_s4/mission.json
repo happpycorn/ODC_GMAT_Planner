@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "stage": "mission",
+  "saved_at": "2026-10-29T22:18:41",
+  "provenance": {
+    "git_commit": "14b78493a8a5b0e7b8ea7b61d0676c83e0ea0ecb",
+    "python": "3.12.3",
+    "files": {
+      "src/core_math.py": "1eefddb136d75684f58c419e1f52fdce9fab511a25b93901f6ca8b2bddd10853",
+      "src/propagator.py": "229127d027a57982e17433a878e0c852a74dacc4e3162da6c0954268fa9a76bd",
+      "src/scorer.py": "ada8dcd408ea565ad6983a0b1df94fe8ea99315c39f16c406626c133f4d438bd",
+      "src/optimizer.py": "1a99fbbf62ad45b9cce341f9d14f0455285f1199cffc4df0c0da610cdccedb0a",
+      "src/burn_splitter.py": "4436f74cc309866b0635550b132bd5b3ba690aea37764f0cc3dffeef17f3576c",
+      "src/config_validator.py": "b1746e146df4eb40d2e77dc741bef13bfebb7c94b99a154193dd6a243de58837",
+      "uv.lock": "57650664982b28eaa921e68e653c2076d034d6440e7f862999d28a8543040b01",
+      "main.py": "bd76f7952ccc7de33db4cd65425d0421def96e6e097a6542e4a6cccec92e9c4d",
+      "src/script_generator.py": "f77063cd350b1c895372eff1e3c21c881caa6b048d4a569130a6a12d066d165a",
+      "src/pipeline_artifacts.py": "92168ae61bacdc5b4676d7790152ec29f2bdfa8776eb2b924232ac1663d5022a",
+      "src/gmat_env.py": "cde82fa6c78605ca69cea8f252be9478e5c7dd75d2d4d9c859276c8c2d245475",
+      "src/retarget.py": "778d4c42bdee976edf1a3e07150a9bc4e8739ca11790a4d3099d762e8f972227"
+    }
+  },
+  "source": null,
+  "config": {
+    "_comment_scenario": "Qualifier-format smoke test: A is a HYPERBOLIC flyby (ECC>1, SMA<0), which is the orbit type the ranking round uses. A enters at 96,215 km (TA=-130deg), passes periapsis at 10,000 km around t=19,974s, and exits symmetrically - so T_MAX_SEC=40,000 brackets the whole flyby. Probe results (scripts/research/probe_hyperbolic_A.py): propagation matches the farnocchia analytic solution to 0.002 m, Lambert converges on 3200/3200 grid points, energy floor 637.0 m/s, minimum single-burn 1257.2 m/s (under the 1500 cap, so one burn suffices). This is NOT a difficulty test - the point is that the qualifier code path had never been run end to end.",
+    "_comment_tmax": "T_MAX_SEC is INVENTED. The organizers have not announced how T_max is defined for the hyperbolic ranking round (the T_max = multiple x period formula has no meaning without a period). This file proves the code path works; it says nothing about whether the number is right. Replace it when the rules are published.",
+    "_comment_scoring": "k_t/C_t/k_v/C_v chosen so both terms actually move across the plausible range, per the lesson from lateral_burn_test. Fuel: 1257 m/s -> ~15.5 pts, 3000 m/s -> ~1.2 pts. Time: 10,000s -> ~20.4 pts, 35,000s -> ~6.7 pts. Sanity-check this whenever T_max changes.",
+    "orbit_A": {
+      "SMA": -50000.0,
+      "ECC": 1.2,
+      "INC": 30.0,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 230.0
+    },
+    "orbit_B": {
+      "SMA": 7000.0,
+      "ECC": 0.001,
+      "INC": 0.0,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 0.0
+    },
+    "rules": {
+      "MAX_DV_MPS": 250.0,
+      "MIN_MANEUVER_INTERVAL_SEC": 100.0,
+      "T_MAX_SEC": 40000.0,
+      "k_t": 0.0001,
+      "C_t": 25000.0,
+      "k_v": 0.002,
+      "C_v": 1500.0,
+      "MAX_TOTAL_DV_MPS": 3000.0
+    },
+    "strategy": {
+      "GRAVITY_DEGREE": 4,
+      "MISS_TOLERANCE_KM": 5.0,
+      "SPLIT_FAST_FD": true,
+      "SPLIT_WORKERS": 3,
+      "SPLIT_MULTISTART": [
+        0,
+        0.75,
+        1
+      ],
+      "SPLIT_PRUNE_REOPT_MPS": 1.0,
+      "SPLIT_WALL_BUDGET_SEC": 600,
+      "SPLIT_JACOBIAN": "stm",
+      "SPLIT_AWARE_SEARCH": true,
+      "LAMBERT_MAX_REVS": 0
+    },
+    "optimization": {
+      "MAX_BURNS": [
+        3
+      ],
+      "MAXITER": 600,
+      "POPSIZE": 20,
+      "NUM_THREADS": 5,
+      "MAX_EARLY_STOP": 40,
+      "TOL": 0.02,
+      "SEED": 4
+    }
+  },
+  "burns": [
+    [
+      0.19009499876151822,
+      0.0001742026767835465,
+      -7.888989606190046e-07
+    ],
+    [
+      0.20105249125197697,
+      0.00010147572793398967,
+      -9.20286865837917e-07
+    ],
+    [
+      0.24794066552743405,
+      3.812425094138662e-05,
+      9.449213921822561e-07
+    ]
+  ],
+  "times": [
+    2889.5096924950017,
+    6296.703889284637,
+    6891.029021369737,
+    3895.757714256464
+  ],
+  "mission_info": {
+    "x": [
+      2889.5096924950017,
+      6296.703889284637,
+      6891.029021369737,
+      3895.757714256464,
+      -0.003466787532457695,
+      -0.19006338401134892,
+      0.00017419441979413895,
+      -0.0021085110386092187,
+      -0.20104143233910635,
+      0.00010583495240290162,
+      -0.0008738537822467959,
+      -0.24793912420287167,
+      4.6320821928162443e-05
+    ],
+    "num_burns": 3,
+    "score": 86.78642964159901,
+    "miss_km": 3.4950001297170075,
+    "total_dv_mps": 639.0882639055527,
+    "T_team": 19973.00031740584,
+    "penalty_count": 0,
+    "over_dv_count": 0,
+    "total_dv_over": false,
+    "disqualified": false,
+    "dq_reasons": [],
+    "official_score": 86.78642964159901,
+    "dc_converged": true,
+    "aim_point": [
+      9995.692386590914,
+      -4.3582589210793685,
+      0.011390217640366587
+    ],
+    "final_burn_dv_mps": 247.9406684602958,
+    "earth_safe": true,
+    "min_arc_radius_km": 6988.058231983804
+  },
+  "verification": "python_only",
+  "artifact_id": "aa590951e2c3f498c276f06584ceea857440dd9eda814701c404957ebebe18cf"
+}

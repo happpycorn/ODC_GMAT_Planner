@@ -1,0 +1,123 @@
+{
+  "name": "phase2_armA",
+  "_說明": "階段 2 四臂比較 臂 A：現行預設。e1/hyper_far/smoke 套排位賽 base（= codex/e1-frequency sweeps/e1_anchors.json base），contest 不套。Corn 上 --slots 2 --timeout 3600，env NUMBA_NUM_THREADS=4、BLAS 類 =1。",
+  "scenarios": [
+    {
+      "name": "e1_r4",
+      "config": "configs/research/e1/e1_r4.json",
+      "overrides": {
+        "rules.MAX_DV_MPS": 250.0,
+        "rules.MAX_TOTAL_DV_MPS": 3000.0,
+        "optimization.MAXITER": 600,
+        "optimization.POPSIZE": 20,
+        "optimization.NUM_THREADS": 5,
+        "strategy.SPLIT_FAST_FD": true,
+        "strategy.SPLIT_WORKERS": 3,
+        "strategy.SPLIT_MULTISTART": [
+          0,
+          0.75,
+          1
+        ],
+        "strategy.SPLIT_PRUNE_REOPT_MPS": 1.0,
+        "strategy.SPLIT_WALL_BUDGET_SEC": 600,
+        "strategy.SPLIT_JACOBIAN": "stm"
+      }
+    },
+    {
+      "name": "e1_r5",
+      "config": "configs/research/e1/e1_r5.json",
+      "overrides": {
+        "rules.MAX_DV_MPS": 250.0,
+        "rules.MAX_TOTAL_DV_MPS": 3000.0,
+        "optimization.MAXITER": 600,
+        "optimization.POPSIZE": 20,
+        "optimization.NUM_THREADS": 5,
+        "strategy.SPLIT_FAST_FD": true,
+        "strategy.SPLIT_WORKERS": 3,
+        "strategy.SPLIT_MULTISTART": [
+          0,
+          0.75,
+          1
+        ],
+        "strategy.SPLIT_PRUNE_REOPT_MPS": 1.0,
+        "strategy.SPLIT_WALL_BUDGET_SEC": 600,
+        "strategy.SPLIT_JACOBIAN": "stm"
+      }
+    },
+    {
+      "name": "e1_r8",
+      "config": "configs/research/e1/e1_r8.json",
+      "overrides": {
+        "rules.MAX_DV_MPS": 250.0,
+        "rules.MAX_TOTAL_DV_MPS": 3000.0,
+        "optimization.MAXITER": 600,
+        "optimization.POPSIZE": 20,
+        "optimization.NUM_THREADS": 5,
+        "strategy.SPLIT_FAST_FD": true,
+        "strategy.SPLIT_WORKERS": 3,
+        "strategy.SPLIT_MULTISTART": [
+          0,
+          0.75,
+          1
+        ],
+        "strategy.SPLIT_PRUNE_REOPT_MPS": 1.0,
+        "strategy.SPLIT_WALL_BUDGET_SEC": 600,
+        "strategy.SPLIT_JACOBIAN": "stm"
+      }
+    },
+    {
+      "name": "hyper_far",
+      "config": "configs/shared/hyper_far.json",
+      "overrides": {
+        "rules.MAX_DV_MPS": 250.0,
+        "rules.MAX_TOTAL_DV_MPS": 3000.0,
+        "optimization.MAXITER": 600,
+        "optimization.POPSIZE": 20,
+        "optimization.NUM_THREADS": 5,
+        "strategy.SPLIT_FAST_FD": true,
+        "strategy.SPLIT_WORKERS": 3,
+        "strategy.SPLIT_MULTISTART": [
+          0,
+          0.75,
+          1
+        ],
+        "strategy.SPLIT_PRUNE_REOPT_MPS": 1.0,
+        "strategy.SPLIT_WALL_BUDGET_SEC": 600,
+        "strategy.SPLIT_JACOBIAN": "stm"
+      }
+    },
+    {
+      "name": "hyperbolic_smoke",
+      "config": "configs/shared/hyperbolic_smoke.json",
+      "overrides": {
+        "rules.MAX_DV_MPS": 250.0,
+        "rules.MAX_TOTAL_DV_MPS": 3000.0,
+        "optimization.MAXITER": 600,
+        "optimization.POPSIZE": 20,
+        "optimization.NUM_THREADS": 5,
+        "strategy.SPLIT_FAST_FD": true,
+        "strategy.SPLIT_WORKERS": 3,
+        "strategy.SPLIT_MULTISTART": [
+          0,
+          0.75,
+          1
+        ],
+        "strategy.SPLIT_PRUNE_REOPT_MPS": 1.0,
+        "strategy.SPLIT_WALL_BUDGET_SEC": 600,
+        "strategy.SPLIT_JACOBIAN": "stm"
+      }
+    },
+    {
+      "name": "contest",
+      "config": "configs/shared/contest.json"
+    }
+  ],
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "base": {}
+}
