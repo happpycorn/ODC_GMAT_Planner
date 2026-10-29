@@ -692,6 +692,8 @@ class MissionOptimizer:
         # 翻成一顆插棒種子塞進來（見 primer.insert_node_seed），保證它一定進初始族群。
         # 是 numpy 陣列的純資料 dict，spawn 到子行程時隨 self 一起 pickle，跨行程沒問題。
         self.external_seeds = {}
+        # Oracle seeds never activate primer fast mode or its deadline.
+        self.oracle_seeds = {}
 
         # 計算時間上限 (T_max = T_MAX_PERIOD_MULTIPLE × A 的軌道週期，見上面的說明)。
         # 這個公式只在 A 是橢圓/圓軌道 (SMA>0, ECC<1，初賽) 時有意義——A 是雙曲線
@@ -1666,6 +1668,12 @@ class MissionOptimizer:
             _lb, _ub = np.array(lb), np.array(ub)
             seed_candidates = [np.clip(np.asarray(s, dtype=np.float64), _lb, _ub)
                                for s in ext] + list(seed_candidates)
+        oracle = getattr(self, "oracle_seeds", {}).get(current_burns, [])
+        if oracle:
+            # SPLIT_AWARE_SEARCH changes only magnitude bounds, not x layout.
+            seed_candidates = [np.clip(np.asarray(s, dtype=np.float64), lb, ub)
+                               for s in oracle] + list(seed_candidates)
+            pop_size = max(pop_size, len(seed_candidates))
         if seed_candidates:
             lb_arr, ub_arr = np.array(lb), np.array(ub)
             n_random = pop_size - len(seed_candidates)
@@ -2761,7 +2769,7 @@ def _run_studies_unified(revs_values, optimizers, seed_set):
     return results
 
 
-def run_study_over_revs(config, external_seeds=None):
+def run_study_over_revs(config, external_seeds=None, oracle_seeds=None):
     """（決策 3 / 2026-09-03）在多個 LAMBERT_MAX_REVS 值上搜尋，
     照規則第 6 節挑最好的那趟交出去，換掉 seed×REVS 相依的搜尋脆弱性。
 
@@ -2832,6 +2840,8 @@ def run_study_over_revs(config, external_seeds=None):
             opt._primer_search_deadline = deadline
         if external_seeds:                       # C2：primer 指路的插棒種子（見 main）
             opt.external_seeds = external_seeds
+        if oracle_seeds:
+            opt.oracle_seeds = oracle_seeds
         # 集成時把每趟的大塊報告壓成 DEBUG（console 預設不印、-v/log 檔仍看得到），
         # 避免同一份報告在 console 上印每一趟——只在下面把勝出趟以 INFO 重印一次。
         if multi:
