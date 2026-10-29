@@ -298,6 +298,14 @@ def _validate_strategy(strategy_cfg, errors: list):
         errors.append("strategy.AUTO_SPLIT_LEGALIZE 必須是 true/false，但收到 "
                       f"{strategy_cfg['AUTO_SPLIT_LEGALIZE']!r}（低棒數 route-first 贏家的動態拆棒開關）")
 
+    if "SPLIT_LEADING" in strategy_cfg and not isinstance(strategy_cfg["SPLIT_LEADING"], bool):
+        errors.append("strategy.SPLIT_LEADING 必須是 true/false，但收到 "
+                      f"{strategy_cfg['SPLIT_LEADING']!r}（拆棒階段先等分超標前導棒）")
+    if "SPLIT_AWARE_MAX_FACTOR" in strategy_cfg:
+        v = strategy_cfg["SPLIT_AWARE_MAX_FACTOR"]
+        if not (_is_int(v) and 1 <= v <= 14):
+            errors.append(f"strategy.SPLIT_AWARE_MAX_FACTOR 必須是 1~14 的整數，但收到 {v!r}")
+
     if "SPLIT_AWARE_TERMINAL" in strategy_cfg and not isinstance(strategy_cfg["SPLIT_AWARE_TERMINAL"], bool):
         errors.append("strategy.SPLIT_AWARE_TERMINAL 必須是 true/false，但收到 "
                       f"{strategy_cfg['SPLIT_AWARE_TERMINAL']!r}（C4：終端棒可拆時搜尋改用拆後估計分數）")

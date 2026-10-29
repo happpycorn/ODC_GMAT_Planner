@@ -562,6 +562,9 @@ class MissionOptimizer:
         # 為準；optimizer 也保存一份，讓 preflight 能正確解讀「低於直接合法棒數」的案例：
         # 開啟時它們不是該刪的浪費，而是刻意保留給後處理拆棒的路線候選。
         self.AUTO_SPLIT_LEGALIZE = bool(strategy.get("AUTO_SPLIT_LEGALIZE", True))
+        # 前導棒等分只在實際會拆棒時生效；可拆上限對齊搜尋端的 hard_cap。
+        self.SPLIT_LEADING = bool(strategy.get("SPLIT_LEADING", False)) and self.AUTO_SPLIT_LEGALIZE
+        self.LEADING_SPLIT_LIMIT = self.SPLIT_AWARE_MAX_FACTOR * self.MAX_DV
         # 終端棒拆後估計 (C4, 2026-09-24；見 docs/C4_TERMINAL_SPLIT_AWARE_PLAN.md)。
         # 開啟時：(1) fast_fitness_evaluator 對超標但 ≤ K×cap 的終端棒不扣 10 分，改預付
         # 拆棒燃料；(2) 各棒數案例 / REVS 集成 / C2 挑贏家改比 score_split_est (拆後估計)。
@@ -2315,9 +2318,13 @@ class MissionOptimizer:
                 self.legal_backup = {"opt": self, "burns": bk, "x": viable[bk]["best_x"],
                                      "fitness": viable[bk]["fitness"],
                                      "score": metrics[bk]["score"]}
+            leading_count = metrics[best_burns_count].get("split_leading_count", 0)
+            split_desc = ([f"前導棒 {leading_count} 發"] if leading_count else [])
             if metrics[best_burns_count]["split_terminal_count"]:
+                split_desc.append("終端棒")
+            if split_desc:
                 log.log(self._report_level,
-                        f"✂️ 採用的 {best_burns_count} 棒解終端棒超標、可拆：真實 "
+                        f"✂️ 採用的 {best_burns_count} 棒解{'、'.join(split_desc)}超標、可拆：真實 "
                         f"{metrics[best_burns_count]['score']:.4f} → 拆後估計 "
                         f"{metrics[best_burns_count]['score_split_est']:.4f}"
                         + (f"（合法備胎：{self.legal_backup['burns']} 棒 "
@@ -2356,13 +2363,15 @@ class MissionOptimizer:
                   f"最接近合法的{detail}。排位賽規則下這種解會被判失格，不輸出。")
 
     def split_est_score(self, burn_logs, miss_km, t_team, earth_safe) -> tuple:
-        """C4 拆後估計：(score_split_est, 可拆的終端違規數)。
+        """拆後估計：(score_split_est, 可拆終端棒數, 可拆前導棒數)。
 
         終端棒超標、但 ≤ SPLIT_AWARE_TERMINAL_MAX_FACTOR × cap、且全程 Earth-safe (撞地球
         的解本來就不拆，見 HAP-48 閘門) 時，把那 −10 分加回來、改扣預付的拆棒燃料——跟
-        fast_fitness_evaluator 旗標開時的算法一致。中間棒違規不算在內 (那是
-        SPLIT_AWARE_SEARCH 的事)。不看旗標，永遠算得出來；用不用由呼叫端依旗標決定。
-        跟 score 一樣是搜尋/挑候選用的分數 (含軟懲罰)，不是交件分數。"""
+        fast_fitness_evaluator 旗標開時的算法一致。SPLIT_LEADING 開時，超標但
+        ≤ LEADING_SPLIT_LIMIT 的前導棒也加回 −10、用 SPLIT_AWARE_DV_OVERHEAD 預付燃料
+        (拆棒階段會先等分它，見 burn_splitter.presplit_leading)。不看 SPLIT_AWARE_TERMINAL，
+        永遠算得出來；用不用由呼叫端依旗標決定。跟 score 一樣是搜尋/挑候選用的分數
+        (含軟懲罰)，不是交件分數。"""
         leg = self.assess_burn_logs(burn_logs)
         n_soft, v_single = self._search_score_terms(leg, [bl['dv_mag'] for bl in burn_logs])
         total_dv = sum(bl['dv_mag'] for bl in burn_logs)
@@ -2374,16 +2383,24 @@ class MissionOptimizer:
                       and term <= lim)
         if n_split:
             total_dv += term * (self.SPLIT_AWARE_TERMINAL_DV_OVERHEAD - 1.0)
-        est = self.ranking_score(miss_km, t_team, total_dv * 1000.0, n_soft - n_split, v_single)
-        return est, n_split
+        n_leading = 0
+        if self.SPLIT_LEADING and earth_safe:
+            for i in leg["over_dv_legs"]:
+                d = burn_logs[i]['dv_mag']
+                if i < len(burn_logs) - 1 and d <= self.LEADING_SPLIT_LIMIT:
+                    n_leading += 1
+                    total_dv += d * (self.SPLIT_AWARE_DV_OVERHEAD - 1.0)
+        est = self.ranking_score(miss_km, t_team, total_dv * 1000.0,
+                                 n_soft - n_split - n_leading, v_single)
+        return est, n_split, n_leading
 
     def _search_score_terms(self, leg, dvs_kms) -> tuple:
         """最終判定 (assess_legality) → 搜尋用分數的兩個量：(n_soft, single_violation_mps)。
         n_soft = 每次 −10 的軟懲罰 (機動間隔違規 + 還拆得掉的單棒超標)；single_violation_mps =
         拆不掉的單棒超標量 (失格層用，見 scorer.ranked_search_score)。dvs_kms：每棒 Δv (km/s)。
         初賽模式：單棒超標一律 −10、沒有失格層，逐位元同舊行為。排位賽模式：只有終端棒、且
-        ≤ SPLIT_LIMIT 才拆得掉 (拆棒器只拆終端棒)，其餘超標量算進失格層——跟
-        fast_fitness_evaluator 同一套分類。"""
+        ≤ SPLIT_LIMIT 才拆得掉；SPLIT_LEADING 開時，前導棒 ≤ LEADING_SPLIT_LIMIT 也可拆。
+        其餘超標量算進失格層。前導棒分類只影響重播與挑贏家，不改搜尋目標函數。"""
         if not self.RANKING_RULES:
             return leg["penalty_count"] + leg["over_dv_count"], 0.0
         n_soft, v = leg["penalty_count"], 0.0
@@ -2392,6 +2409,11 @@ class MissionOptimizer:
             d = float(dvs_kms[i])
             if i == last and d <= self.SPLIT_LIMIT:
                 n_soft += 1
+            elif i != last and self.SPLIT_LEADING:
+                if d <= self.LEADING_SPLIT_LIMIT:
+                    n_soft += 1
+                else:
+                    v += (d - self.LEADING_SPLIT_LIMIT) * 1000.0
             else:
                 v += (d - (self.SPLIT_LIMIT if i == last else self.MAX_DV_SOFT)) * 1000.0
         return n_soft, v
@@ -2460,11 +2482,11 @@ class MissionOptimizer:
         leg = self.assess_burn_logs(burn_logs)
         score = self.search_score(leg, [bl['dv_mag'] for bl in burn_logs], miss_km, t_team,
                                   total_dv * 1000.0)
-        score_split_est, n_split = self.split_est_score(burn_logs, miss_km, t_team, earth_safe)
+        score_split_est, n_split, n_leading = self.split_est_score(burn_logs, miss_km, t_team, earth_safe)
         return {
             "score": float(score),
             "score_split_est": score_split_est,
-            "split_terminal_count": n_split,
+            "split_terminal_count": n_split, "split_leading_count": n_leading,
             "miss_km": float(miss_km),
             "dv_mps": float(total_dv * 1000.0),
             "t_team": t_team,
@@ -2531,9 +2553,11 @@ class MissionOptimizer:
                       f"             (搜尋用分數 {final_score:.2f}，只代表路線值得拆棒，不是交件分數)"]
         else:
             lines.append(f"  Score      {final_score:>12.2f} / 100")
-        score_split_est, n_split = self.split_est_score(burn_logs, miss_km, intercept_time, earth_safe)
-        if n_split:
-            lines.append(f"  拆後估計   {score_split_est:>12.2f} / 100   (終端棒可拆，"
+        score_split_est, n_split, n_leading = self.split_est_score(burn_logs, miss_km, intercept_time, earth_safe)
+        if n_split or n_leading:
+            split_desc = "、".join(([f"前導棒 {n_leading} 發"] if n_leading else [])
+                                   + (["終端棒"] if n_split else []))
+            lines.append(f"  拆後估計   {score_split_est:>12.2f} / 100   ({split_desc}可拆，"
                          f"{'搜尋/挑贏家用這個' if self.SPLIT_AWARE_TERMINAL else 'SPLIT_AWARE_TERMINAL 關，僅供參考'})")
 
         # Earth-safe 判定 (2026-09-09, HAP-48)：跟 fast_fitness_evaluator 一致的碰撞
@@ -2574,7 +2598,7 @@ class MissionOptimizer:
             "score": final_score, "miss_km": miss_km,
             "total_dv_mps": total_dv * 1000.0, "T_team": intercept_time,
             # C4 拆後估計 (見 split_est_score)。SPLIT_AWARE_TERMINAL 開時 REVS 集成 / C2 比這個。
-            "score_split_est": score_split_est, "split_terminal_count": n_split,
+            "score_split_est": score_split_est, "split_terminal_count": n_split, "split_leading_count": n_leading,
             **legality, "dc_converged": dc_converged,
             # GMAT script 的打靶目標要瞄準這個點 (EarthMJ2000Eq, km)，不是 ShipA 的
             # 真實位置，不然 GMAT 自己的 DC 會把刻意換來的省油設計修正掉。
