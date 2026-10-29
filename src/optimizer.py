@@ -22,7 +22,7 @@ from mealpy.evolutionary_based.SHADE import L_SHADE
 from src.propagator import get_r0_v0
 from src.burn_splitter import legalize_route
 from src.scorer import (calculate_score, ranked_search_score, assess_legality,
-                        SEARCH_FAIL_SCORE_RANKED)
+                        SEARCH_FAIL_SCORE_RANKED, DV_LIMIT_TOL_MPS)
 from src.core_math import (propagate_dop853, check_constraints, fast_norm,
                            to_vnb_frame, reaches_perigee, lambert_izzo,
                            izzo_max_revs, ephem_state, build_ephem_table, fixed_orbit_state,
@@ -136,6 +136,15 @@ def fast_fitness_evaluator(
     coast_rtol = 1e-12
     if scalars.shape[0] >= 24:
         coast_rtol = scalars[23]
+    # SEARCH 開啟的新呼叫端才帶真實單棒上限與前導可拆上限；舊 ABI 不假設下游能拆前導棒。
+    # 關閉時保留原本 max_dv (= SOFT) 的所有運算，包含數值安全邊界。
+    # 只有 SPLIT_LEADING 也開時才附這兩格（見 _scalar_params）；primer 重搜單開 SEARCH 時走舊算法。
+    single_dv_cap = max_dv
+    leading_split_limit = 0.0
+    split_leading_abi = split_aware > 0.5 and scalars.shape[0] >= 26
+    if split_leading_abi:
+        single_dv_cap = scalars[24] + DV_LIMIT_TOL_MPS / 1000.0
+        leading_split_limit = scalars[25]
 
     total_dv = 0.0
     penalty_count = 0
@@ -180,14 +189,24 @@ def fast_fitness_evaluator(
         dv_mag = dv_r  # 球座標半徑本身就是 Δv 大小，不用再算一次 norm
         total_dv += dv_mag
 
-        if split_aware > 0.5:
-            # 拆棒感知：這發若超過單棒上限，它會在第二段被拆成 n_seg 段合法燒。拆棒不是
-            # 免費的，這裡預付「最少」代價，讓 DE 看到的分數貼近拆後分數：
-            #   * 時間：被迫多 (n_seg-1) 段 ≥100s 的機動間隔 (時間下界，真實拆法可能更久)。
-            #     必須在算 max_coast (用 current_time) 之前就加進去，後面的滑行才算對。
-            #   * 燃料：拆段重解 Lambert 通常比單發略貴，乘一個保守的 overhead 係數。
-            # max_dv 這裡是傳進來的 MAX_DV_SOFT，用它當每段容量略偏保守 (n_seg 可能多 1)，
-            # 方向安全。關旗標時這段完全不執行，dv_mag 受 bounds 保證已 ≤ max_dv。
+        if split_leading_abi:
+            # 與 split_est_score 同尺：只對下游可拆的前導棒預付燃料。
+            # presplit_leading 以原節點為中心排開，鎖定抵達時刻，不延長任務。
+            # 不能只推進時鐘卻不傳播 r/v；那會讓同一 x 在搜尋與重播代表不同軌跡。
+            if dv_mag > single_dv_cap:
+                if leading_split_limit > 0.0 and dv_mag <= leading_split_limit:
+                    if split_term > 0.5:  # 挑贏家使用拆後估計；否則保留原始軟懲罰
+                        total_dv += dv_mag * (dv_overhead - 1.0)
+                    else:
+                        penalty_count += 1
+                elif ranked:
+                    limit = leading_split_limit if leading_split_limit > 0.0 else max_dv
+                    violation += (dv_mag - limit) * 1000.0
+                else:
+                    penalty_count += 1
+        elif split_aware > 0.5:
+            # SPLIT_LEADING 關（primer 重搜單開 SEARCH）：保留舊算法，逐位元不變。已知問題：只推進
+            # 時鐘、不傳播 r/v，搜尋與重播不同尺（docs/SPLIT_AWARE_SEARCH_FIX_20261029.md）。
             if dv_mag > max_dv:
                 n_seg = math.ceil(dv_mag / max_dv)
                 current_time += (n_seg - 1.0) * min_coast_time
@@ -323,7 +342,7 @@ def fast_fitness_evaluator(
     dv_final_mag = fast_norm(dv_final_vec)
     total_dv += dv_final_mag
 
-    if dv_final_mag > max_dv:
+    if dv_final_mag > single_dv_cap:
         if ranked and dv_final_mag > split_limit:
             # 排位賽模式、超出拆棒器範圍：拆不掉就是失格，進失格層 (超得越多分數越低)。
             violation += (dv_final_mag - split_limit) * 1000.0
@@ -550,11 +569,10 @@ class MissionOptimizer:
         # 的中間棒不是 infeasible——它可以拆成 2×1250、間隔 ≥100s，每段合法、零違規
         # (見 docs 的 burn-split 方法與 HAP-47 joint-NLP 拆分器)。但舊版用 bounds 把中間棒
         # 的 dv_r 硬夾在 MAX_DV_SOFT，等於把「需要大衝量、靠拆棒實現」的整族解從搜尋空間
-        # 切掉。開這個旗標後：(1) _generate_bounds 把中間棒上界放寬到 MAX_FACTOR×MAX_DV；
-        # (2) fast_fitness_evaluator 對超標中間棒「預付」拆棒的最少代價——被迫的 ≥100s 間隔
-        # 乘上額外段數、外加一個 ΔV overhead——讓 DE 看到的分數貼近拆後真實分數，不會被
-        # 「單發大燒免費」這個幻想目標騙走。總燃料照加、不放水；最後一棒不動 (它是 Lambert
-        # 攔截，拆法不同，另案)。第二段 (HAP-47) 再把這些待拆節點拆成合法多棒 + GMAT 驗證。
+        # 切掉。開這個旗標且 SPLIT_LEADING 可用時：(1) _generate_bounds 放寬中間棒上界；
+        # (2) 可拆前導棒預付 ΔV overhead，與重播的拆後估計相同。拆棒器固定抵達時刻，
+        # 所以不另加任務時間；間隔可行性與拆後軌跡安全仍須實拆驗證。未開 SPLIT_LEADING
+        # （primer 重搜單開 SEARCH）時保留舊算法：只推進時鐘、預付 overhead，已知不同尺。
         self.SPLIT_AWARE_SEARCH = bool(strategy.get("SPLIT_AWARE_SEARCH", False))
         self.SPLIT_AWARE_MAX_FACTOR = max(1, int(strategy.get("SPLIT_AWARE_MAX_FACTOR", 3)))
         self.SPLIT_AWARE_DV_OVERHEAD = max(1.0, float(strategy.get("SPLIT_AWARE_DV_OVERHEAD", 1.02)))
@@ -2091,9 +2109,10 @@ class MissionOptimizer:
         0-12 環境/計分常數、13 lambert_max_revs、14/15 SPLIT_AWARE_SEARCH、16-18 C4 終端棒
         拆後估計 (旗標、K、overhead)、19 總 Δv 上限 (km/s，0 = 沒有)、20 拆棒器能處理的單棒
         上限 (km/s，排位賽模式才用)、21 檢查點間距 (0=關)、22 檢查點數、23 滑行 rtol。
+        SEARCH 與 SPLIT_LEADING 都開時另附 24 真實單棒上限、25 前導可拆上限。其餘維持 24 格 ABI。
         這裡的 rtol 永遠是精確值；只有 L-SHADE 搜尋另用搜尋容差。
         只准在這裡組——原本三處各抄一份，改一處忘兩處。"""
-        return np.array([
+        params = np.array([
             self.MIN_COAST_TIME, self.T_max, self.MU, self.J2_VAL, self.J3_VAL, self.J4_VAL,
             self.RE_VAL, self.MIN_PERIAPSIS, self.MAX_DV_SOFT, self.k_t, self.C_t, self.k_v, self.C_v,
             float(self.LAMBERT_MAX_REVS),
@@ -2106,6 +2125,9 @@ class MissionOptimizer:
             0.0 if self.ephem is None else self.ephem[1].shape[0] // 2,
             1e-12,
         ], dtype=np.float64)
+        if self.SPLIT_AWARE_SEARCH and self.SPLIT_LEADING:
+            params = np.append(params, [self.MAX_DV, self.LEADING_SPLIT_LIMIT])
+        return params
 
     def _search_scalar_params(self):
         """搜尋用的獨立副本；不改變精修、重播及驗證使用的精確參數。"""
@@ -2408,7 +2430,7 @@ class MissionOptimizer:
         拆不掉的單棒超標量 (失格層用，見 scorer.ranked_search_score)。dvs_kms：每棒 Δv (km/s)。
         初賽模式：單棒超標一律 −10、沒有失格層，逐位元同舊行為。排位賽模式：只有終端棒、且
         ≤ SPLIT_LIMIT 才拆得掉；SPLIT_LEADING 開時，前導棒 ≤ LEADING_SPLIT_LIMIT 也可拆。
-        其餘超標量算進失格層。前導棒分類只影響重播與挑贏家，不改搜尋目標函數。"""
+        其餘超標量算進失格層。SEARCH 開時搜尋端也使用相同的前導棒分類。"""
         if not self.RANKING_RULES:
             return leg["penalty_count"] + leg["over_dv_count"], 0.0
         n_soft, v = leg["penalty_count"], 0.0
