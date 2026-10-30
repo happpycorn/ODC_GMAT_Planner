@@ -22,7 +22,7 @@ sys.path.insert(0, REPO_ROOT)
 
 import warnings
 warnings.filterwarnings("ignore")
-from src.core_math import propagate_dop853, fast_norm, build_ephem_table, ephem_state
+from odc.physics.core_math import propagate_dop853, fast_norm, build_ephem_table, ephem_state
 from poliastro.core.propagation import farnocchia
 from poliastro.core.iod import izzo
 from poliastro.bodies import Earth

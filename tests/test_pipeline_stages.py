@@ -11,19 +11,23 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import main as app
-from src.pipeline_artifacts import save_mission, load_mission, write_json, digest, create_run_dir
-from src.runlog import setup
-from src.scorer import calculate_score
+import odc.config.defaults as ref_defaults
+import odc.gmat.verification as ref_verification
+import odc.pipeline.solve as ref_solve
+import odc.pipeline.stages as ref_stages
+import odc.search.optimizer as ref_optimizer
+from odc.pipeline.artifacts import save_mission, load_mission, write_json, digest, create_run_dir
+from odc.runlog import setup
+from odc.scoring.scorer import calculate_score
 
 
 class PipelineStagesTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="odc-stages-")
         self.root = Path(self.tmp.name)
-        self.config = copy.deepcopy(app.DEFAULT_CONFIG)
+        self.config = copy.deepcopy(ref_defaults.DEFAULT_CONFIG)
         self.config["strategy"]["GRAVITY_DEGREE"] = 0
-        self.opt = app.MissionOptimizer(self.config)
+        self.opt = ref_optimizer.MissionOptimizer(self.config)
         self.burns = [(0.1, 0.0, 0.0)]
         self.times = [100.0, 1000.0]
         self.mi = {
@@ -44,7 +48,7 @@ class PipelineStagesTest(unittest.TestCase):
 
     def run_main(self, name, *args):
         folder = self.root / name
-        app.main(["--run-dir", str(folder), *map(str, args)])
+        ref_stages.main(["--run-dir", str(folder), *map(str, args)])
         return folder
 
     def test_snapshot_integrity_stage_and_physics_version(self):
@@ -58,7 +62,7 @@ class PipelineStagesTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "雜湊"):
             load_mission(self.snapshot)
         modified = copy.deepcopy(loaded)
-        modified["provenance"]["files"]["src/core_math.py"] = "old-version"
+        modified["provenance"]["files"]["odc/physics/core_math.py"] = "old-version"
         modified["artifact_id"] = digest({k: v for k, v in modified.items() if k != "artifact_id"})
         write_json(self.snapshot, modified)
         with self.assertRaisesRegex(ValueError, "版本已變更"):
@@ -70,13 +74,13 @@ class PipelineStagesTest(unittest.TestCase):
     def test_from_mission_skips_all_solver_stages_and_preserves_script(self):
         cfg_path = self.root / "config.json"
         write_json(cfg_path, self.config)
-        with patch.object(app, "run_seed_portfolio", return_value=(self.burns, self.times, self.mi, self.opt)):
+        with patch.object(ref_stages, "run_seed_portfolio", return_value=(self.burns, self.times, self.mi, self.opt)):
             full = self.run_main("full", "--config", cfg_path, "--stop-after", "export")
-        with patch.object(app, "run_seed_portfolio", side_effect=AssertionError("search reran")), \
-             patch.object(app, "_legalize_stage", side_effect=AssertionError("split reran")), \
-             patch.object(app, "primer_guided_research", side_effect=AssertionError("primer reran")), \
-             patch.object(app, "load_or_create_config", side_effect=AssertionError("default config loaded")), \
-             patch.object(app, "run_gmat_verification", side_effect=AssertionError("GMAT ran during export")):
+        with patch.object(ref_stages, "run_seed_portfolio", side_effect=AssertionError("search reran")), \
+             patch.object(ref_stages, "_legalize_stage", side_effect=AssertionError("split reran")), \
+             patch.object(ref_solve, "primer_guided_research", side_effect=AssertionError("primer reran")), \
+             patch.object(ref_stages, "load_or_create_config", side_effect=AssertionError("default config loaded")), \
+             patch.object(ref_stages, "run_gmat_verification", side_effect=AssertionError("GMAT ran during export")):
             replay = self.run_main("replay", "--from-mission", full / "mission.json", "--stop-after", "export")
         self.assertEqual((full / "output.txt").read_bytes(), (replay / "output.txt").read_bytes())
         self.assertEqual(load_mission(replay / "mission.json")["mission_info"], self.mi)
@@ -89,9 +93,9 @@ class PipelineStagesTest(unittest.TestCase):
         old = self.root / "legacy.json"
         write_json(old, {"config": self.config, "burns": self.burns,
                          "times": self.times, "mission_info": self.mi})
-        with patch.object(app, "run_seed_portfolio", side_effect=AssertionError("search reran")), \
-             patch.object(app, "_legalize_stage", return_value=(self.burns, self.times, self.mi)) as split, \
-             patch.object(app, "script_generator", side_effect=AssertionError("export ran")):
+        with patch.object(ref_stages, "run_seed_portfolio", side_effect=AssertionError("search reran")), \
+             patch.object(ref_stages, "_legalize_stage", return_value=(self.burns, self.times, self.mi)) as split, \
+             patch.object(ref_stages, "script_generator", side_effect=AssertionError("export ran")):
             folder = self.run_main("solve", "--from-winner", old, "--stop-after", "solve")
         split.assert_called_once()
         self.assertEqual(load_mission(folder / "mission.json")["times"], self.times)
@@ -104,12 +108,12 @@ class PipelineStagesTest(unittest.TestCase):
         cfg["optimization"]["SEED"] = 10
 
         def search(config):
-            return self.burns, self.times, self.mi, app.MissionOptimizer(config)
+            return self.burns, self.times, self.mi, ref_optimizer.MissionOptimizer(config)
 
-        with patch.object(app, "run_study_over_revs", side_effect=search), \
-             patch.object(app, "primer_guided_research", return_value=None), \
-             patch.object(app, "_legalize_stage", side_effect=lambda cfg, b, t, mi, opt: (b, t, mi)):
-            app.run_seed_portfolio(cfg, output_dir=self.root)
+        with patch.object(ref_solve, "run_study_over_revs", side_effect=search), \
+             patch.object(ref_solve, "primer_guided_research", return_value=None), \
+             patch.object(ref_solve, "_legalize_stage", side_effect=lambda cfg, b, t, mi, opt: (b, t, mi)):
+            ref_solve.run_seed_portfolio(cfg, output_dir=self.root)
         for seed in (10, 11):
             self.assertTrue((self.root / f"winner_presplit_seed{seed}.json").exists())
             self.assertEqual(load_mission(self.root / f"mission_seed{seed}.json")["config"]["optimization"]["SEED"], seed)
@@ -139,7 +143,7 @@ class PipelineStagesTest(unittest.TestCase):
         return subprocess.CompletedProcess(command, 0, "The Targeter converged!", "")
 
     def test_verification_isolated_and_fixed_burn_uses_dc_result(self):
-        with patch.object(app.subprocess, "run", side_effect=self.fake_gmat):
+        with patch.object(ref_verification.subprocess, "run", side_effect=self.fake_gmat):
             folder = self.run_main("verified", "--from-mission", self.snapshot,
                                    "--gmat-console", sys.executable)
         dc = json.loads((folder / "gmat_dc" / "verification.json").read_text())
@@ -151,10 +155,10 @@ class PipelineStagesTest(unittest.TestCase):
         self.assertIn("BurnB0.Element1 = 0.0900000;", fixed_text)
         self.assertNotIn("Create DifferentialCorrector", fixed_text)
         original = (folder / "output_submit.txt").read_bytes()
-        with patch.object(app.subprocess, "run", side_effect=self.fake_gmat), \
-             patch.object(app, "run_seed_portfolio", side_effect=AssertionError("search reran")), \
-             patch.object(app, "_legalize_stage", side_effect=AssertionError("split reran")), \
-             patch.object(app, "script_generator", side_effect=AssertionError("script regenerated")):
+        with patch.object(ref_verification.subprocess, "run", side_effect=self.fake_gmat), \
+             patch.object(ref_stages, "run_seed_portfolio", side_effect=AssertionError("search reran")), \
+             patch.object(ref_stages, "_legalize_stage", side_effect=AssertionError("split reran")), \
+             patch.object(ref_stages, "script_generator", side_effect=AssertionError("script regenerated")):
             alone = self.run_main("verify-only", "--verify-script", folder / "output_submit.txt",
                                   "--gmat-console", sys.executable)
         self.assertEqual(original, (folder / "output_submit.txt").read_bytes())
@@ -164,7 +168,7 @@ class PipelineStagesTest(unittest.TestCase):
     def test_failed_verification_keeps_failure_record_not_old_report(self):
         exported = self.run_main("exported", "--from-mission", self.snapshot, "--no-gmat")
         # Even exit=0 with no new report must fail; no shared GMAT output is consulted.
-        with patch.object(app.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "no report", "")):
+        with patch.object(ref_verification.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "no report", "")):
             with self.assertRaisesRegex(RuntimeError, "GMAT 執行失敗"):
                 self.run_main("failed", "--verify-script", exported / "output.txt", "--gmat-console", sys.executable)
         record = json.loads((self.root / "failed" / "gmat" / "verification.json").read_text())
@@ -173,7 +177,7 @@ class PipelineStagesTest(unittest.TestCase):
         self.assertEqual(json.loads((self.root / "failed" / "run.json").read_text())["status"], "failed")
 
     def test_verify_only_requires_convergence_for_dc_but_not_fixed(self):
-        with patch.object(app.subprocess, "run", side_effect=self.fake_gmat):
+        with patch.object(ref_verification.subprocess, "run", side_effect=self.fake_gmat):
             exported = self.run_main("both-scripts", "--from-mission", self.snapshot,
                                      "--gmat-console", sys.executable)
 
@@ -185,7 +189,7 @@ class PipelineStagesTest(unittest.TestCase):
         for name, filename, expected in (("dc-check", "output.txt", False),
                                           ("fixed-check", "output_submit.txt", True)):
             with self.subTest(filename=filename), \
-                 patch.object(app.subprocess, "run", side_effect=without_convergence):
+                 patch.object(ref_verification.subprocess, "run", side_effect=without_convergence):
                 folder = self.run_main(name, "--verify-script", exported / filename,
                                        "--gmat-console", sys.executable)
             evidence = json.loads((folder / "gmat" / "verification.json").read_text())
@@ -195,7 +199,7 @@ class PipelineStagesTest(unittest.TestCase):
     def test_unsafe_mission_cannot_produce_submission(self):
         self.mi["earth_safe"] = False
         save_mission(self.snapshot, self.config, self.burns, self.times, self.mi)
-        with patch.object(app.subprocess, "run", side_effect=self.fake_gmat):
+        with patch.object(ref_verification.subprocess, "run", side_effect=self.fake_gmat):
             folder = self.run_main("unsafe", "--from-mission", self.snapshot, "--gmat-console", sys.executable)
         self.assertTrue((folder / "output.txt").exists())
         self.assertFalse((folder / "output_submit.txt").exists())

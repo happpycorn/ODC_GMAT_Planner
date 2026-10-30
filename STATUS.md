@@ -8,7 +8,7 @@ TASA／淡江大學「第一屆軌道設計競賽」的太空船攔截任務規�
 
 - **比賽設定**以 [ranking_round.json](configs/shared/ranking_round.json) 為準：單棒上限 250 m/s、總 Δv 上限 3,000 m/s、機動間隔 100 s；重力階數 4、命中容差 5 km，開啟 `SPLIT_LEADING` 與 `ORACLE_TWOBURN`。
 - 該範本的 A/B 軌道、`T_MAX_SEC`、`k_t/C_t/k_v/C_v` 仍是佔位值，須在開賽時整組換成官方題目；搜尋設定為 `MAX_BURNS=[1,2]`、`MAXITER=1000`、`POPSIZE=20`、`NUM_THREADS=-1`、`SEED=null`。並行種子須各設不同 SEED（同上設定檔註解）。
-- **共用拆棒預設**見 [split_defaults.py](src/split_defaults.py)：STM Jacobian、三起點 `[0,0.75,1]`、1 m/s 剔空棒重最佳化、600 s 牆鐘預算、3 行程。
+- **共用拆棒預設**見 [split_defaults.py](odc/config/split_defaults.py)：STM Jacobian、三起點 `[0,0.75,1]`、1 m/s 剔空棒重最佳化、600 s 牆鐘預算、3 行程。
 
 2026-09-29 之後完成的主要功能（依 Git 紀錄與報告）：
 
@@ -33,7 +33,7 @@ TASA／淡江大學「第一屆軌道設計競賽」的太空船攔截任務規�
 ## 環境（本機、不進 git）
 
 - **目前開發機：Mac（Darwin）。** GMAT R2026a 在 `/Users/corn/Documents/GMAT R2026a/bin/GmatConsole`
-  （已存在，寫進各 `configs/*.json` 的 `local.gmat_console_path`，或帶 `--gmat-console`）。
+  （已存在，寫進各 `configs/local/*.json` 的 `local.gmat_console_path`，或帶 `--gmat-console`）。
 - `configs/` 整個被 gitignore、換機器不會帶過來。**設定檔的完整重建參數記在 [SCENARIOS.md](docs/SCENARIOS.md)**
   （configs/ 遺失就靠這份重建）。
 - 2026-08-15 曾在 WSL2+Ryzen 上開發，那套 GMAT-on-WSL 修補若日後回 WSL 用得上，記在 DEVLOG_prelim.md 末段。

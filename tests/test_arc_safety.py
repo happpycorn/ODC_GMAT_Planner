@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import warnings
 warnings.filterwarnings("ignore")
-from src.core_math import (check_constraints, reaches_perigee, propagate_dop853,
+from odc.physics.core_math import (check_constraints, reaches_perigee, propagate_dop853,
                            fast_norm)
 
 MU = 398600.4418

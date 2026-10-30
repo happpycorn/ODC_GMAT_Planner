@@ -29,9 +29,9 @@ warnings.filterwarnings("ignore")
 import numpy as np
 from poliastro.core.iod import izzo
 
-from src.optimizer import MissionOptimizer
-from src.core_math import propagate_dop853, fast_norm
-from src.scorer import calculate_score
+from odc.search.optimizer import MissionOptimizer
+from odc.physics.core_math import propagate_dop853, fast_norm
+from odc.scoring.scorer import calculate_score
 from porkchop_grid import build_ephemeris, porkchop
 from porkchop_oracle_sweep import build_config, GRID_H, MAX_REVS
 

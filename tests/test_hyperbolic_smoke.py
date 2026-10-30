@@ -11,8 +11,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.optimizer import MissionOptimizer
-from src.config_validator import _validate_orbit
+from odc.search.optimizer import MissionOptimizer
+from odc.config.validator import _validate_orbit
 from hyperbolic_fixture import _hyper_config
 
 _FAILED = []

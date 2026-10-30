@@ -17,16 +17,20 @@ import numba
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-import main as app
-import src.optimizer as om
-import src.oracle_twoburn as oracle
-from src.oracle_worker import OracleJob, oracle_core_budget, _atomic_dump
-from src.config_validator import ConfigValidationError, validate_config
+import odc.config.defaults as ref_defaults
+import odc.gmat.verification as ref_verification
+import odc.pipeline.legalize as ref_legalize
+import odc.pipeline.solve as ref_solve
+import odc.search.optimizer as om
+import odc.search.revs as ref_search_revs
+import odc.search.oracle_twoburn as oracle
+from odc.search.oracle_worker import OracleJob, oracle_core_budget, _atomic_dump
+from odc.config.validator import ConfigValidationError, validate_config
 from poliastro.core.propagation import vallado
 
 
 def config(**st):
-    cfg = copy.deepcopy(app.DEFAULT_CONFIG)
+    cfg = copy.deepcopy(ref_defaults.DEFAULT_CONFIG)
     cfg["strategy"].update(GRAVITY_DEGREE=0, EPHEM_CACHE=False,
                            PRIMER_GUIDED_RESEARCH=False, **st)
     cfg["optimization"]["SEED"] = 0
@@ -61,7 +65,7 @@ class OracleTests(unittest.TestCase):
 
     def test_vallado_nonfinite_psi_timeout_guard(self):
         # Finite inputs deliberately overflow Newton's initial hyperbolic guess.
-        code = ('import numpy as np; from src.oracle_twoburn import vallado_safe; '
+        code = ('import numpy as np; from odc.search.oracle_twoburn import vallado_safe; '
                 'r=vallado_safe(398600.4418,np.array([7000.,0.,0.]),'
                 'np.array([1e150,0.,0.]),1e150,350); '
                 'assert np.all(np.isnan(r)), r; print("NaN returned")')
@@ -131,7 +135,7 @@ class OracleTests(unittest.TestCase):
         self.assertEqual(cfg, before)
         opt = om.MissionOptimizer(cfg)
         self.assertEqual(opt.LEADING_SPLIT_LIMIT, 5 * opt.MAX_DV)
-        with patch('src.config_validator.log.warning') as warning:
+        with patch('odc.config.validator.log.warning') as warning:
             validate_config(config(ORACLE_TWOBURN_SEED_DE=True))
             warning.assert_called_once()
 
@@ -143,19 +147,19 @@ class OracleTests(unittest.TestCase):
                     cfg['optimization'].update(SEED=seed, MAX_BURNS=[1, 2])
                     jobs = 2 * (2 if high else 1)
                     slots = min(jobs, max(1, cores if seed is not None else cores//2))
-                    with patch('src.oracle_worker.os.cpu_count', return_value=cores):
+                    with patch('odc.search.oracle_worker.os.cpu_count', return_value=cores):
                         self.assertEqual(oracle_core_budget(cfg), max(1, cores-slots))
 
     def test_disabled_does_not_start_oracle_or_add_artifact(self):
         cfg = config()
         c = candidate(cfg)
         with tempfile.TemporaryDirectory() as folder, \
-             patch('src.oracle_worker.OracleJob', side_effect=AssertionError('oracle started')), \
-             patch.object(app, '_search_stage', return_value=c), \
-             patch.object(app, 'save_winner_checkpoint'), patch.object(app, 'save_mission'), \
-             patch.object(app, '_legalize_stage', return_value=c[:3]), \
-             patch.object(app, '_fallback_to_legal_backup', return_value=c):
-            self.assertIs(app._solve_pipeline(cfg, folder)[3], c[3])
+             patch('odc.search.oracle_worker.OracleJob', side_effect=AssertionError('oracle started')), \
+             patch.object(ref_solve, '_search_stage', return_value=c), \
+             patch.object(ref_solve, 'save_winner_checkpoint'), patch.object(ref_solve, 'save_mission'), \
+             patch.object(ref_solve, '_legalize_stage', return_value=c[:3]), \
+             patch.object(ref_solve, '_fallback_to_legal_backup', return_value=c):
+            self.assertIs(ref_solve._solve_pipeline(cfg, folder)[3], c[3])
             self.assertEqual(list(Path(folder).iterdir()), [])
 
     def test_pipeline_winner_tie_unsafe_timeout_and_crash(self):
@@ -171,11 +175,11 @@ class OracleTests(unittest.TestCase):
                 job.collect.return_value = ([e['route']], [] if mode == 'timeout' else [e])
                 if mode == 'crash':
                     job.collect.side_effect = RuntimeError('worker crashed')
-                with patch('src.oracle_worker.OracleJob', return_value=job,
+                with patch('odc.search.oracle_worker.OracleJob', return_value=job,
                            side_effect=RuntimeError('spawn failed') if mode == 'startup_crash' else None), \
-                     patch.object(app, '_solve_de_pipeline', return_value=de) as search, \
-                     patch.object(app, 'save_winner_checkpoint'), patch.object(app, 'save_mission'):
-                    result = app._solve_pipeline(cfg, folder)
+                     patch.object(ref_solve, '_solve_de_pipeline', return_value=de) as search, \
+                     patch.object(ref_solve, 'save_winner_checkpoint'), patch.object(ref_solve, 'save_mission'):
+                    result = ref_solve._solve_pipeline(cfg, folder)
                 self.assertIs(result[3], e['candidate'][3] if mode == 'better' else de[3])
                 search.assert_called_once()
                 payload = json.loads((Path(folder)/'oracle_candidates_seed0.json').read_text())
@@ -193,10 +197,10 @@ class OracleTests(unittest.TestCase):
         jobs[0].collect.return_value = (routes, [])
         jobs[1].collect.return_value = (routes, [e])
         with tempfile.TemporaryDirectory() as folder, \
-             patch('src.oracle_worker.OracleJob', side_effect=jobs) as start, \
-             patch.object(app, '_solve_de_pipeline', return_value=candidate(cfg)) as search, \
-             patch.object(app, 'save_winner_checkpoint'), patch.object(app, 'save_mission'):
-            app._solve_pipeline(cfg, folder)
+             patch('odc.search.oracle_worker.OracleJob', side_effect=jobs) as start, \
+             patch.object(ref_solve, '_solve_de_pipeline', return_value=candidate(cfg)) as search, \
+             patch.object(ref_solve, 'save_winner_checkpoint'), patch.object(ref_solve, 'save_mission'):
+            ref_solve._solve_pipeline(cfg, folder)
         self.assertEqual(start.call_count, 2)
         self.assertTrue(start.call_args_list[0].kwargs['grid_only'])
         self.assertIs(start.call_args_list[1].kwargs['routes'], routes)
@@ -236,9 +240,9 @@ class OracleTests(unittest.TestCase):
                 self.assertFalse(getattr(opt, '_primer_fast_research', False))
                 self.assertFalse(hasattr(opt, '_primer_search_deadline'))
             raise StopIteration('inspected')
-        with patch.object(om, '_run_studies_unified', side_effect=inspect):
+        with patch.object(ref_search_revs, '_run_studies_unified', side_effect=inspect):
             with self.assertRaises(StopIteration):
-                om.run_study_over_revs(cfg, oracle_seeds=seeds)
+                ref_search_revs.run_study_over_revs(cfg, oracle_seeds=seeds)
 
     def test_worker_replays_and_legalizes_with_product_settings(self):
         cfg = config(SPLIT_LEADING=True, LAMBERT_MAX_REVS=4,
@@ -251,10 +255,10 @@ class OracleTests(unittest.TestCase):
                      dv_mps=1000., est_score=80., M=0, structure='2-burn')
         opt = om.MissionOptimizer(cfg)
         x, n = oracle.standard_x_from_route(opt, route['t1'], route['dv1'], route['t2'], route['t3'])
-        with app.threadpool_limits(limits=1):
-            with app.patch_report_level(opt):
+        with ref_legalize.threadpool_limits(limits=1):
+            with ref_verification.patch_report_level(opt):
                 pre = opt._replay_mission(x, n)
-            expected = app._legalize_stage(cfg, *pre, opt)
+            expected = ref_legalize._legalize_stage(cfg, *pre, opt)
         job = OracleJob(cfg, cores=1, deadline=time.monotonic()+60, routes=[route])
         _, entries = job.collect()
         self.assertEqual(len(entries), 1)

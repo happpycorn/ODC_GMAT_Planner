@@ -21,9 +21,9 @@ from threadpoolctl import threadpool_limits
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.optimizer import MissionOptimizer
-from src.core_math import propagate_dop853, fast_norm
-from src.burn_splitter import (legalize_intercept, legalize_route, _lam_best, drop_null_burns, prune_null_burns,
+from odc.search.optimizer import MissionOptimizer
+from odc.physics.core_math import propagate_dop853, fast_norm
+from odc.split.burn_splitter import (legalize_intercept, legalize_route, _lam_best, drop_null_burns, prune_null_burns,
                                _simulate_free, _slot_after_capped, _shoot_final, split_intercept,
                                _simulate_free_reuse, joint_nlp_split, FDPool, prune_reopt)
 

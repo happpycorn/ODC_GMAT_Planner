@@ -23,7 +23,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 GENERATED = os.path.join(REPO, "outputs", "research", "gmat")
 sys.path.insert(0, REPO)
-from src.core_math import reaches_perigee  # noqa: E402
+from odc.physics.core_math import reaches_perigee  # noqa: E402
 
 GMAT_BIN = os.environ.get("GMAT_CONSOLE", "GmatConsole")
 MU = 398600.4418          # 跟 optimizer.py:343 一致

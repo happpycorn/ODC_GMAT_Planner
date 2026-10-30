@@ -21,13 +21,15 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-import main as app
-import src.retarget as rt
-from src.gmat_env import DEFAULT_SPACECRAFT, resolve_gmat_env, validate_gmat_env
-from src.pipeline_artifacts import save_mission
-from src.runlog import setup
-from src.scorer import calculate_score
-from src.script_generator import full_perturbation_script, script_generator
+import odc.config.defaults as ref_defaults
+import odc.pipeline.stages as ref_stages
+import odc.search.optimizer as ref_optimizer
+import odc.gmat.retarget as rt
+from odc.config.gmat_env import DEFAULT_SPACECRAFT, resolve_gmat_env, validate_gmat_env
+from odc.pipeline.artifacts import save_mission
+from odc.runlog import setup
+from odc.scoring.scorer import calculate_score
+from odc.gmat.script_generator import full_perturbation_script, script_generator
 
 FIX = ROOT / "tests" / "fixtures"
 BURNS = [(0.1234567891, -0.02, 0.003), (0.2499999, 0.0, 0.0), (0.05, 0.01, -0.2)]
@@ -37,7 +39,7 @@ ORBIT_B = {"SMA": 7000.0, "ECC": 0.0005, "INC": 28.5, "RAAN": 0.0, "AOP": 0.0, "
 
 
 def ranking_config(**strategy):
-    cfg = copy.deepcopy(app.DEFAULT_CONFIG)
+    cfg = copy.deepcopy(ref_defaults.DEFAULT_CONFIG)
     cfg["orbit_A"], cfg["orbit_B"] = dict(ORBIT_A), dict(ORBIT_B)
     cfg["rules"].update(MAX_DV_MPS=250.0, MAX_TOTAL_DV_MPS=3000.0)
     cfg["strategy"]["GRAVITY_DEGREE"] = 4
@@ -67,7 +69,7 @@ class GeneratorTest(unittest.TestCase):
         self.assertEqual(self.gen(*dc_orbit, name="a.txt", **dc), golden_dc)
         self.assertEqual(self.gen(*fx_orbit, name="b.txt", **fx), golden_fx)
         # main.py 一律傳 resolve_gmat_env(config)：設定沒寫 GMAT 欄位時也必須逐位元相同
-        env = resolve_gmat_env(app.DEFAULT_CONFIG)
+        env = resolve_gmat_env(ref_defaults.DEFAULT_CONFIG)
         self.assertEqual(env["force_model"], "contest_prelim")
         self.assertEqual(self.gen(*dc_orbit, name="c.txt", **dc, **env), golden_dc)
         self.assertEqual(self.gen(*fx_orbit, name="d.txt", **fx, **env), golden_fx)
@@ -119,7 +121,7 @@ class GeneratorTest(unittest.TestCase):
         self.assertIn("ShipB.SPADSRPFile = '/abs/sat.spo';", txt)
 
     def test_env_validation(self):
-        self.assertEqual(validate_gmat_env(app.DEFAULT_CONFIG, []), [])
+        self.assertEqual(validate_gmat_env(ref_defaults.DEFAULT_CONFIG, []), [])
         bad = [
             dict(FORCE_MODEL="full"),
             dict(GMAT_SPACECRAFT={"DRY_MASS_KG": -1}),
@@ -145,7 +147,7 @@ class GeneratorTest(unittest.TestCase):
             p = Path(d) / "c.json"
             p.write_text(json.dumps(ranking_config(FORCE_MODEL="nope")))
             with self.assertRaises(SystemExit):
-                app.load_or_create_config(str(p))
+                ref_defaults.load_or_create_config(str(p))
 
     def test_bplane_dc_script(self):
         env = resolve_gmat_env(ranking_config(), force_model="ranking_full")
@@ -244,7 +246,7 @@ def fake_runner(d_before=3.9, d_after=0.2, t_shift=1.5, dc_burn=None, converged=
 
 class DecisionTest(unittest.TestCase):
     def setUp(self):
-        self.opt = app.MissionOptimizer(ranking_config())
+        self.opt = ref_optimizer.MissionOptimizer(ranking_config())
         self.burns = [[0.2, 0.0, 0.0], [0.1, 0.01, 0.0]]
         self.times = [300.0, 400.0, 2500.0]
 
@@ -342,7 +344,7 @@ class StageTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory(prefix="odc-retarget-")
         self.root = Path(self.tmp.name)
         self.config = ranking_config()
-        opt = app.MissionOptimizer(self.config)
+        opt = ref_optimizer.MissionOptimizer(self.config)
         self.burns = [(0.021482683192711106, 0.008781615388229944, 0.15137998610769107)]
         self.times = [300.0, 2900.0]
         self.mi = {"x": [300.0, 0.0, 0.0, 0.0, 0.0], "num_burns": 1,
@@ -363,8 +365,8 @@ class StageTest(unittest.TestCase):
         runner = runner or fake_runner()[0]
         folder = self.root / name
         with patch.object(rt, "replay", runner["replay"]), patch.object(rt, "run_bplane_dc", runner["dc"]), \
-                patch.object(app, "run_gmat_verification", verify or self.fake_verify):
-            app.main(["--from-mission", str(self.snapshot), "--retarget-full-perturbation",
+                patch.object(ref_stages, "run_gmat_verification", verify or self.fake_verify):
+            ref_stages.main(["--from-mission", str(self.snapshot), "--retarget-full-perturbation",
                       "--gmat-console", "/nonexistent/GmatConsole", "--run-dir", str(folder), *extra])
         return folder
 
@@ -439,8 +441,8 @@ class StageTest(unittest.TestCase):
         for argv in bad:
             with self.subTest(argv=argv), self.assertRaises(SystemExit), \
                     patch("sys.stderr"):
-                app.parse_args(argv)
-        args = app.parse_args(["--from-mission", "m.json", "--retarget-full-perturbation"])
+                ref_stages.parse_args(argv)
+        args = ref_stages.parse_args(["--from-mission", "m.json", "--retarget-full-perturbation"])
         self.assertEqual(args.retarget_burn, -1)
 
 

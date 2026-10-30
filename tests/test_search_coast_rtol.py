@@ -11,8 +11,8 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-import src.optimizer as O
-from src.config_validator import ConfigValidationError, validate_config
+import odc.search.optimizer as O
+from odc.config.validator import ConfigValidationError, validate_config
 
 
 def config():

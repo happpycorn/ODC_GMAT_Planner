@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import warnings
 warnings.filterwarnings("ignore")
 
-from src.script_generator import script_generator, _require_ascii
+from odc.gmat.script_generator import script_generator, _require_ascii
 
 FAILS = []
 

@@ -3,7 +3,7 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(HERE))))
 sys.path.insert(0, HERE)
-from src.core_math import reaches_perigee
+from odc.physics.core_math import reaches_perigee
 import perigee_xcheck as X
 
 gravity = sys.argv[1] if len(sys.argv) > 1 else "twobody"

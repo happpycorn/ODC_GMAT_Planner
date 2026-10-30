@@ -23,11 +23,13 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from src.optimizer import (MissionOptimizer, fast_fitness_evaluator, pick_best_across_revs,
-                           mission_rank_score)
-from src.scorer import calculate_score
-from src.config_validator import validate_config, ConfigValidationError
-import main as app
+from odc.search.optimizer import MissionOptimizer
+from odc.search.fitness import fast_fitness_evaluator
+from odc.search.ranking import pick_best_across_revs, mission_rank_score
+from odc.scoring.scorer import calculate_score
+from odc.config.validator import validate_config, ConfigValidationError
+import odc.pipeline.legalize as ref_legalize
+import odc.pipeline.solve as ref_solve
 
 FAILS = []
 
@@ -154,20 +156,20 @@ def fake_opt(backup_mi, flag=True):
 legal = dict(_mi(89.25, 89.25, 0), earth_safe=True, num_burns=3)
 CFG = {"strategy": {"SPLIT_AWARE_TERMINAL": True}}
 opt_, b_opt = fake_opt(legal)
-r = app._fallback_to_legal_backup(CFG, "b", "t", viol, opt_)
+r = ref_legalize._fallback_to_legal_backup(CFG, "b", "t", viol, opt_)
 check("拆棒失敗 → 交真實分數較好的合法備胎", r[2] is legal and r[3] is b_opt)
 
 worse = dict(_mi(50.0, 50.0, 0), earth_safe=True, num_burns=3)
 opt_, _ = fake_opt(worse)
-r = app._fallback_to_legal_backup(CFG, "b", "t", viol, opt_)
+r = ref_legalize._fallback_to_legal_backup(CFG, "b", "t", viol, opt_)
 check("備胎分數較低但合法 → 仍交備胎（失格解一律排在合法解後面）", r[2] is worse)
 
 opt_, _ = fake_opt(legal, flag=False)
-check("旗標關 → 不動", app._fallback_to_legal_backup(CFG, "b", "t", viol, opt_)[2] is viol)
+check("旗標關 → 不動", ref_legalize._fallback_to_legal_backup(CFG, "b", "t", viol, opt_)[2] is viol)
 
 ok_mi = dict(_mi(98.3, 98.3, 0), earth_safe=True, num_burns=6)
 opt_, _ = fake_opt(legal)
-check("拆棒成功（零違規）→ 不動", app._fallback_to_legal_backup(CFG, "b", "t", ok_mi, opt_)[2] is ok_mi)
+check("拆棒成功（零違規）→ 不動", ref_legalize._fallback_to_legal_backup(CFG, "b", "t", ok_mi, opt_)[2] is ok_mi)
 
 # 沒有備胎（或備胎精修後不合法）→ 用旗標關重跑一輪搜尋 + 拆棒當退路
 print("\n── 4. 退路：沒有備胎時旗標關重搜 ──")
@@ -185,9 +187,9 @@ def fake_search(result_mi):
 
 def run_fb(opt_, result_mi):
     seen.clear()
-    with patch.object(app, "_search_stage", side_effect=fake_search(result_mi)), \
-         patch.object(app, "_legalize_stage", side_effect=lambda cfg, b, t, mi, o: (b, t, mi)):
-        return app._fallback_to_legal_backup(CFG, "b", "t", viol, opt_)
+    with patch.object(ref_solve, "_search_stage", side_effect=fake_search(result_mi)), \
+         patch.object(ref_legalize, "_legalize_stage", side_effect=lambda cfg, b, t, mi, o: (b, t, mi)):
+        return ref_legalize._fallback_to_legal_backup(CFG, "b", "t", viol, opt_)
 
 
 opt_, _ = fake_opt(None)

@@ -23,9 +23,9 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, REPO)
 import warnings
 warnings.filterwarnings("ignore")
-from src.optimizer import MissionOptimizer          # noqa: E402
-from src.core_math import propagate_dop853, ephem_state, fast_norm   # noqa: E402
-from src.scorer import calculate_score              # noqa: E402
+from odc.search.optimizer import MissionOptimizer          # noqa: E402
+from odc.physics.core_math import propagate_dop853, ephem_state, fast_norm   # noqa: E402
+from odc.scoring.scorer import calculate_score              # noqa: E402
 
 
 @njit(cache=True, parallel=True)

@@ -31,14 +31,15 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from src.optimizer import (MissionOptimizer, fast_fitness_evaluator, SPLITTER_MAX_SEG,
-                           PRELIM_TERMINAL_MAX_FACTOR)
-from src.scorer import (calculate_score, ranked_search_score, assess_legality,
+from odc.search.optimizer import MissionOptimizer
+from odc.search.fitness import fast_fitness_evaluator, SPLITTER_MAX_SEG, PRELIM_TERMINAL_MAX_FACTOR
+from odc.scoring.scorer import (calculate_score, ranked_search_score, assess_legality,
                         DQ_TIER_TOP, DQ_TIER_SPAN, SEARCH_FAIL_SCORE_RANKED)
-from src.burn_splitter import legalize_route
-from src.config_validator import validate_config, ConfigValidationError
-from src.pipeline_artifacts import load_mission
-import main as app
+from odc.split.burn_splitter import legalize_route
+from odc.config.validator import validate_config, ConfigValidationError
+from odc.pipeline.artifacts import load_mission
+import odc.pipeline.checkpoints as ref_checkpoints
+import odc.pipeline.stages as ref_stages
 
 FAILS = []
 
@@ -239,7 +240,7 @@ pre_nl.burn_case_results = {N: {"fitness": 0.0, "best_x": X.copy(), "epochs_run"
 check("初賽模式 / 搜尋失敗（fitness 0）不記", pre_nl._pick_best_case() is None and pre_nl.no_legal_route is None)
 
 with tempfile.TemporaryDirectory() as td:
-    p = app.save_no_legal_route(Path(td) / "no_legal_route.json", nl)
+    p = ref_checkpoints.save_no_legal_route(Path(td) / "no_legal_route.json", nl)
     d = json.loads(p.read_text(encoding="utf-8"))
     v = d["violations"]
     check("no_legal_route.json：stage = no_legal_route、含 config / burns / times / mission_info",
@@ -265,10 +266,10 @@ with tempfile.TemporaryDirectory() as td:
     nl2 = make(BASE, RANK)
     nl2.no_legal_route = nl.no_legal_route
     raised = None
-    with patch.object(app, "run_seed_portfolio", return_value=(None, None, None, nl2)):
+    with patch.object(ref_stages, "run_seed_portfolio", return_value=(None, None, None, nl2)):
         try:
-            app.main(["--config", str(cfg_path), "--run-dir", str(run_dir), "--quiet"])
-        except app.NoLegalRouteError as exc:
+            ref_stages.main(["--config", str(cfg_path), "--run-dir", str(run_dir), "--quiet"])
+        except ref_checkpoints.NoLegalRouteError as exc:
             raised = exc
     check("main：找不到合法路線 → NoLegalRouteError（不是通用 RuntimeError）", raised is not None)
     run_json = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
@@ -278,15 +279,15 @@ with tempfile.TemporaryDirectory() as td:
     check(f"run 目錄有 no_legal_route.json、沒有 mission.json / 任何腳本（{produced}）",
           "no_legal_route.json" in produced and "mission.json" not in produced
           and not any(n.endswith(".script") for n in produced))
-    check("結束碼 3（跟一般錯誤 1 分開）", app.EXIT_NO_LEGAL_ROUTE == 3)
+    check("結束碼 3（跟一般錯誤 1 分開）", ref_checkpoints.EXIT_NO_LEGAL_ROUTE == 3)
     raised = None
-    with patch.object(app, "run_seed_portfolio", return_value=(None, None, None, make(BASE, RANK))):
+    with patch.object(ref_stages, "run_seed_portfolio", return_value=(None, None, None, make(BASE, RANK))):
         try:
-            app.main(["--config", str(cfg_path), "--run-dir", str(Path(td) / "run2"), "--quiet"])
+            ref_stages.main(["--config", str(cfg_path), "--run-dir", str(Path(td) / "run2"), "--quiet"])
         except RuntimeError as exc:
             raised = exc
     check("沒有失格候選的一般搜尋失敗 → 照舊通用 RuntimeError",
-          raised is not None and not isinstance(raised, app.NoLegalRouteError))
+          raised is not None and not isinstance(raised, ref_checkpoints.NoLegalRouteError))
 
 print()
 if FAILS:

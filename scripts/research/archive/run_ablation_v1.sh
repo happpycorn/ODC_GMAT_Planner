@@ -34,7 +34,7 @@ if [[ ! "$slots" =~ ^[1-9][0-9]*$ ]]; then
 fi
 if [[ "$out_root" != /* ]]; then out_root="$PWD/$out_root"; fi
 
-cmd=(uv run python sweep_params.py sweeps/ablation_v1.json --slots "$slots" --out "$out_root/ablation_v1")
+cmd=(uv run python odc.py sweep sweeps/ablation_v1.json --slots "$slots" --out "$out_root/ablation_v1")
 if "$dry_run"; then printf '%q ' "${cmd[@]}"; printf '\n'; exit 0; fi
 cd -- "$repo_root"
 "${cmd[@]}"

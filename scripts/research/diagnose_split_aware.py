@@ -13,8 +13,8 @@ import time
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from src.optimizer import MissionOptimizer
-from src.runlog import setup
+from odc.search.optimizer import MissionOptimizer
+from odc.runlog import setup
 
 
 def plain(obj):
@@ -43,7 +43,7 @@ def main():
 
     seeds = {}
     if cfg.get("strategy", {}).get("ORACLE_TWOBURN_SEED_DE", False):
-        from src.oracle_twoburn import run_twoburn_oracle, standard_x_from_route
+        from odc.search.oracle_twoburn import run_twoburn_oracle, standard_x_from_route
         opt = MissionOptimizer(cfg)
         cache = Path(args.oracle_cache) if args.oracle_cache else None
         if cache is not None and cache.exists():

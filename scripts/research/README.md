@@ -1,8 +1,8 @@
 # 可重跑的研究工具
 
-正式求解入口是根目錄的 `main.py`。這裡保留獨立驗證與診斷腳本，從專案根目錄執行。
+正式求解入口是根目錄的 `odc.py`。這裡保留獨立驗證與診斷腳本，從專案根目錄執行。
 輸出寫入 Git 忽略的 `outputs/research/`；正式成果與結論仍以 `docs/`、`configs/shared/`
-及 `src/` 為準。
+及 `odc/` 為準。
 
 | 目的 | 入口 | 主要紀錄 |
 |---|---|---|
@@ -51,7 +51,7 @@ uv run python scripts/research/porkchop_verify.py 20
 兩個 sweep 腳本預設使用 5 個槽位、將結果寫入 `outputs/sweeps/`。
 可用 `--slots N` 和 `--out-root PATH` 調整；相對輸出路徑以呼叫腳本時的工作目錄為基準。
 要對 sweep 的每筆結果執行 GMAT 驗證，可直接跑
-`uv run python sweep_params.py sweeps/budget_v1.json --gmat --gmat-console /path/to/GmatConsole`。
+`uv run python odc.py sweep sweeps/budget_v1.json --gmat --gmat-console /path/to/GmatConsole`。
 重跑失敗工作時，舊 run 目錄、當時產生的設定及主控台日誌會一起移到
 `outputs/sweeps/<實驗>/runs/_stale/`，方便回查。
 `configs/c4/` 是被 Git 忽略的本機設定目錄；產生器只補缺少的檔案，遇到參數不同會先報錯。

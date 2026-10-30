@@ -17,9 +17,10 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.optimizer import (MissionOptimizer, tiebreak_rank_key,
-                           decision_variable_dims, pick_best_across_revs)
-from src.config_validator import _validate_strategy, _validate_optimization
+from odc.search.optimizer import MissionOptimizer
+from odc.search.ranking import tiebreak_rank_key, pick_best_across_revs
+from odc.search.fitness import decision_variable_dims
+from odc.config.validator import _validate_strategy, _validate_optimization
 
 FAILS = []
 
@@ -132,7 +133,7 @@ cfg_split = copy.deepcopy(PREFLIGHT_CFG)
 cfg_split["strategy"]["AUTO_SPLIT_LEGALIZE"] = True
 opt_split = MissionOptimizer(cfg_split)
 burns_before = list(opt_split.burns)
-with patch("src.optimizer.log.warning") as warning:
+with patch('odc.search.revs.log.warning') as warning:
     opt_split.preflight_report()
 split_msg = warning.call_args.args[0] if warning.called else ""
 check("自動拆棒開啟時明確要求保留 route-first 候選",
@@ -142,7 +143,7 @@ check("preflight 只提示、不修改 MAX_BURNS", opt_split.burns == burns_befo
 cfg_no_split = copy.deepcopy(PREFLIGHT_CFG)
 cfg_no_split["strategy"]["AUTO_SPLIT_LEGALIZE"] = False
 opt_no_split = MissionOptimizer(cfg_no_split)
-with patch("src.optimizer.log.warning") as warning:
+with patch('odc.search.revs.log.warning') as warning:
     opt_no_split.preflight_report()
 no_split_msg = warning.call_args.args[0] if warning.called else ""
 check("只有自動拆棒關閉時才建議移除低棒數", "已關閉" in no_split_msg and "建議移除" in no_split_msg)
@@ -172,7 +173,7 @@ import copy
 
 import numpy as np
 
-from src.optimizer import fast_fitness_evaluator
+from odc.search.fitness import fast_fitness_evaluator
 
 
 def polish_case(cfg, forced_offset_km=3.0):

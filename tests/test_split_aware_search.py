@@ -8,8 +8,10 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from src.optimizer import MissionOptimizer, fast_fitness_evaluator, mission_rank_score
-from src.runlog import setup
+from odc.search.optimizer import MissionOptimizer
+from odc.search.fitness import fast_fitness_evaluator
+from odc.search.ranking import mission_rank_score
+from odc.runlog import setup
 
 setup(quiet=True)
 FAILS = []

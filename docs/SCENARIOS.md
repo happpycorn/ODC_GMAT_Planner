@@ -4,16 +4,16 @@
 `hard_mode_test`、`hyperbolic_smoke`、`hyperbolic_test`、`playground`）有版控中的
 [`configs/shared/`](../configs/shared/) JSON，可在新環境直接使用。2026-10-19 加入排位賽規則範本
 `ranking_round`（只有規則數字是真的，軌道與計分參數是佔位值）。
-根目錄 `configs/*.json` 仍是本機設定，不會跟著 Git 走。2026-08-15 換到 WSL 時曾差點無法重建
+`configs/local/*.json` 仍是本機設定，不會跟著 Git 走。2026-08-15 換到 WSL 時曾差點無法重建
 `weird_test.json`（STATUS.md 當時只記了 A 的部分參數，缺少 B 的 INC/RAAN），因此保留本文件的
 完整參數與情境設計脈絡。
 
 尚未納入 `configs/shared/` 的情境，仍可依下文的六根數與規則參數重建成
-`configs/<名字>.json`。新增長期使用的情境時，請同步更新本頁；若批次實驗會引用，將移除本機
+`configs/local/<名字>.json`。新增長期使用的情境時，請同步更新本頁；若批次實驗會引用，將移除本機
 `local` 路徑的版本放入 `configs/shared/`。
 
 **來源要分清楚**：`official_sample` 是主辦方公布的初賽範例，`contest` 是初賽正式題；其餘情境
-為自建壓力測試。下一輪正式測資公布後，應另建對應設定，不要沿用本機預設 `configs/config.json`。
+為自建壓力測試。下一輪正式測資公布後，應另建對應設定，不要沿用本機預設 `configs/local/config.json`。
 
 **決賽適用性（2026-09-09 盤點，HAP-66）**：這份是自編的測資/方法論目錄，不是初賽限定的
 題目——`official_sample` 是初賽公布的那組具體題目（決賽會換一組新的、目前未知的官方題目），
@@ -56,7 +56,7 @@
 
 ## contest —— 初賽正式題（共用版 `configs/shared/contest.json`）
 
-2026-09-24 的補記：當時這組只存在本機 `configs/contest.json`，因此把完整參數寫在下方；
+2026-09-24 的補記：當時這組只存在本機 `configs/local/contest.json`，因此把完整參數寫在下方；
 2026-09-29 已另加入 `configs/shared/contest.json`，新環境可直接使用。
 數值取自 `docs/solutions/checkpoints/` 的拆棒前存檔（與本機 contest.json 相同的軌道/規則；
 `optimization` 是滿預算設定）。`GRAVITY_DEGREE=0`：官方腳本是點質量（見 memory contest-gravity-model-mismatch）。

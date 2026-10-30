@@ -28,7 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 import warnings
 warnings.filterwarnings("ignore")
 
-from src.optimizer import MissionOptimizer
+from odc.search.optimizer import MissionOptimizer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RESULTS = os.path.join(os.path.dirname(os.path.dirname(HERE)), "outputs", "research",

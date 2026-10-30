@@ -85,7 +85,7 @@ print(f"     A 比能量 = {sp_A:+.4f} km^2/s^2 "
       f"({'雙曲線 ✓' if sp_A > 0 else '不是雙曲線 ✗'})")
 
 # ---------- 第 2 層：傳播器 ----------
-from src.core_math import propagate_dop853, fast_norm, build_ephem_table, ephem_state
+from odc.physics.core_math import propagate_dop853, fast_norm, build_ephem_table, ephem_state
 
 T_MAX_SEC = 40000.0    # 自己編的，官方還沒公告。
 # 選這個值的理由：A 從 TA=-130 度出發，19,974s 後通過近地點 (10,000 km)，
@@ -160,7 +160,7 @@ def lambert_grid():
 check("3. Lambert 瞄準雙曲線目標", lambert_grid)
 
 # ---------- 第 4 層：MissionOptimizer 初始化 + 能量下限 ----------
-from src.optimizer import MissionOptimizer
+from odc.search.optimizer import MissionOptimizer
 
 cfg = {
     "orbit_A": {"SMA": A_SMA, "ECC": A_ECC, "INC": A_INC,
@@ -194,7 +194,7 @@ if opt is not None:
           lambda: "能量下限 %.1f m/s" % (opt.energy_floor_dv()*1000.0))
 
 # ---------- 第 5 層：config_validator ----------
-from src.config_validator import validate_config
+from odc.config.validator import validate_config
 
 
 def run_validator():
@@ -208,7 +208,7 @@ def run_validator():
 check("5. config_validator", run_validator)
 
 # ---------- 第 6 層：GMAT script 產生器 (雙曲線六根數寫得出來嗎) ----------
-from src import script_generator as sg
+from odc.gmat import script_generator as sg
 
 
 def gen_script_names():

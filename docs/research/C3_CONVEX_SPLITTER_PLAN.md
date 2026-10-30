@@ -58,7 +58,7 @@ run_seed_portfolio(config)                       # 可選：跑 N 顆 SEED、§6
 
 拆棒器（`src/burn_splitter.py`）的兩層本質：
 - **段數 N**：由 `legalize_intercept` 的能量下限 `nseg0` 決定（`ceil(大棒Δv / cap)` 那類），
-  外層 `legalize_route` 在 `[nseg0, nseg0+n_span]`（**含端點**，[burn_splitter.py:298](../../src/burn_splitter.py)
+  外層 `legalize_route` 在 `[nseg0, nseg0+n_span]`（**含端點**，[burn_splitter.py:298](../../odc/split/burn_splitter.py)
   `range(nseg0, nseg0+n_span+1)`）掃——預設 `n_span=1` 已經會試 nseg0 與 nseg0+1。
 - **給定 N 的拆法**：`joint_nlp_split` 用 **SLSQP**（有限差分梯度、maxiter=80）把「t0 + 各段
   coast + 各段 ECI Δv」聯合優化，命中 A(T) / cap / 近地點當約束，目標最小化 −score（≈總 Δv）。
@@ -71,7 +71,7 @@ run_seed_portfolio(config)                       # 可選：跑 N 顆 SEED、§6
 
 ### 問題 ①（系統性缺口？）：7 棒解為什麼走不到——兩種可能，待 V1 判別
 - **初稿誤判更正**：`legalize_route` 的段數迴圈含端點，main 端 `legalize_violating_winner`
-  傳的 `n_span=1`（[main.py:525](../../main.py)）**已經會試 nseg0 與 nseg0+1**。所以「段數寫死在
+  傳的 `n_span=1`（[main.py:525](../../odc/pipeline/stages.py)）**已經會試 nseg0 與 nseg0+1**。所以「段數寫死在
   nseg0、結構上到不了」不成立。
 - 而且 §0 的 7 棒解來自 C2 重搜（前導棒 3→4）跳到的**另一條路線家族**，不是 88.3219 路線多拆
   一段。所以「滿預算拿不到 98.319」有兩種解釋：
@@ -91,7 +91,7 @@ run_seed_portfolio(config)                       # 可選：跑 N 顆 SEED、§6
   很可能有微小差異。所以抖動可能是**上游給了近乎同分、但不同的輸入 → SLSQP 對暖啟敏感而放大**，
   而不是拆棒器自己在飄。這個區分決定要修哪裡（V2 第一步）。
 - 另兩個可疑點：(i) SLSQP 是否常因跑滿 `maxiter=80` 才停（`res.status == 9`）——若是，單純加大
-  maxiter 就可能大幅縮小散布；(ii) 多圈傳播上的有限差分梯度雜訊（[burn_splitter.py:310](../../src/burn_splitter.py)
+  maxiter 就可能大幅縮小散布；(ii) 多圈傳播上的有限差分梯度雜訊（[burn_splitter.py:310](../../odc/split/burn_splitter.py)
   的註解已承認 SLSQP 會把可行暖啟推出邊界）。
 
 ### 問題 ③（跑太久）：用蠻力掩蓋 ①②，且被機器睡眠灌水

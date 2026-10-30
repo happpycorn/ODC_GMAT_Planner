@@ -5,7 +5,7 @@
 力學模型重播，量出最小距離、攔截時刻與 Earth-safe 的落差，再對太空船質量／面積／Cd／Cr
 做蒙地卡羅，最後試 DifferentialCorrector 重瞄準。
 
-只呼叫 GmatConsole（每個行程一份獨立腳本、絕對路徑），不碰 src/。輸出寫到
+只呼叫 GmatConsole（每個行程一份獨立腳本、絕對路徑），不碰 odc/。輸出寫到
 outputs/research/perturbation_gap/（git 忽略）。用法（從專案根目錄）：
 
     uv run python scripts/research/perturbation_gap.py ladder

@@ -53,7 +53,7 @@ RULES = {"MAX_DV_MPS": 1500.0, "MIN_MANEUVER_INTERVAL_SEC": 100.0, "T_MAX_PERIOD
 
 
 def run_one(scenario, seed, burns, revs):
-    from src.optimizer import MissionOptimizer
+    from odc.search.optimizer import MissionOptimizer
     g = SCENARIOS[scenario]
     opt = dict(BASE_OPT); opt["MAX_BURNS"] = burns; opt["SEED"] = seed
     cfg = {"orbit_A": g["A"], "orbit_B": g["B"], "rules": RULES,

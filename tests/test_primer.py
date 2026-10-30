@@ -14,11 +14,12 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.optimizer import (MissionOptimizer, reconstruct_mission_logs,
-                           decision_variable_dims)
-from src.core_math import propagate_dop853, fast_norm
+from odc.search.optimizer import MissionOptimizer
+from odc.search.replay import reconstruct_mission_logs
+from odc.search.fitness import decision_variable_dims
+from odc.physics.core_math import propagate_dop853, fast_norm
 from poliastro.core.iod import izzo
-from src.primer import intercept_primer_profile, insert_node_seed, _arc_schedule
+from odc.search.primer import intercept_primer_profile, insert_node_seed, _arc_schedule
 
 _FAILED = []
 

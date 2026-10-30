@@ -32,7 +32,7 @@ import warnings
 warnings.filterwarnings("ignore")
 import numpy as np
 
-from src.optimizer import MissionOptimizer
+from odc.search.optimizer import MissionOptimizer
 
 RESULTS = os.path.join(REPO, "outputs", "research", "penalty_wall_results.json")
 MAX_DV_MPS = 1500.0

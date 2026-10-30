@@ -13,7 +13,8 @@ from threadpoolctl import threadpool_limits
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.optimizer import MissionOptimizer, _run_studies_unified
+from odc.search.optimizer import MissionOptimizer
+from odc.search.revs import _run_studies_unified
 
 
 def exact(value):

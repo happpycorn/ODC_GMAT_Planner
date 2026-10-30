@@ -14,10 +14,13 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-import main as app
-from src.optimizer import MissionOptimizer
-from src.burn_splitter import presplit_leading, leading_arcs_min_radius
-from src.config_validator import ConfigValidationError, validate_config
+import odc.config.defaults as ref_defaults
+import odc.pipeline.checkpoints as ref_checkpoints
+import odc.pipeline.legalize as ref_legalize
+import odc.pipeline.primer_stage as ref_primer_stage
+from odc.search.optimizer import MissionOptimizer
+from odc.split.burn_splitter import presplit_leading, leading_arcs_min_radius
+from odc.config.validator import ConfigValidationError, validate_config
 
 FAILS = []
 
@@ -29,7 +32,7 @@ def check(name, cond):
 
 
 def config(**strategy):
-    cfg = copy.deepcopy(app.DEFAULT_CONFIG)
+    cfg = copy.deepcopy(ref_defaults.DEFAULT_CONFIG)
     for name in ("orbit_A", "orbit_B"):
         cfg[name].update(SMA=12000., ECC=0., INC=0., RAAN=0., AOP=0., TA=0.)
     cfg["rules"].update(MAX_DV_MPS=250., MAX_TOTAL_DV_MPS=3000., T_MAX_SEC=6000.)
@@ -96,8 +99,8 @@ check("只有前導棒超標：關閉失格、開啟僅一次 −10",
       and mm["split_leading_count"] == 1 and abs(mm["score"] - (base_score - 10.)) < 1e-9)
 check("只有前導棒超標：估計差 = 10 − 預付燃料扣分",
       abs(mm["score_split_est"] - mm["score"] - (10. + paid_score - base_score)) < 1e-9)
-with patch.object(app, "legalize_route", wraps=app.legalize_route) as splitter:
-    post = app.legalize_violating_winner(on.config, burns, times, mi, on)
+with patch.object(ref_legalize, "legalize_route", wraps=ref_legalize.legalize_route) as splitter:
+    post = ref_legalize.legalize_violating_winner(on.config, burns, times, mi, on)
     route_kw = splitter.call_args.kwargs
     check("送進拆棒器的抵達時刻與瞄準點不變",
           route_kw["t0"] + sum(route_kw["leading_coasts"]) + route_kw["terminal_coast"] == 2600.
@@ -110,8 +113,8 @@ if post is not None:
     check("拆後間隔合法、Earth-safe、總燃料合法", pm["penalty_count"] == 0
           and min(pt[1:-1]) >= on.MIN_COAST_TIME - 1e-6 and pm["earth_safe"]
           and pm["total_dv_mps"] <= on.MAX_TOTAL_DV_MPS)
-with patch.object(app, "presplit_leading", wraps=presplit_leading) as pre:
-    off_result = app.legalize_violating_winner(off_cfg, burns, times, mi, off)
+with patch.object(ref_legalize, "presplit_leading", wraps=presplit_leading) as pre:
+    off_result = ref_legalize.legalize_violating_winner(off_cfg, burns, times, mi, off)
     check("關閉不呼叫等分、同一路線仍不合法",
           pre.call_count == 0 and (off_result is None or off_result[2]["disqualified"]))
 xbig = x.copy(); xbig[1] = on.LEADING_SPLIT_LIMIT + .001
@@ -138,13 +141,13 @@ ur = leading_arcs_min_radius(u[0], u[1], u[2], mu=unsafe.MU, j2=0., j3=0., j4=0.
 check("反向燒後實際經過低近地點會被抓到", min(ur) < unsafe.MIN_PERIAPSIS - 1e-3)
 ux = np.array([0., .6, math.pi / 2, -math.pi / 2, 2900. / 5800., 400. / 2900., 0., 0., 0.])
 umi = dict(mi, x=ux, num_burns=2)
-with patch.object(app, "legalize_route", side_effect=AssertionError("不安全路線不應送進拆棒器")):
-    check("不安全前導弧在拆棒前退回 None", app.legalize_violating_winner(
+with patch.object(ref_legalize, "legalize_route", side_effect=AssertionError("不安全路線不應送進拆棒器")):
+    check("不安全前導弧在拆棒前退回 None", ref_legalize.legalize_violating_winner(
         unsafe_cfg, burns, times, umi, unsafe) is None)
 # 等分後終端時刻被往後推到抵達點，時間閘門應先擋。
 short_x = np.array([0., .6, math.pi / 2, 0., 0., 100. / 5800., 0., 0., 0.])
-with patch.object(app, "legalize_route", side_effect=AssertionError("時間不足不應送進拆棒器")):
-    check("接線也拒絕時間不足", app.legalize_violating_winner(
+with patch.object(ref_legalize, "legalize_route", side_effect=AssertionError("時間不足不應送進拆棒器")):
+    check("接線也拒絕時間不足", ref_legalize.legalize_violating_winner(
         on.config, burns, times, dict(mi, x=short_x), on) is None)
 
 print("\n── 4. 關閉逐位元相容與設定檢查 ──")
@@ -158,8 +161,8 @@ with tempfile.TemporaryDirectory() as folder:
         opt.no_legal_route = {"x": x, "burns": 2, "fitness": 1.}
         path = os.path.join(folder, "no_legal_route.json")
         with patch.object(opt, "_replay_mission", return_value=(burns, times, mi)), \
-             patch.object(app.log, "error"):
-            app.save_no_legal_route(path, opt)
+             patch.object(ref_checkpoints.log, "error"):
+            ref_checkpoints.save_no_legal_route(path, opt)
         with open(path, encoding="utf-8") as source:
             saved = json.load(source)
         check(f"失格存檔的前導可拆標記跟旋鈕一致（{opt.SPLIT_LEADING}）",
@@ -202,39 +205,39 @@ for mode in ("full", "fast"):
     cfg = copy.deepcopy(old[3].config); cfg["strategy"]["PRIMER_RESEARCH_MODE"] = mode
     new[3]._generate_nlp_refined_seed_candidates = Mock(return_value=[])
     new[3].refine_trajectory = Mock(return_value=new[:3])
-    with patch.object(app, "_primer_diagnose_winner", return_value=PROFILE), \
-         patch.object(app, "insert_node_seed", return_value=np.ones(13)), \
-         patch.object(app, "MissionOptimizer", return_value=new[3]), \
-         patch.object(app, "run_study_over_revs", return_value=new if mode == "full" else glob), \
-         patch.object(app, "legalize_violating_winner", side_effect=fake_legal) as legal:
-        result = app.primer_guided_research(cfg, *old)
+    with patch.object(ref_primer_stage, "_primer_diagnose_winner", return_value=PROFILE), \
+         patch.object(ref_primer_stage, "insert_node_seed", return_value=np.ones(13)), \
+         patch.object(ref_primer_stage, "MissionOptimizer", return_value=new[3]), \
+         patch.object(ref_primer_stage, "run_study_over_revs", return_value=new if mode == "full" else glob), \
+         patch.object(ref_legalize, "legalize_violating_winner", side_effect=fake_legal) as legal:
+        result = ref_primer_stage.primer_guided_research(cfg, *old)
         check(f"{mode} 比拆後結果、回傳拆前 tuple", result is not None
               and result[2] is new[2] and result[3] is new[3])
         calls = legal.call_count
-        again = app._legalize_stage(new[3].config, *new)
+        again = ref_legalize._legalize_stage(new[3].config, *new)
         check(f"{mode} 贏家二次合法化命中快取", legal.call_count == calls and again[2] is new[3].post)
         check(f"{mode} 原候選也有快取", len(old[3]._legalize_cache) == 1)
         with tempfile.TemporaryDirectory() as folder:
             path = os.path.join(folder, "winner.json")
-            app.save_winner_checkpoint(path, new[3], *new[:3])
+            ref_checkpoints.save_winner_checkpoint(path, new[3], *new[:3])
             with open(path, encoding="utf-8") as source:
                 saved = json.load(source)
             check(f"{mode} checkpoint 保留拆前資料且不含快取",
                   saved["mission_info"]["score"] == new[2]["score"]
                   and "_legalize_cache" not in json.dumps(saved))
         changed = dict(new[2], x=new[2]["x"].copy()); changed["x"][0] += .01
-        app._legalize_stage(new[3].config, new[0], new[1], changed, new[3])
+        ref_legalize._legalize_stage(new[3].config, new[0], new[1], changed, new[3])
         check(f"{mode} 不同向量不誤用快取", legal.call_count == calls + 1)
         old[3]._legalize_cache.clear(); new[3]._legalize_cache.clear()
         old[3].post = dict(old[3].post, score=90., score_split_est=90.)
-        result = app.primer_guided_research(cfg, *old)
+        result = ref_primer_stage.primer_guided_research(cfg, *old)
         check(f"{mode} 原解拆後較好時沿用原解", result is None)
 
 old = candidate(4, 90., 80.)
 old[3].SPLIT_LEADING = False
-with patch.object(app, "legalize_violating_winner", return_value=None) as legal:
-    app._legalize_stage(old[3].config, *old)
-    app._legalize_stage(old[3].config, *old)
+with patch.object(ref_legalize, "legalize_violating_winner", return_value=None) as legal:
+    ref_legalize._legalize_stage(old[3].config, *old)
+    ref_legalize._legalize_stage(old[3].config, *old)
     check("關閉不寫快取、每次照舊執行", legal.call_count == 2 and not hasattr(old[3], "_legalize_cache"))
 
 if FAILS:

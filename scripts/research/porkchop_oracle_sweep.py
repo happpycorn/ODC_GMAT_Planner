@@ -35,7 +35,7 @@ import warnings
 warnings.filterwarnings("ignore")
 import numpy as np
 
-from src.optimizer import MissionOptimizer
+from odc.search.optimizer import MissionOptimizer
 from porkchop_grid import build_ephemeris, porkchop
 
 RESULTS = os.path.join(REPO, "outputs", "research", "porkchop_oracle_results.json")

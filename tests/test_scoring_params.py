@@ -1,4 +1,4 @@
-"""計分參數換算與驗算工具（src/scoring_params.py、scripts/check_scoring_params.py）。
+"""計分參數換算與驗算工具（odc/config/scoring_params.py、scripts/check_scoring_params.py）。
 
 直接執行：uv run python tests/test_scoring_params.py
 由 run_regression.py 自動發現（純 Python，秒級）。
@@ -18,7 +18,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
-from src.scoring_params import (PRELIM_OFFICIAL, PRELIM_REF, ToolParams, UnitError, convert,
+from odc.config.scoring_params import (PRELIM_OFFICIAL, PRELIM_REF, ToolParams, UnitError, convert,
                                 looks_calibrated, sanity_warnings, score_terms, to_mps, to_sec,
                                 unit_hypotheses)
 
@@ -58,13 +58,13 @@ def test_conversion():
 
 def test_reference_check():
     print("\n── 2. 參考解驗算（初賽 90.00）──")
-    from src.scorer import calculate_score
+    from odc.scoring.scorer import calculate_score
     p = convert(**PRELIM_OFFICIAL)
     t = score_terms(p, *REF)
     check(f"換對：總分 {t.total:.4f} = 90.00（±0.005）", abs(t.total - 90.0) < 0.005)
     check(f"分項 50 / {t.time:.3f} / {t.fuel:.3f} ≈ 50 / 22.5 / 17.5",
           abs(t.dist - 50) < 1e-9 and abs(t.time - 22.5) < 0.005 and abs(t.fuel - 17.5) < 0.005)
-    check("跟 src.scorer.calculate_score 相同", abs(t.total - calculate_score(
+    check("跟 odc.scoring.scorer.calculate_score 相同", abs(t.total - calculate_score(
         REF[0], REF[1], REF[2], 0, p.k_t, p.C_t, p.k_v, p.C_v)) < 1e-9)
     check("換對：looks_calibrated", looks_calibrated(t))
 
@@ -109,7 +109,7 @@ def test_sanity_warnings():
 
 def test_cli():
     print("\n── 4. CLI ──")
-    import check_scoring_params as cli
+    import odc.tools.check_scoring_params as cli
 
     out = io.StringIO()
     with contextlib.redirect_stdout(out):

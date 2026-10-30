@@ -13,7 +13,7 @@
 目標函數還不知道這件事：
 
 - `optimizer.fast_fitness_evaluator` 對**終端棒**超標一律 `penalty_count += 1`（−10 分，
-  [optimizer.py ~L224](../../src/optimizer.py)）。
+  [optimizer.py ~L224](../../odc/search/optimizer.py)）。
 - 挑贏家的各階段也都用扣過罰分的真實分數比：`_pick_best_case`（~L1906）、`pick_best_across_revs`
   （~L2186，經 `_mission_rank_key` → `tiebreak_rank_key`）、C2 `primer_guided_research` 的新舊比較。
 

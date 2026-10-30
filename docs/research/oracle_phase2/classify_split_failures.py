@@ -12,9 +12,9 @@
   那時改取存檔前最後一則拆棒訊息並註明「快取」。
 
 等分後終端需求（log 沒印這個數字，所以自己算）：
-  1. 拆前贏家的 mission_info.x 用 src.oracle_twoburn.route_from_standard_x 解碼成前導棒／滑行，
+  1. 拆前贏家的 mission_info.x 用 odc.search.oracle_twoburn.route_from_standard_x 解碼成前導棒／滑行，
      target 照 main.legalize_violating_winner 算 A(抵達) + 瞄準偏移。
-  2. 前導棒用 src.burn_splitter.presplit_leading 照產品參數（cap = MAX_DV_SOFT、min_coast）等分。
+  2. 前導棒用 odc.split.burn_splitter.presplit_leading 照產品參數（cap = MAX_DV_SOFT、min_coast）等分。
   3. 等分前後各用 burn_splitter._terminal_state（J2–J4 傳播，跟拆棒器步驟 1 相同）走到終端棒起點，
      _lam_best（產品 Lambert 分支政策、LAMBERT_MAX_REVS 用贏家 config 的值）求二體猜測，
      再 _shoot_final（J2–J4 shooting 修正）命中 target——跟拆棒器貪婪段用同一套。
@@ -39,9 +39,9 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, ROOT)
 
-from src.optimizer import MissionOptimizer  # noqa: E402
-from src.oracle_twoburn import route_from_standard_x  # noqa: E402
-from src.burn_splitter import presplit_leading, _terminal_state, _lam_best, _shoot_final  # noqa: E402
+from odc.search.optimizer import MissionOptimizer  # noqa: E402
+from odc.search.oracle_twoburn import route_from_standard_x  # noqa: E402
+from odc.split.burn_splitter import presplit_leading, _terminal_state, _lam_best, _shoot_final  # noqa: E402
 
 FAIL_PATTERNS = ("前導棒等分：", "HAP-67 自動拆分：這個違規解", "仍失格", "C4：")
 PRESPLIT_MARK = "拆棒前贏家已存檔"

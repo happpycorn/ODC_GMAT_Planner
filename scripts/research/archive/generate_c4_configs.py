@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Expand sweeps/c4_v1.json into local C4 configs without replacing existing files.
 
-Usage: uv run python scripts/research/archive/generate_c4_configs.py [--out configs/c4]
+Usage: uv run python scripts/research/archive/generate_c4_configs.py [--out configs/local/c4]
        uv run python scripts/research/archive/generate_c4_configs.py --check
 """
 import argparse
@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 SPEC_PATH = ROOT / "sweeps/c4_v1.json"
-DEFAULT_OUT = ROOT / "configs/c4"
+DEFAULT_OUT = ROOT / "configs/local/c4"
 NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 

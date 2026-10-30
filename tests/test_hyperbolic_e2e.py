@@ -13,8 +13,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.optimizer import run_study_over_revs
-from main import legalize_violating_winner
+from odc.search.revs import run_study_over_revs
+from odc.pipeline.legalize import legalize_violating_winner
 from hyperbolic_fixture import _hyper_config
 
 _FAILED = []

@@ -20,10 +20,11 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.core_math import build_ephem_table, ephem_state, propagate_dop853
-from src.config_validator import ConfigValidationError, validate_config
-from src.optimizer import MissionOptimizer, fast_fitness_evaluator
-from src.burn_splitter import _simulate_free, _simulate_free_reuse, _terminal_state, _retarget_last, _fd_init, _fd_eval
+from odc.physics.core_math import build_ephem_table, ephem_state, propagate_dop853
+from odc.config.validator import ConfigValidationError, validate_config
+from odc.search.optimizer import MissionOptimizer
+from odc.search.fitness import fast_fitness_evaluator
+from odc.split.burn_splitter import _simulate_free, _simulate_free_reuse, _terminal_state, _retarget_last, _fd_init, _fd_eval
 
 
 def config(name):

@@ -14,9 +14,9 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, REPO)
 import warnings
 warnings.filterwarnings("ignore")
-from src.optimizer import MissionOptimizer
-from src.core_math import propagate_dop853, fast_norm
-from src.scorer import calculate_score
+from odc.search.optimizer import MissionOptimizer
+from odc.physics.core_math import propagate_dop853, fast_norm
+from odc.scoring.scorer import calculate_score
 
 H = int(sys.argv[1]) if len(sys.argv) > 1 else 20
 d = np.load(os.path.join(REPO, "outputs", "research", "porkchop_h%d.npz" % H))

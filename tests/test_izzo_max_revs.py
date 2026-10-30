@@ -17,7 +17,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from poliastro.core.iod import izzo as _izzo_raw
-from src.core_math import izzo_max_revs, lambert_izzo
+from odc.physics.core_math import izzo_max_revs, lambert_izzo
 
 FAILS = []
 MU = 398600.4418

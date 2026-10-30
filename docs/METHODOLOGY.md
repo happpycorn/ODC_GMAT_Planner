@@ -42,13 +42,13 @@ config.json (軌道六根數 + 規則參數)
 outputs/runs/<id>/mission.json、output.txt（GMAT script）及本次驗證資料
 ```
 
-②③④ 都在 [`src/optimizer.py`](../src/optimizer.py) 的 `MissionOptimizer` 裡；①用 [`src/propagator.py`](../src/propagator.py)；⑤在 [`src/script_generator.py`](../src/script_generator.py) + `main.py` 的 `run_gmat_verification`。
+②③④ 都在 [`src/optimizer.py`](../odc/search/optimizer.py) 的 `MissionOptimizer` 裡；①用 [`src/propagator.py`](../odc/physics/propagator.py)；⑤在 [`src/script_generator.py`](../odc/gmat/script_generator.py) + `main.py` 的 `run_gmat_verification`。
 
 ---
 
 ## 3. 物理模型：軌道怎麼傳播
 
-核心是 [`src/core_math.py`](../src/core_math.py) 的 `propagate_dop853`：
+核心是 [`src/core_math.py`](../odc/physics/core_math.py) 的 `propagate_dop853`：
 
 - **動力學方程**（`fast_dynamics`）：二體重力 `-μr/|r|³` 加上 zonal harmonic 攝動項。
   `strategy.GRAVITY_DEGREE` 決定算到第幾階：`0`=純點質量、`2`=J2、`3`=J2+J3、`4`=J2+J3+J4。
@@ -283,7 +283,7 @@ Score = 50·exp(-(Δr-5)/100)                       # 距離分：Δr=5(剛好�
 
 Python 端（第 3~8 節）已經能自己估出一個相當準的分數，**但這不是主辦方認可的計分依據**——規則附則明講「所有結果以主辦單位驗證程式為準」。GMAT 是業界標準的任務分析工具，用的是比 Python 這邊更高階的積分器（`RungeKutta89`）跟真實重力場模型（`JGM2.cof`），所以每次執行都會自動把產生的 script 丟給 GMAT 無頭跑一次（`GmatConsole --exit --run`，不開 GUI），拿它的結果跟 Python 的預測對照。
 
-GMAT script（[`script_generator.py`](../src/script_generator.py)）裡幾個值得知道的設計：
+GMAT script（[`script_generator.py`](../odc/gmat/script_generator.py)）裡幾個值得知道的設計：
 
 - **`Target/Vary/Achieve`（DifferentialCorrector）**：最後一棒的燃燒方向/大小，GMAT 自己還會再修一次，讓 `ShipB` 的最終位置精準命中 `Achieve` 指定的目標點。這個目標點**必須是 Python 算好的 `aim_point`（第 5 節那個容許球內的省油偏移點），不能是 A 的精確位置**——早期版本這裡曾經是個真 bug：GMAT 的打靶目標寫死瞄準 `ShipA` 的精確位置，會讓 GMAT 自己的 DC 悄悄把 Python 刻意設計出來的「打偏一點比較省油」的方案修正掉，等於白做了第 5 節的優化。修成瞄準絕對座標的 `aim_point` 之後才修好。
 - **`FinalBurnDvMps`/`FinalBurnLegal`**：GMAT 的 DC 可以自由調整最後一棒的方向/大小去命中目標點，所以它實際收斂後的 Δv 不一定等於 Python 預測的那個值。`InterceptSuccess` 只檢查距離，不檢查這個——GMAT 自己的打靶器完全可能悄悄修出一把超過規則上限的燃燒而沒人發現。所以額外算了 `FinalBurnDvMps`（真實收斂後大小）跟 `FinalBurnLegal`（是否 ≤ `MAX_DV_MPS`），兩者都要看才能確認這一棒真的合規。

@@ -1,4 +1,4 @@
-"""排位賽 T_max 工具（src/tmax.py、scripts/tmax_from_boundary.py）的驗證。
+"""排位賽 T_max 工具（odc/config/tmax.py、scripts/tmax_from_boundary.py）的驗證。
 
 直接執行：uv run python tests/test_tmax.py
 由 run_regression.py 自動發現（不是 SLOW；第一次 numba 編譯約 4 秒）。
@@ -27,8 +27,8 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 warnings.filterwarnings("ignore")
 
-from src.propagator import get_r0_v0
-from src.tmax import (MU_EARTH, TmaxError, analytic_tmax, numeric_tmax, recommended_t_max_sec,
+from odc.physics.propagator import get_r0_v0
+from odc.config.tmax import (MU_EARTH, TmaxError, analytic_tmax, numeric_tmax, recommended_t_max_sec,
                       wrap_ta_deg)
 
 FAILS = []
@@ -173,8 +173,8 @@ def test_edge_cases():
 
 def test_cli():
     print("\n── 4. CLI ──")
-    import tmax_from_boundary as cli
-    from src.optimizer import MissionOptimizer
+    import odc.tools.tmax_from_boundary as cli
+    from odc.search.optimizer import MissionOptimizer
 
     tmp = tempfile.mkdtemp()
     try:

@@ -15,12 +15,12 @@ from threadpoolctl import threadpool_limits
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from src import burn_splitter as bs
-from src.core_math import (propagate_dop853, propagate_dop853_stm,
+from odc.split import burn_splitter as bs
+from odc.physics.core_math import (propagate_dop853, propagate_dop853_stm,
                            acceleration_jacobian, fast_dynamics, build_ephem_table,
                            build_wait_prefix)
-from src.config_validator import validate_config, ConfigValidationError
-from src.optimizer import MissionOptimizer
+from odc.config.validator import validate_config, ConfigValidationError
+from odc.search.optimizer import MissionOptimizer
 
 SLOW = True
 _BLAS1 = threadpool_limits(limits=1, user_api="blas")
@@ -187,7 +187,7 @@ def test_full_jacobian(opt, x0, N, label):
 
 
 def test_fd_and_options(opt, x, N):
-    from main import split_options
+    from odc.pipeline.legalize import split_options
     c = context(opt)
     kw = dict(cap=opt.MAX_DV_SOFT, min_coast=opt.MIN_COAST_TIME,
               min_periapsis=opt.MIN_PERIAPSIS, k_t=opt.k_t, C_t=opt.C_t,

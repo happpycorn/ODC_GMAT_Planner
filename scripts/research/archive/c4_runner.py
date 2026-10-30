@@ -4,7 +4,7 @@
 依記憶體與槽位（每個 job 的槽位 = MAX_BURNS 案例數）決定何時開下一個 job。
 用法：uv run python scripts/research/archive/c4_runner.py [--slots N] [--config-dir PATH] [--out PATH] [--gmat-console PATH] [job 名稱前綴 ...]
 已有 main.py 行程在跑的 job（例如排程器重啟前留下的）會被接手等待，不會被當成未完成重跑。
-乾淨 clone 若沒有 configs/c4/*.json，會從 sweeps/c4_v1.json 產生；舊的本機設定不會覆寫。
+乾淨 clone 若沒有 configs/local/c4/*.json，會從 sweeps/c4_v1.json 產生；舊的本機設定不會覆寫。
 """
 import argparse
 import json
@@ -20,7 +20,7 @@ else:
     from generate_c4_configs import build_configs, ensure_configs
 
 ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_CFG_DIR = ROOT / "configs/c4"
+DEFAULT_CFG_DIR = ROOT / "configs/local/c4"
 CFG_DIR = DEFAULT_CFG_DIR
 OUT_DIR = Path(os.environ.get("C4_OUT", ROOT / "outputs/c4"))
 PY = Path(sys.executable)
@@ -68,7 +68,7 @@ def live_pid(name):
         except (OSError, ValueError):
             continue
         # 只認主行程：子 worker 的父行程也是同一個 main.py
-        if b"main.py" in argv and target.encode() in argv and target.encode() not in ppid_argv:
+        if b"odc.py" in argv and target.encode() in argv and target.encode() not in ppid_argv:
             return int(proc.name)
     return None
 
@@ -155,7 +155,7 @@ def main():
     MAX_SLOTS = args.slots
     MIN_AVAIL_GB = args.min_avail_gb
     POLL_SEC = args.poll_seconds
-    # Keep existing local C4 configs intact. A clean clone has no configs/c4 files:
+    # Keep existing local C4 configs intact. A clean clone has no configs/local/c4 files:
     # preview its tracked spec in memory, then materialize only for a real run.
     generate_default = CFG_DIR == DEFAULT_CFG_DIR and not any(CFG_DIR.glob("*.json"))
     generated = None
@@ -222,7 +222,7 @@ def main():
                 break
             pending.pop(0)
             console = open(OUT_DIR / f"{name}.console.log", "w")
-            command = [str(PY), "main.py", "--config", str(cfg), "--run-dir", str(OUT_DIR / name), "--quiet"]
+            command = [str(PY), str(ROOT / "odc.py"), "solve", str(cfg), "--run-dir", str(OUT_DIR / name), "--quiet"]
             if args.gmat_console:
                 command.extend(["--gmat-console", args.gmat_console])
             p = subprocess.Popen(

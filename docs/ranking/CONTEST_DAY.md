@@ -20,7 +20,7 @@
 
 1. **單棒 250 m/s，超過 250 + 10⁻⁵ m/s 直接失格**；總 Δv 超過 3 km/s 也失格。解會拆成 8–12 棒。
 2. **T_max 開賽才知道**：A 過近地點後，地心距離第一次增加到任務邊界的時刻。工具不會自己猜，要用
-   `scripts/tmax_from_boundary.py` 算出來填 `rules.T_MAX_SEC`。
+   `odc.py tmax` 算出來填 `rules.T_MAX_SEC`。
 3. **計分參數 `k_t, C_t, k_v, C_v` 比賽當下才公布**，要現場換單位。初賽官方的 `k_v`、`C_v` 是 km/s 制。
 4. **官方驗證開全攝動**（EGM96 20×20、潮汐、NRLMSISE00、日月、SRP、相對論）。我們用 J2–J4 設計，
    短任務就差 0.5–1.3 km，長任務可以差上百公里。**要做全攝動 B 平面重瞄準**。
@@ -41,7 +41,7 @@
 | 1 | 抄題目、建 config，兩人各抄一次核對 | 5–10 分 | — | — | 初賽實測 |
 | 2 | 算 T_max 寫回 config | 1 分 | 7 s + 10 s（含 numba 編譯） | — | |
 | 3 | 計分參數換算、驗算、寫回 config | 2–3 分 | < 1 s | — | 時間花在打字和核對 |
-| 4 | `check_problem.py` 體檢、`feasibility.py` 看能量下限 | 1–3 分 | 4 s + 13 s | — | |
+| 4 | `odc.py check` 體檢、`odc.py feasibility` 看能量下限 | 1–3 分 | 4 s + 13 s | — | |
 | 5 | 3 顆種子並行求解 | **13–25 分**（40 分） | **12.6 分**（3 顆都合法、86.784 分、4 棒） | **16.5 分**（3 顆都合法、最佳 86.785 分） | 長飛掠 hyper_far 3 顆並行 22 分（SPLITTER_SPEED）；上限是預算 600 s 的拆棒長尾。Mac 約慢 30%，長飛掠估 29 分（未實測） |
 | 6 | 全攝動 B 平面重瞄準（含固定燃燒版 GMAT） | 1 分（5 分） | 33 s | 14 s | DC 2 次迭代；+0.57 m/s；Mac 末棒 248.5 m/s、GMAT miss 6.7 m |
 | 7 | GMAT 獨立驗證繳交腳本 | 1 分 | 8 s | 5 s | |
@@ -68,7 +68,7 @@ seed 2 也觸發了重搜，多花約 14 分，拆後分數只差 0.0003。
 
 ## 三、賽前一晚
 
-- [ ] `git pull`、`uv sync`；確認 `src/tmax.py`、`src/scoring_params.py` 都在。
+- [ ] `git pull`、`uv sync`；確認 `odc/config/tmax.py`、`odc/config/scoring_params.py` 都在。
 - [ ] 跑單元測試（都不到 1 分鐘）：
   ```bash
   uv run python tests/test_tmax.py
@@ -79,9 +79,9 @@ seed 2 也觸發了重搜，多花約 14 分，拆後分數只差 0.0003。
   ```bash
   uv run python tests/test_ranking_rules.py
   ```
-- [ ] 確認 `main.py --help` 有 `--retarget-full-perturbation`：
+- [ ] 確認 `odc.py solve --help` 有 `--retarget-full-perturbation`：
   ```bash
-  uv run python main.py --help
+  uv run python odc.py solve --help
   ```
 - [ ] GMAT：`GmatConsole` 跑得起來，`data/gravity/earth/EGM96.cof` 和 CSSI 太空天氣檔都在（全攝動重播要用）。
 - [ ] 用 `configs/shared/ranking_round.json` 從頭到尾演練一次 §四的步驟 1–8，**計時**，把實際時間填回 §二。
@@ -96,7 +96,7 @@ seed 2 也觸發了重搜，多花約 14 分，拆後分數只差 0.0003。
 `configs/` 除了 `shared/` 都不進 git，當天自己複製一份：
 
 ```bash
-cp configs/shared/ranking_round.json configs/ranking.json
+cp configs/shared/ranking_round.json configs/local/ranking.json
 ```
 
 改 `orbit_A`、`orbit_B` 的六根數。`rules` 裡這幾個是排位賽規則，**不要動**：
@@ -121,7 +121,7 @@ cp configs/shared/ranking_round.json configs/ranking.json
 拿到任務邊界後：
 
 ```bash
-uv run python scripts/tmax_from_boundary.py --config configs/ranking.json --boundary-km <邊界地心距離>
+uv run python odc.py tmax --config configs/local/ranking.json --boundary-km <邊界地心距離>
 ```
 
 官方給的如果是**高度**，改用 `--boundary-alt-km`（會加上 R_E = 6378.137 km）。這兩者差 6,378 km，
@@ -169,7 +169,7 @@ A 一開始就已經過了近地點、但還在邊界內的情況，工具照算
 ### 步驟 3：計分參數（2–3 分）
 
 ```bash
-uv run python scripts/check_scoring_params.py --config configs/ranking.json \
+uv run python odc.py scoring --config configs/local/ranking.json \
     --kt <k_t> --kt-unit 1/s --Ct <C_t> --Ct-unit s \
     --kv <k_v> --kv-unit "<官方單位>" --Cv <C_v> --Cv-unit <官方單位>
 ```
@@ -188,7 +188,7 @@ uv run python scripts/check_scoring_params.py --config configs/ranking.json \
 看一次示範：
 
 ```bash
-uv run python scripts/check_scoring_params.py --demo-prelim
+uv run python odc.py scoring --demo-prelim
 ```
 
 **沒有參考解時**，看「數量級檢查」：C_v 在 m/s 制應該是幾百到幾千，C_v < 50 幾乎一定還是 km/s；
@@ -200,16 +200,16 @@ uv run python scripts/check_scoring_params.py --demo-prelim
 ### 步驟 4：體檢與可行性（2–5 分）
 
 ```bash
-uv run python check_problem.py --config configs/ranking.json
+uv run python odc.py check configs/local/ranking.json
 ```
 
 ```bash
-uv run python feasibility.py --config configs/ranking.json
+uv run python odc.py feasibility configs/local/ranking.json
 ```
 
-- `check_problem.py`：A/B 的近地點、平面夾角、T_max、`C_t / T_max` 有沒有離譜。排位賽格式不做初賽的
+- `odc.py check`：A/B 的近地點、平面夾角、T_max、`C_t / T_max` 有沒有離譜。排位賽格式不做初賽的
   「參考解 90 分」對照（步驟 3 已經驗過單位）。
-- `feasibility.py`：**能量下限**。拆棒後至少 ⌈能量下限 / 250⌉ 棒；能量下限接近或超過 3,000 m/s，
+- `odc.py feasibility`：**能量下限**。拆棒後至少 ⌈能量下限 / 250⌉ 棒；能量下限接近或超過 3,000 m/s，
   總 Δv 上限下可能無解，第一輪就要知道。**`MAX_BURNS` 維持範本的 [1, 2]**：它是拆棒前的路線棒數，
   DE 先找路線、拆棒器再拆，不要照下限放大。
 
@@ -218,13 +218,13 @@ uv run python feasibility.py --config configs/ranking.json
 做 3 份只差 `optimization.SEED` 的 config（`SEED: null` 會讓搜尋開多執行緒，3 個行程互搶核心）：
 
 ```bash
-for s in 0 1 2; do python3 -c "import json;d=json.load(open('configs/ranking.json'));d['optimization']['SEED']=$s;json.dump(d,open('configs/ranking_s$s.json','w'),ensure_ascii=False,indent=2)"; done
+for s in 0 1 2; do python3 -c "import json;d=json.load(open('configs/local/ranking.json'));d['optimization']['SEED']=$s;json.dump(d,open('configs/local/ranking_s$s.json','w'),ensure_ascii=False,indent=2)"; done
 ```
 
 開 3 個終端各跑一顆（或一行背景跑完再 `wait`）：
 
 ```bash
-for s in 0 1 2; do uv run python main.py --config configs/ranking_s$s.json --stop-after solve --run-dir outputs/runs/rank-s$s -q & done; wait
+for s in 0 1 2; do uv run python odc.py solve configs/local/ranking_s$s.json  --stop-after solve --run-dir outputs/runs/rank-s$s -q & done; wait
 ```
 
 先停在 solve，拿到 `mission.json` 再做重瞄準和驗證，搜尋就不用重跑。
@@ -256,7 +256,7 @@ B 平面重瞄準只要多花 0.04–4.6 m/s，所有試過的解都收斂。
 把步驟 5 挑中的那顆（下例是 seed 2）拿來重瞄準：
 
 ```bash
-uv run python main.py --config configs/ranking.json --from-mission outputs/runs/rank-s2/mission.json --retarget-full-perturbation --run-dir outputs/runs/rank-rt
+uv run python odc.py retarget outputs/runs/rank-s2/mission.json --config configs/local/ranking.json   --run-dir outputs/runs/rank-rt
 ```
 
 演練結果（33 s）：原方案在全攝動下 d_min 3,787 m（還在 5 km 內），重瞄準後 3.2 m，總 Δv +0.57 m/s；
@@ -272,7 +272,7 @@ uv run python main.py --config configs/ranking.json --from-mission outputs/runs/
 ### 步驟 7：GMAT 驗證（1–3 分）
 
 ```bash
-uv run python main.py --config configs/ranking.json --verify-script outputs/runs/rank-rt/output_submit.txt --run-dir outputs/runs/rank-verify
+uv run python odc.py verify outputs/runs/rank-rt/output_submit.txt --config configs/local/ranking.json  --run-dir outputs/runs/rank-verify
 ```
 
 - 固定燃燒版（`output_submit.txt`）才是繳交用的，跟初賽一樣。演練 8 s，印 `✅ GMAT 獨立驗證通過`。
@@ -315,6 +315,6 @@ uv run python main.py --config configs/ranking.json --verify-script outputs/runs
 4. **`T_MAX_SEC` 從 epoch 起算**，不是從近地點起算。
 5. **定時位置對齊的 DC 在長任務會爆 Δv。** 重瞄準一定用 B 平面（步驟 6）。
 6. **改棒時看每一棒的上限**，不是只看最後一棒；拆出來的棒都貼著上限。
-7. **`check_problem.py` 最後的「參考解 90 分」只對初賽範例有意義**，排位賽忽略。
+7. **`odc.py check` 最後的「參考解 90 分」只對初賽範例有意義**，排位賽忽略。
 8. **共用情境的 T_MAX_SEC 是編的**，不要拿它們的值當排位賽的參考（步驟 2 的表）。
 9. GMAT 腳本不能有非 ASCII 字元；`configs/` 不進 git；同分先比 d_min（同初賽手冊 §七）。

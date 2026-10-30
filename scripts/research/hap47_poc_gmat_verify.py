@@ -3,7 +3,7 @@ HAP-47 PoC 第二步：把 hap47_poc_nlp_split.py 的 SLSQP 解餵進真正的 G
 「改善」在 GMAT 的高精度求解器/微分修正器下還在不在——不能只信 Python 自己的簡化二體積分器
 （見對話裡的提醒：Python 重建 98.31 解本身就有 0.0044 分的積分器噪訊，比 SLSQP 找到的改善還大）。
 
-不改動 src/ 任何檔案，直接重用 script_generator()/run_gmat_verification()（main.py 既有
+不改動 odc/ 任何檔案，直接重用 script_generator()/run_gmat_verification()（main.py 既有
 的無頭驗證管線，跟 best_98.31_split5_rebalanced 當初驗證用的是同一套)。
 
 用法：
@@ -22,10 +22,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # 讓 `import ha
 from hap47_poc_nlp_split import (  # noqa: E402
     run_optimization, unpack, initial_state, GRAVITY_DEGREE, MU, ORBIT_A, ORBIT_B, K_T, C_T, K_V, C_V,
 )
-from src.core_math import to_vnb_frame, fast_norm  # noqa: E402
-from src.propagator import propagate  # noqa: E402
-from src.script_generator import script_generator  # noqa: E402
-from main import run_gmat_verification, GMAT_CONSOLE_DEFAULT  # noqa: E402
+from odc.physics.core_math import to_vnb_frame, fast_norm  # noqa: E402
+from odc.physics.propagator import propagate  # noqa: E402
+from odc.gmat.script_generator import script_generator  # noqa: E402
+from odc.gmat.verification import run_gmat_verification
+from odc.config.defaults import GMAT_CONSOLE_DEFAULT  # noqa: E402
 
 
 def prevburn_states(x, B_r0, B_v0, ephem=None):
@@ -97,7 +98,7 @@ def main():
           f"分數 = {opt['score1']:.4f}")
 
     if gmat_result["targeter_converged"] and gmat_result["intercept_success"] and gmat_result["final_burn_legal"]:
-        from src.scorer import calculate_score
+        from odc.scoring.scorer import calculate_score
         total_dv_gmat = sum(fast_norm(np.array(b)) for b in burns_vnb[:-1]) * 1000.0 + gmat_result["final_burn_dv_mps"]
         score_gmat = calculate_score(gmat_result["miss_km"], gmat_result["t_team_sec"], total_dv_gmat, 0,
                                       K_T, C_T, K_V, C_V)

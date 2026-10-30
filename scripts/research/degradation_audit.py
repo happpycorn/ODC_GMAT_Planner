@@ -108,7 +108,7 @@ def build_config(g):
 
 
 def audit_one(name):
-    from src.optimizer import MissionOptimizer
+    from odc.search.optimizer import MissionOptimizer
 
     g = GEOMS[name]
     rec = {"geometry": name, "expect": g["expect"]}

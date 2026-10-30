@@ -8,21 +8,22 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import main as app
-from src.config_validator import validate_config, ConfigValidationError
+import odc.config.defaults as ref_defaults
+import odc.pipeline.legalize as ref_legalize
+from odc.config.validator import validate_config, ConfigValidationError
 
 
 class SplitDefaultsTests(unittest.TestCase):
     def options(self, strategy):
-        config = copy.deepcopy(app.DEFAULT_CONFIG)
+        config = copy.deepcopy(ref_defaults.DEFAULT_CONFIG)
         config["strategy"].update(strategy)
         validate_config(config)
-        return app.split_options(config)
+        return ref_legalize.split_options(config)
 
     def test_missing_keys(self):
         with patch.object(os, "cpu_count", return_value=8):
-            for config in ({}, {"strategy": {}}, app.DEFAULT_CONFIG):
-                self.assertEqual(app.split_options(config), {
+            for config in ({}, {"strategy": {}}, ref_defaults.DEFAULT_CONFIG):
+                self.assertEqual(ref_legalize.split_options(config), {
                     "n_span": 1, "maxiter": 1000, "fast_fd": False,
                     "jacobian": "stm", "workers": 3, "starts": [0, 0.75, 1],
                     "prune_reopt_tol": 0.001, "wall_budget": 600.0,
@@ -68,9 +69,9 @@ class SplitDefaultsTests(unittest.TestCase):
         for strategy, locked in (({}, True), ({"SPLIT_JACOBIAN": "fd"}, False),
                                  ({"SPLIT_JACOBIAN": "fd", "SPLIT_FAST_FD": True}, True)):
             with self.subTest(strategy=strategy), \
-                 patch.object(app, "threadpool_limits") as limit, \
-                 patch.object(app, "legalize_violating_winner", return_value=None):
-                result = app._legalize_stage({"strategy": strategy}, [], [], {}, None)
+                 patch.object(ref_legalize, "threadpool_limits") as limit, \
+                 patch.object(ref_legalize, "legalize_violating_winner", return_value=None):
+                result = ref_legalize._legalize_stage({"strategy": strategy}, [], [], {}, None)
                 self.assertEqual(result, ([], [], {}))
                 self.assertEqual(limit.called, locked)
                 if locked:

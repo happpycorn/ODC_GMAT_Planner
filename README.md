@@ -39,11 +39,11 @@ uv sync
 
 ---
 
-## 步驟二：設定 `configs/config.json`
+## 步驟二：設定 `configs/local/config.json`
 
 程式第一次執行時，如果找不到設定檔會自動生成一份預設範例，但**正式提交前務必手動確認以下欄位是主辦方公布的正式數字**，不是範例值：
 
-共用的重現情境放在版控中的 [`configs/shared/`](configs/shared/)；個人使用的 `configs/config.json` 與其他 `configs/*.json` 仍留在本機。共用檔不含 `local` 區塊，要跑 GMAT 可帶 `--gmat-console` 或使用本機設定檔。各情境用途與完整參數見 [SCENARIOS.md](docs/SCENARIOS.md)。
+共用的重現情境放在版控中的 [`configs/shared/`](configs/shared/)；個人使用的 `configs/local/config.json` 與其他 `configs/local/*.json` 仍留在本機。共用檔不含 `local` 區塊，要跑 GMAT 可帶 `--gmat-console` 或使用本機設定檔。各情境用途與完整參數見 [SCENARIOS.md](docs/SCENARIOS.md)。
 
 config 分四大塊 + 一塊選填，各自對應「誰決定這個數字」：`orbit_A`/`orbit_B`（軌道六根數）、`rules`（主辦方規定/公告的數字，我們不能改）、`strategy`（我們自己的任務設計選項，不是規則要求）、`optimization`（純演算法搜尋設定，只影響找不找得到好解/要跑多久，不影響規則本身）、`local`（選填，跟任務/規則完全無關的「這台機器」設定，見下）。
 
@@ -58,7 +58,7 @@ config 分四大塊 + 一塊選填，各自對應「誰決定這個數字」：`
 | `optimization.MAX_BURNS` | 要嘗試的燃燒次數列表，例如 `[1, 2, 3]` 會三種都跑，選分數最高的 |
 | `optimization.MAXITER` / `POPSIZE` | 搜尋精細度。`POPSIZE` 是「每個決策變數維度分配幾個個體」(族群大小 = 維度數 × POPSIZE)，不是總數，越大越準但越久 |
 | `optimization.EARLY_STOP_ENABLED`（選填，預設 `false`） | 啟用後才會使用 `MAX_EARLY_STOP` 與 `TOL` 提早停止搜尋；`TOL` 是分數單位。2026-09-29 消融發現多個情境明顯掉分，維持關閉較穩妥。見 [實驗結果](docs/research/EARLY_STOP_ABLATION_20260929.md) |
-| `local.gmat_console_path`（選填） | 這台機器上 `GmatConsole` 的路徑。不填就用 `--gmat-console` 參數，或 `main.py` 裡寫死的最後備援值（那是我這台機器的路徑，換一台機器大概率對不上）。優先順序：`--gmat-console` > 這個欄位 > 寫死的備援值。config.json 本來就被 `.gitignore` 排除，填在這裡不會跟著 git 到處跑，換電腦/換人開發各自維護自己的這一項就好，不用每次執行都手動打 `--gmat-console` |
+| `local.gmat_console_path`（選填） | 這台機器上 `GmatConsole` 的路徑。不填就用 `--gmat-console` 參數，或 `odc/config/defaults.py` 裡寫死的最後備援值（那是我這台機器的路徑，換一台機器大概率對不上）。優先順序：`--gmat-console` > 這個欄位 > 寫死的備援值。config.json 本來就被 `.gitignore` 排除，填在這裡不會跟著 git 到處跑，換電腦/換人開發各自維護自己的這一項就好，不用每次執行都手動打 `--gmat-console` |
 | `optimization.NUM_THREADS` | 每個燃燒次數案例要用幾條執行緒平行評估族群；設 `-1` 或 0 以下會自動用「可用核心數 ÷ 燃燒次數案例數」估一個合理值 |
 | `optimization.SEED` | 設一個整數可以讓同一組設定每次重現一模一樣的結果，方便比較「改了東西到底有沒有用」。**注意：設了 SEED 會自動退回單執行緒**（多執行緒下亂數搶用有 race condition，seed 保證不了重現性），犧牲速度換可重現性；不設 (`null`，預設) 就照樣用多執行緒換速度，兩者只能選一個 |
 
@@ -71,13 +71,13 @@ config 分四大塊 + 一塊選填，各自對應「誰決定這個數字」：`
 ## 步驟三：執行計算程式
 
 ```bash
-uv run main.py
+uv run python odc.py solve
 ```
 
-或是指定其他設定檔（預設是 `configs/config.json`）：
+或是指定其他設定檔（預設是 `configs/local/config.json`）：
 
 ```bash
-uv run main.py --config configs/my_scenario.json
+uv run python odc.py solve configs/local/my_scenario.json
 ```
 
 執行完後會依序做三件事：
@@ -89,31 +89,31 @@ uv run main.py --config configs/my_scenario.json
 GMAT 相關參數：
 
 ```bash
-uv run main.py --gmat-console "/path/to/GMAT R2026a/bin/GmatConsole"  # 換一台機器/重灌過時指定路徑
-uv run main.py --no-gmat                                              # 只要 Python 端結果，跳過自動驗證
+uv run python odc.py solve --gmat-console "/path/to/GMAT R2026a/bin/GmatConsole"  # 換一台機器/重灌過時指定路徑
+uv run python odc.py solve --no-gmat                                              # 只要 Python 端結果，跳過自動驗證
 ```
 
 若沒裝 GMAT 或路徑不對，這步只會印警告，不會讓程式中斷；Python 算出來的結果跟 `output.txt` 照樣正常產出。
 
 ### 分段執行：修改後不用每次從搜尋重跑
 
-`main.py` 仍可一次跑到底。開發時，可先存下求解結果，再從需要驗證的階段接著跑：
+`odc.py` 仍可一次跑到底。開發時，可先存下求解結果，再從需要驗證的階段接著跑：
 
 ```bash
 # 1. 搜尋＋primer＋拆棒，完成後保存 mission.json，不產腳本、不跑 GMAT
-uv run main.py --config configs/contest.json --stop-after solve --run-dir outputs/runs/solve-a
+uv run python odc.py solve configs/local/contest.json  --stop-after solve --run-dir outputs/runs/solve-a
 
 # 2. 只重產腳本：不搜尋、不拆棒、不跑 GMAT
-uv run main.py --from-mission outputs/runs/solve-a/mission.json --stop-after export --run-dir outputs/runs/export-a
+uv run python odc.py export outputs/runs/solve-a/mission.json  --stop-after export --run-dir outputs/runs/export-a
 
 # 3. 用已保存方案產腳本並跑 GMAT DC／固定燃燒版雙驗證，不重新求解
-uv run main.py --from-mission outputs/runs/solve-a/mission.json --run-dir outputs/runs/verify-a
+uv run python odc.py export outputs/runs/solve-a/mission.json  --run-dir outputs/runs/verify-a
 
 # 4. 只重驗既有固定燃燒腳本，不重新求解或重產任務
-uv run main.py --verify-script outputs/runs/verify-a/output_submit.txt --run-dir outputs/runs/recheck-a
+uv run python odc.py verify outputs/runs/verify-a/output_submit.txt  --run-dir outputs/runs/recheck-a
 
 # 5. 排位賽：在官方全攝動模型下 B 平面重瞄準，產生全攝動固定燃燒繳交腳本（見下節）
-uv run main.py --from-mission outputs/runs/solve-a/mission.json --retarget-full-perturbation --run-dir outputs/runs/retarget-a
+uv run python odc.py retarget outputs/runs/solve-a/mission.json   --run-dir outputs/runs/retarget-a
 ```
 
 `--run-dir` 可省略，程式會自動建立唯一目錄；指定時必須是**尚不存在**的目錄，避免覆蓋先前結果。
@@ -123,7 +123,7 @@ uv run main.py --from-mission outputs/runs/solve-a/mission.json --retarget-full-
 新執行會把每顆 seed 的拆前／拆後結果及最終 `mission.json` 放在同一個 run 目錄。
 `mission.json` 表示已完成 Python 求解，不保證合法或已通過 GMAT；Earth-safe 閘門仍會擋下不安全的繳交腳本。
 
-重播會使用存檔內的軌道、規則與求解設定；不需要本機 `configs/config.json`。
+重播會使用存檔內的軌道、規則與求解設定；不需要本機 `configs/local/config.json`。
 重播時若另外給 `--config`，只讀取其中的 `local.gmat_console_path`，不覆寫物理設定。
 存檔有格式版本、內容雜湊、程式來源雜湊與來源鏈；改動求解/物理模組或 `uv.lock` 後會拒絕直接重用拆後方案，
 請重新求解，或在只改拆棒器時從 `--from-winner` 重播。產腳本程式的修改不會要求重跑搜尋。
@@ -177,16 +177,16 @@ GMAT 路徑字串需使用 ASCII；自動驗證會將報表分開保存，不再
 ## 拿到一個新情境時的建議順序
 
 ```
-新測資 → feasibility.py → (範圍很寬才需要 sweep_burns.py) → main.py → 檢查 run_history
+新測資 → odc.py feasibility → (範圍很寬才需要 odc.py sweep-burns) → odc.py solve → 檢查 run_history
 ```
 
-**前面兩步都可以跳過**——`main.py` 已經內建了最關鍵的檢查（見下），直接跑不會出事。
+**前面兩步都可以跳過**——`odc.py` 已經內建了最關鍵的檢查（見下），直接跑不會出事。
 
-### 1. `feasibility.py`：先問「這題有沒有解」
+### 1. `odc.py feasibility`：先問「這題有沒有解」
 
 ```bash
-uv run feasibility.py --config configs/x.json           # 快，只做前兩層
-uv run feasibility.py --config configs/x.json --burns 3 # 加做 3 棒可行性 (較慢)
+uv run python odc.py feasibility configs/local/x.json            # 快，只做前兩層
+uv run python odc.py feasibility configs/local/x.json  --burns 3 # 加做 3 棒可行性 (較慢)
 ```
 
 回答三件事：**能量下限（至少要幾棒）**、**合法單棒解存不存在**、**有多稀有**。
@@ -198,29 +198,29 @@ uv run feasibility.py --config configs/x.json --burns 3 # 加做 3 棒可行性 
 
 | 情況 | 建議 |
 |---|---|
-| 能量下限 = 0、合法解常見（>1%） | 直接 `main.py`，`MAX_BURNS` 用 `[1]` 或 `[1,2]` |
+| 能量下限 = 0、合法解常見（>1%） | 直接 `odc.py`，`MAX_BURNS` 用 `[1]` 或 `[1,2]` |
 | 能量下限 > 每棒上限 | 若 `AUTO_SPLIT_LEGALIZE=true`（預設），可保留較低棒數作為 route-first 候選，贏家會再動態拆棒；關閉自動拆棒時，才應讓 `MAX_BURNS` 從直接合法下限起跳 |
 | 合法解極稀有（<0.05%） | 窄窗地形，用正式預算別省，靠種子機制找 |
 
-### 2. `sweep_burns.py`：燃燒次數範圍很寬時才划算
+### 2. `odc.py sweep-burns`：燃燒次數範圍很寬時才划算
 
 ```bash
-uv run sweep_burns.py --config configs/x.json --burns 2-8
+uv run python odc.py sweep-burns configs/local/x.json  --burns 2-8
 ```
 
 先用調低的 `MAXITER` 粗掃一個寬範圍，找出分數大概從哪裡開始不再明顯進步，再針對
 那附近用 config 原本的 `MAXITER` 重跑一次「公平」的精細驗證。常用參數：`--burns 1-8`、
 `--coarse-iters 300`、`--output-config x.json`（把建議寫成新的 config 檔）。
 
-**範圍在 3~4 個以內就跳過這步**——`main.py` 本來就會平行跑所有燃燒次數並自動挑
+**範圍在 3~4 個以內就跳過這步**——`odc.py` 本來就會平行跑所有燃燒次數並自動挑
 贏家，再多一層 sweep 只是浪費時間。它真正划算的場合是 `MAX_BURNS` 有十幾個值的時候。
 
 **這是效率工具，不是最終判定**：工具的結論是「分數打平」，但規則的平手判定看的是
-`Δr_min`/`ΔV_team`/`T_team` 這些原始數字。從 2026-08-25 起 `sweep_burns.py` 會直接把
+`Δr_min`/`ΔV_team`/`T_team` 這些原始數字。從 2026-08-25 起 `odc.py sweep-burns` 會直接把
 這三個數字列成表印出來（而且會分清楚「真的同分」和「只是在 `--plateau-tol` 以內」），
 不用再自己回頭翻上面的 Mission Plan。
 
-### `main.py` 已經內建的檢查（所以前面兩步可以跳過）
+### `odc.py` 已經內建的檢查（所以前面兩步可以跳過）
 
 * **開跑前**：如果 `MAX_BURNS` 裡有「搜尋輸出當下不可能直接合法」的燃燒次數，會直接
   說明。預設開啟 `AUTO_SPLIT_LEGALIZE` 時，這些低棒數會保留作為 route-first 候選，若勝出
@@ -286,7 +286,7 @@ uv run python tests/test_arc_safety.py
 真實分數，不是搜尋用的代理值**——代理值在長飛行時間的情境上可以差到幾十分，初賽這種
 幾小時的尺度則幾乎完全一致，見 METHODOLOGY 第 8.1 節）：
 
-* **挑贏家**（`main.py`）：分數打平的燃燒次數候選，先各自跑一次收尾微調，再照上表比。
+* **挑贏家**（`odc.py`）：分數打平的燃燒次數候選，先各自跑一次收尾微調，再照上表比。
   舊版是「誰先跑完誰贏」，而完成順序由作業系統排程決定——同一份設定重跑兩次可能
   拿到不同方案。
 * **收尾微調**（`_tiebreak_polish`）：計分函式在 `Δr ≤ 5km` 內完全平坦（`Δr_min` 被
@@ -325,7 +325,7 @@ uv run python tests/test_arc_safety.py
 
 ### 現成的測試情境
 
-`configs/shared/` 的共用情境跟著 Git 走；其餘本機 `configs/*.json` 不會。**所有長期使用的測試情境之參數、目的與實測難度記在 [SCENARIOS.md](docs/SCENARIOS.md)**，可用來重建尚未納入共用目錄的情境。
+`configs/shared/` 的共用情境跟著 Git 走；其餘本機 `configs/local/*.json` 不會。**所有長期使用的測試情境之參數、目的與實測難度記在 [SCENARIOS.md](docs/SCENARIOS.md)**，可用來重建尚未納入共用目錄的情境。
 
 需要批次比較參數或重跑 C4 實驗時，先看 [研究工具封存導覽](scripts/research/README.md#封存) 的預覽、執行與彙整指令；C4 runner 以 Linux `/proc` 監看行程，需在 Linux 執行。實驗結果仍寫入本機 `outputs/`。
 
@@ -333,7 +333,7 @@ uv run python tests/test_arc_safety.py
 
 ## 📂 資料夾讀寫說明
 
-輸入仍為 `configs/config.json`；以下輸出皆相對於本次 `outputs/runs/<id>/`（或指定的 `--run-dir`）。
+輸入仍為 `configs/local/config.json`；以下輸出皆相對於本次 `outputs/runs/<id>/`（或指定的 `--run-dir`）。
 新流程不再覆寫舊的 `outputs/output.txt`、`outputs/output_submit.txt`、`outputs/run.log` 或全域歷史紀錄。
 
 | 檔案 | 用途 |
@@ -362,15 +362,15 @@ uv run python tests/test_arc_safety.py
 `outputs/` 不進版控。執行下列命令可重建本機的 `outputs/INDEX.md` 與 `outputs/index.json`，列出已保存的 run、sweep 結果與驗證狀態：
 
 ```bash
-uv run python scripts/output_inventory.py index
+uv run python odc.py outputs index
 ```
 
 舊 sweep 的大量 `.console.log` 可壓縮到 `outputs/archive/`；工具先驗證封存內容與 SHA-256，再移除已封存的原檔。需要取回時，把下例的 `YYYYMMDD_HHMMSS` 換成自己 `outputs/INDEX.md` 列出的封存檔名：
 
 ```bash
-uv run python scripts/output_inventory.py archive-logs
-uv run python scripts/output_inventory.py verify-archive outputs/archive/sweep-console-logs-YYYYMMDD_HHMMSS.tar.gz
-uv run python scripts/output_inventory.py restore-archive outputs/archive/sweep-console-logs-YYYYMMDD_HHMMSS.tar.gz
+uv run python odc.py outputs archive-logs
+uv run python odc.py outputs verify-archive outputs/archive/sweep-console-logs-YYYYMMDD_HHMMSS.tar.gz
+uv run python odc.py outputs restore-archive outputs/archive/sweep-console-logs-YYYYMMDD_HHMMSS.tar.gz
 ```
 
 `docs/solutions/` 保存經挑選並納入版控的初賽成果；本機 `outputs/` 的索引與壓縮檔仍須自行備份。
@@ -385,14 +385,14 @@ uv run python scripts/output_inventory.py restore-archive outputs/archive/sweep-
 
 1. **裝 `uv`**：`pip install uv`（Windows 用命令提示字元/PowerShell，Mac/Linux 用終端機）。
 2. **拿到程式碼**：`git clone https://github.com/happpycorn/ODC_GMAT_Planner.git`，或直接把整個資料夾複製過去。
-3. **準備設定檔**：`git clone` 會帶入 `configs/shared/` 的共用情境，不會帶入本機 `configs/config.json`。可以指定共用情境，例如 `uv run main.py --config configs/shared/official_sample.json`；也可直接跑 `uv run main.py`，由程式產生佔位範例後填入正式數字。若要沿用自己原有的 `configs/*.json`，需另外複製。
-4. **第一次執行會比較慢**：`uv run main.py` 第一次跑，`uv` 會自動下載對應版本的 Python（3.12+）跟所有套件（`numpy`/`numba`/`scipy`/`astropy`/`poliastro`/`mealpy` 等，現在裝起來大約 1GB 左右——早期版本不小心留了 `torch`/`optuna`/`pymoo` 這些完全沒用到的重量級依賴，已經清掉了，不然會大好幾倍），**這一步需要網路**。之後每次執行都是用裝好的環境，不會重新下載。
+3. **準備設定檔**：`git clone` 會帶入 `configs/shared/` 的共用情境，不會帶入本機 `configs/local/config.json`。可以指定共用情境，例如 `uv run python odc.py solve configs/shared/official_sample.json`；也可直接跑 `uv run python odc.py solve`，由程式產生佔位範例後填入正式數字。若要沿用自己原有的 `configs/local/*.json`，需另外複製。
+4. **第一次執行會比較慢**：`uv run python odc.py solve` 第一次跑，`uv` 會自動下載對應版本的 Python（3.12+）跟所有套件（`numpy`/`numba`/`scipy`/`astropy`/`poliastro`/`mealpy` 等，現在裝起來大約 1GB 左右——早期版本不小心留了 `torch`/`optuna`/`pymoo` 這些完全沒用到的重量級依賴，已經清掉了，不然會大好幾倍），**這一步需要網路**。之後每次執行都是用裝好的環境，不會重新下載。
 5. **GMAT 是完全獨立的一套軟體，`uv` 不會幫你裝**：這台新電腦要另外安裝 GMAT，然後用 `--gmat-console` 指到正確路徑：
    ```bash
-   uv run main.py --gmat-console "C:\Program Files\GMAT\bin\GmatConsole.exe"   # Windows 範例路徑
-   uv run main.py --gmat-console "/path/to/GMAT/bin/GmatConsole"               # Mac/Linux 範例路徑
+   uv run python odc.py solve --gmat-console "C:\Program Files\GMAT\bin\GmatConsole.exe"   # Windows 範例路徑
+   uv run python odc.py solve --gmat-console "/path/to/GMAT/bin/GmatConsole"               # Mac/Linux 範例路徑
    ```
-   （`main.py` 裡寫死的預設路徑是我這台機器的路徑，新電腦上一定對不上，一定要用這個參數蓋掉，不然只會印警告然後跳過 GMAT 驗證。）
+   （`odc/config/defaults.py` 裡寫死的預設路徑是我這台機器的路徑，新電腦上一定對不上，一定要用這個參數蓋掉，不然只會印警告然後跳過 GMAT 驗證。）
 6. **建議先拿一個小情境跑一次 `--no-gmat` 版本，確認 Python 端能跑，再測 GMAT 那段**；情境可從 [SCENARIOS.md](docs/SCENARIOS.md) 選擇。
 
 ### B. 比賽當天，主辦單位準備的電腦
@@ -405,7 +405,7 @@ uv run python scripts/output_inventory.py restore-archive outputs/archive/sweep-
 
 ## ✅ 正式提交前
 
-規則附則：「所有結果以主辦單位驗證程式為準；若結果無法重現，主辦單位得取消其成績。」`main.py` 現在每次執行都會自動跑 GMAT 驗證，**正式提交前還是建議再手動確認一次**：本次目錄的 `run_history.jsonl` 那筆記錄裡：
+規則附則：「所有結果以主辦單位驗證程式為準；若結果無法重現，主辦單位得取消其成績。」`odc.py` 現在每次執行都會自動跑 GMAT 驗證，**正式提交前還是建議再手動確認一次**：本次目錄的 `run_history.jsonl` 那筆記錄裡：
 
 1. `gmat_verified.intercept_success`、`targeter_converged` 都是 `true`，且沒有任何一次燃燒超過 1500 m/s（一般版本，本次目錄的 `output.txt`，用來確認算出來的方案本身沒問題）。
 2. `fixed_script_verified.intercept_success`、`final_burn_legal` 都是 `true`（固定燃燒版本，本次目錄的 `output_submit.txt`，**這份才是建議繳交的檔案**，不含任何求解器，換電腦跑結果會更穩定）。

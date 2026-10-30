@@ -6,7 +6,7 @@
   * 機動間隔 < 100 s → 每次扣 10 分（不變，penalty_count 只剩這個）
 
 分五塊：
-  1. src.scorer：assess_legality（最終判定）/ ranked_search_score（搜尋失格層）/ calculate_score 不變
+  1. odc.scoring.scorer：assess_legality（最終判定）/ ranked_search_score（搜尋失格層）/ calculate_score 不變
   2. config_validator：MAX_TOTAL_DV_MPS 選填驗證、ranking_round.json 範本
   3. fast_fitness_evaluator：沒設總上限時跟舊 19 格 scalars 逐位元相同；設了才進失格層
 （失格層的數學保證與報告反例見 tests/test_ranking_penalty_v2.py）
@@ -27,12 +27,16 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from src.optimizer import (MissionOptimizer, fast_fitness_evaluator, reconstruct_mission_logs,
-                           is_disqualified, over_dv_count)
-from src.scorer import (calculate_score, assess_legality, ranked_search_score,
+from odc.search.optimizer import MissionOptimizer
+from odc.search.fitness import fast_fitness_evaluator
+from odc.search.replay import reconstruct_mission_logs
+from odc.search.ranking import is_disqualified, over_dv_count
+from odc.scoring.scorer import (calculate_score, assess_legality, ranked_search_score,
                         DV_LIMIT_TOL_MPS)
-from src.config_validator import validate_config, ConfigValidationError
-import main as app
+from odc.config.validator import validate_config, ConfigValidationError
+import odc.pipeline.legalize as ref_legalize
+import odc.pipeline.report as ref_report
+import odc.pipeline.solve as ref_solve
 
 FAILS = []
 
@@ -162,19 +166,19 @@ legal = {"score": 50.0, "miss_km": 0.1, "total_dv_mps": 2000.0, "T_team": 9000.0
          "disqualified": False, "over_dv_count": 0, "penalty_count": 0}
 dq = dict(legal, score=95.0, disqualified=True, over_dv_count=1)
 check("_final_rank_key：失格解分數再高也排在合法解後面",
-      app._final_rank_key(legal) < app._final_rank_key(dq))
+      ref_solve._final_rank_key(legal) < ref_solve._final_rank_key(dq))
 check("舊存檔（只有 penalty_count）相容：penalty_count>0 視為單棒超標失格",
       is_disqualified({"penalty_count": 1}) and over_dv_count({"penalty_count": 1}) == 1
       and not is_disqualified({"penalty_count": 0}))
 interval_only = dict(legal, penalty_count=1, x=X, num_burns=N)
 check("只有間隔違規（沒超標）→ 不進拆棒器",
-      app.legalize_violating_winner(BASE, None, None, interval_only, pre) is None)
+      ref_legalize.legalize_violating_winner(BASE, None, None, interval_only, pre) is None)
 
 warned = []
-with patch.object(app.log, "warning", side_effect=lambda msg, *a, **k: warned.append(msg)), \
-     patch.object(app.log, "info"):
-    app.print_score_breakdown(mi, pre)
-    app.print_score_breakdown(mc | {"total_dv_mps": mc["dv_mps"], "T_team": mc["t_team"]}, cap)
+with patch.object(ref_report.log, "warning", side_effect=lambda msg, *a, **k: warned.append(msg)), \
+     patch.object(ref_report.log, "info"):
+    ref_report.print_score_breakdown(mi, pre)
+    ref_report.print_score_breakdown(mc | {"total_dv_mps": mc["dv_mps"], "T_team": mc["t_team"]}, cap)
 check("分數拆解（失格解、含失格層）加總跟記錄的搜尋用分數一致", not warned)
 
 print()

@@ -6,7 +6,7 @@ Python 端在 J2–J4 下打靶到離 A 3.5 km（跟正式管線的瞄準方式�
 2. 同一方案但單棒上限 160 m/s：重瞄準後那棒約 164 m/s → 失格 → 保留原方案、不產繳交腳本。
 每個案例 3–4 個 GMAT 行程、串行執行（同時只有一個），合計約 20 秒。
 
-GmatConsole 的位置依序找：環境變數 GMAT_CONSOLE → configs/config.json 的
+GmatConsole 的位置依序找：環境變數 GMAT_CONSOLE → configs/local/config.json 的
 local.gmat_console_path → 開發機的預設安裝路徑。
 """
 import copy
@@ -19,10 +19,13 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-import main as app
-from src.pipeline_artifacts import save_mission
-from src.runlog import setup
-from src.scorer import calculate_score
+from odc.paths import default_config_path
+import odc.config.defaults as ref_defaults
+import odc.pipeline.stages as ref_stages
+import odc.search.optimizer as ref_optimizer
+from odc.pipeline.artifacts import save_mission
+from odc.runlog import setup
+from odc.scoring.scorer import calculate_score
 
 DEFAULT_CONSOLE = "/home/corn/software/GMAT/GMAT/R2026a/bin/GmatConsole"
 FAILS = []
@@ -37,7 +40,7 @@ def check(desc, ok):
 def find_console():
     cands = [os.environ.get("GMAT_CONSOLE")]
     try:
-        cfg = json.loads((ROOT / "configs" / "config.json").read_text(encoding="utf-8"))
+        cfg = json.loads((ROOT / default_config_path()).read_text(encoding="utf-8"))
         cands.append(cfg.get("local", {}).get("gmat_console_path"))
     except (OSError, ValueError):
         pass
@@ -47,12 +50,12 @@ def find_console():
 
 def make_mission(path, max_dv_mps):
     # 打靶數值由 J2–J4 的 propagate_dop853 + Lambert + Newton 求得（離 A 3.500 km）
-    cfg = copy.deepcopy(app.DEFAULT_CONFIG)
+    cfg = copy.deepcopy(ref_defaults.DEFAULT_CONFIG)
     cfg["orbit_A"] = {"SMA": 7100.0, "ECC": 0.0, "INC": 28.6, "RAAN": 0.0, "AOP": 0.0, "TA": 358.0}
     cfg["orbit_B"] = {"SMA": 7000.0, "ECC": 0.0005, "INC": 28.5, "RAAN": 0.0, "AOP": 0.0, "TA": 0.0}
     cfg["rules"].update(MAX_DV_MPS=max_dv_mps, MAX_TOTAL_DV_MPS=3000.0)
     cfg["strategy"]["GRAVITY_DEGREE"] = 4
-    o = app.MissionOptimizer(cfg)
+    o = ref_optimizer.MissionOptimizer(cfg)
     dv = 153.1487
     mi = {"x": [300.0, 0.0, 0.0, 0.0, 0.0], "num_burns": 1,
           "score": float(calculate_score(3.5, 3200.0, dv, 0, o.k_t, o.C_t, o.k_v, o.C_v)),
@@ -69,7 +72,7 @@ def run(console, root, name, max_dv_mps):
     src = root / f"{name}_src" / "mission.json"
     sha = make_mission(src, max_dv_mps)
     folder = root / name
-    app.main(["--from-mission", str(src), "--retarget-full-perturbation", "--gmat-console", console,
+    ref_stages.main(["--from-mission", str(src), "--retarget-full-perturbation", "--gmat-console", console,
               "--run-dir", str(folder), "-q"])
     setup()
     rec = json.loads((folder / "retarget.json").read_text(encoding="utf-8"))
@@ -80,7 +83,7 @@ def run(console, root, name, max_dv_mps):
 def main():
     console = find_console()
     if console is None:
-        print("SKIP：找不到 GmatConsole（設 GMAT_CONSOLE 或 configs/config.json 的 local.gmat_console_path）")
+        print("SKIP：找不到 GmatConsole（設 GMAT_CONSOLE 或 configs/local/config.json 的 local.gmat_console_path）")
         return 0
     print(f"=== 全攝動 B 平面重瞄準端到端（{console}）===")
     with tempfile.TemporaryDirectory(prefix="odc-retarget-e2e-") as d:

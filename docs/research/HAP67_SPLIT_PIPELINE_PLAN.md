@@ -27,7 +27,7 @@ split_even 的關鍵差別，也是為什麼 Stage 2 能獨立產出「可直接
 現行架構把「拆棒」放在**種子生成**階段，這是錯的位置，會系統性漏掉需要拆棒的解：
 
 1. **種子拆棒被 `num_burns` 綁死**：`_generate_planechange_split_seed_candidates` 裡
-   `n_final = num_burns - 1`（[optimizer.py:1085](../../src/optimizer.py)）——終端攔截最多只能拆成
+   `n_final = num_burns - 1`（[optimizer.py:1085](../../odc/search/optimizer.py)）——終端攔截最多只能拆成
    `(num_burns-1)` 段。contest.json 是 `MAX_BURNS=[1,2,3]`，終端 4691 m/s（3.1× 上限）要
    `ceil(4691/1500)=4` 段起跳、加 Earth-safe 需 ~6-7 棒，**根本超出搜尋會拜訪的棒數**。
    `split_even` 對 3 棒案例算出每段 2345 > 1500 → 回 `None` → pcsplit 一個種子都生不出來 →
@@ -102,7 +102,7 @@ split_even 的關鍵差別，也是為什麼 Stage 2 能獨立產出「可直接
 1. **棒數變動態** → 下游全要能吃事後才定的棒數：GMAT script 生成、分數拆解、規則§6 平手判定、報告。
 2. **Earth-safe 重驗兩次**：Stage 2 拆完、Stage 3 精修完，各跑一次 `fast_fitness_evaluator`
    （唯一抓得到撞地球，見 collision-check-verification-gap 記憶）。拆棒會製造中途近地點下潛。
-3. **可行性閘門**：進管線前用能量下限 `min_burns=ceil(floor/cap)`（[optimizer.py:1520](../../src/optimizer.py)
+3. **可行性閘門**：進管線前用能量下限 `min_burns=ceil(floor/cap)`（[optimizer.py:1520](../../odc/search/optimizer.py)
    已有雛形）先判有沒有合法解，免得白拆。
 
 ## 收尾

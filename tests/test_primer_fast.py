@@ -13,14 +13,17 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-import main as app
-import src.optimizer as om
-import sweep_params as sp
-from src.config_validator import ConfigValidationError, validate_config
+import odc.config.defaults as ref_defaults
+import odc.pipeline.primer_stage as ref_primer_stage
+import odc.search.optimizer as om
+import odc.search.fitness as ref_search_fitness
+import odc.search.revs as ref_search_revs
+import odc.tools.sweep_params as sp
+from odc.config.validator import ConfigValidationError, validate_config
 
 
 def config():
-    return copy.deepcopy(app.DEFAULT_CONFIG)
+    return copy.deepcopy(ref_defaults.DEFAULT_CONFIG)
 
 
 def mission(score=80, split_score=None, n=2, x=None):
@@ -79,11 +82,11 @@ class PrimerFastTests(unittest.TestCase):
                 expected["optimization"]["MAX_BURNS"] = [3]
                 opt = winner()
                 result = ([3], [4], mission(81, n=3), opt)
-                with patch.object(app, "_primer_diagnose_winner", return_value=PROFILE), \
-                     patch.object(app, "insert_node_seed", return_value=SEED), \
-                     patch.object(app, "MissionOptimizer", side_effect=AssertionError("local ran in full")), \
-                     patch.object(app, "run_study_over_revs", return_value=result) as run:
-                    actual = app.primer_guided_research(cfg, [1], [2], mission(), opt)
+                with patch.object(ref_primer_stage, "_primer_diagnose_winner", return_value=PROFILE), \
+                     patch.object(ref_primer_stage, "insert_node_seed", return_value=SEED), \
+                     patch.object(ref_primer_stage, "MissionOptimizer", side_effect=AssertionError("local ran in full")), \
+                     patch.object(ref_primer_stage, "run_study_over_revs", return_value=result) as run:
+                    actual = ref_primer_stage.primer_guided_research(cfg, [1], [2], mission(), opt)
                     self.assertEqual(actual[:2], result[:2])
                     self.assertIs(actual[2], result[2])
                     self.assertIs(actual[3], result[3])
@@ -112,12 +115,12 @@ class PrimerFastTests(unittest.TestCase):
         def make_local(c):
             local_configs.append(copy.deepcopy(c))
             return local_opt
-        with patch.object(app, "_primer_diagnose_winner", return_value=PROFILE), \
-             patch.object(app, "insert_node_seed", return_value=SEED), \
-             patch.object(app, "MissionOptimizer", side_effect=make_local), \
-             patch.object(app, "run_study_over_revs", return_value=global_result) as run, \
-             patch.object(app.log, "info") as info:
-            result = app.primer_guided_research(cfg, [1], [2], old, winner())
+        with patch.object(ref_primer_stage, "_primer_diagnose_winner", return_value=PROFILE), \
+             patch.object(ref_primer_stage, "insert_node_seed", return_value=SEED), \
+             patch.object(ref_primer_stage, "MissionOptimizer", side_effect=make_local), \
+             patch.object(ref_primer_stage, "run_study_over_revs", return_value=global_result) as run, \
+             patch.object(ref_primer_stage.log, "info") as info:
+            result = ref_primer_stage.primer_guided_research(cfg, [1], [2], old, winner())
         self.assertEqual(cfg, before)
         return result, run, local_opt, local_configs[0], info
 
@@ -163,10 +166,10 @@ class PrimerFastTests(unittest.TestCase):
         for disabled in (True, False):
             cfg = config()
             cfg["strategy"].update(PRIMER_RESEARCH_MODE="fast", PRIMER_GUIDED_RESEARCH=not disabled)
-            with patch.object(app, "_primer_diagnose_winner", return_value={
+            with patch.object(ref_primer_stage, "_primer_diagnose_winner", return_value={
                 "verdict": "optimal-ish", "max_peak": 1.0}), \
-                 patch.object(app, "run_study_over_revs") as run:
-                self.assertIsNone(app.primer_guided_research(cfg, [1], [2], mission(), winner()))
+                 patch.object(ref_primer_stage, "run_study_over_revs") as run:
+                self.assertIsNone(ref_primer_stage.primer_guided_research(cfg, [1], [2], mission(), winner()))
                 run.assert_not_called()
 
     def test_deadline_stops_real_mealpy_during_initialization_and_keeps_best(self):
@@ -182,7 +185,7 @@ class PrimerFastTests(unittest.TestCase):
             clock[0] += 1
             seen.append(np.array(x).copy())
             return -clock[0]
-        with patch.object(om, "time", SimpleNamespace(monotonic=lambda: clock[0])), \
+        with patch.object(om, "time", SimpleNamespace(monotonic=lambda: clock[0])), patch.object(ref_search_fitness, "time", SimpleNamespace(monotonic=lambda: clock[0])), \
              patch.object(om, "fast_fitness_evaluator", side_effect=objective), \
              patch.object(opt, "_generate_seed_candidates", side_effect=AssertionError("seed scan ran")):
             b, x, fitness, epochs, note = opt._optimize_burn_case(3, None, None)
@@ -214,7 +217,7 @@ class PrimerFastTests(unittest.TestCase):
             time.sleep(0.001)
             return float(x[0] ** 2 - 80)
         # Guard 時鐘保持在期限之前，讓 mealpy 的原生 max_time 獨立觸發。
-        with patch.object(om, "time", SimpleNamespace(monotonic=lambda: opt._primer_search_deadline - 0.1)), \
+        with patch.object(om, "time", SimpleNamespace(monotonic=lambda: opt._primer_search_deadline - 0.1)), patch.object(ref_search_fitness, "time", SimpleNamespace(monotonic=lambda: opt._primer_search_deadline - 0.1)), \
              patch.object(om, "fast_fitness_evaluator", side_effect=objective):
             _, x, fitness, epochs, _ = opt._optimize_burn_case(3, None, None)
         self.assertIsNotNone(x)
@@ -233,9 +236,9 @@ class PrimerFastTests(unittest.TestCase):
                                    REVS_ENSEMBLE=False)
             cfg["optimization"]["SEED"] = None
             opt = SimpleNamespace(run_study=lambda: ([1], [2], mission()))
-            with patch.object(om, "MissionOptimizer", return_value=opt), \
-                 patch.object(om, "time", SimpleNamespace(monotonic=lambda: 10.)):
-                om.run_study_over_revs(cfg, external_seeds=ext)
+            with patch.object(ref_search_revs, "MissionOptimizer", return_value=opt), \
+                 patch.object(ref_search_revs, "time", SimpleNamespace(monotonic=lambda: 10.)):
+                ref_search_revs.run_study_over_revs(cfg, external_seeds=ext)
             self.assertEqual(getattr(opt, "_primer_fast_research", False), active)
             self.assertEqual(getattr(opt, "_primer_search_deadline", None), 310. if active and wall else None)
 

@@ -9,23 +9,11 @@ wheels/
 # Virtual environments
 .venv
 
-# Keep machine-specific and ad hoc configs local. Only reviewed shared scenarios
-# below are tracked; do not add local.gmat_console_path to these files.
+# 本機設定與臨時情境留在 configs/local/，不進版控。
+# configs/shared/ 的所有共用情境皆納入版控，不放本機 GMAT 路徑。
 configs/*
 !configs/shared/
-configs/shared/*
-!configs/shared/contest.json
-!configs/shared/official_sample.json
-!configs/shared/hyper_far.json
-!configs/shared/weird_test.json
-!configs/shared/hard_mode_test.json
-!configs/shared/hyperbolic_smoke.json
-!configs/shared/hyperbolic_test.json
-!configs/shared/playground.json
-!configs/shared/ranking_round.json
-!configs/shared/e1_r4.json
-!configs/shared/e1_r5.json
-!configs/shared/e1_r8.json
+!configs/shared/**
 
 outputs/*
 

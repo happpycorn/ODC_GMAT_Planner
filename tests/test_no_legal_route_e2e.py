@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory() as td:
     cfg_path = Path(td) / "cfg.json"
     cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
     run_dir = Path(td) / "run"
-    proc = subprocess.run([sys.executable, "main.py", "--config", str(cfg_path), "--run-dir", str(run_dir),
+    proc = subprocess.run([sys.executable, "odc.py", "solve", str(cfg_path), "--run-dir", str(run_dir),
                            "--stop-after", "solve"],
                           cwd=ROOT, capture_output=True, text=True, timeout=600)
     out = proc.stdout + proc.stderr

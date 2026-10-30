@@ -34,8 +34,8 @@ if [[ ! "$slots" =~ ^[1-9][0-9]*$ ]]; then
 fi
 if [[ "$out_root" != /* ]]; then out_root="$PWD/$out_root"; fi
 
-fast=(uv run python sweep_params.py sweeps/budget_v1.json --slots "$slots" --out "$out_root/budget_v1")
-slow=(uv run python sweep_params.py sweeps/budget_v1_slow.json --slots "$slots" --no-warmup --out "$out_root/budget_v1_slow")
+fast=(uv run python odc.py sweep sweeps/budget_v1.json --slots "$slots" --out "$out_root/budget_v1")
+slow=(uv run python odc.py sweep sweeps/budget_v1_slow.json --slots "$slots" --no-warmup --out "$out_root/budget_v1_slow")
 if "$dry_run"; then
   printf '%q ' "${fast[@]}"; printf '\n'
   printf '%q ' "${slow[@]}"; printf '\n'

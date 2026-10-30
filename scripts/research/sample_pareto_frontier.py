@@ -28,7 +28,8 @@ sys.path.insert(0, REPO_ROOT)
 
 import warnings
 warnings.filterwarnings("ignore")
-from src.optimizer import MissionOptimizer, effective_burns
+from odc.search.optimizer import MissionOptimizer
+from odc.search.fitness import effective_burns
 
 BASE = json.load(open(os.path.join(REPO_ROOT, "configs", "official_sample.json")))
 REF_DV, REF_T = 2241.427, 3211.737          # 官方參考解

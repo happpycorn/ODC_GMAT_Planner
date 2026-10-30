@@ -16,6 +16,8 @@
 
 | 文件 | 用途 |
 |---|---|
+| [ARCHITECTURE](ARCHITECTURE.md) | 套件配置、solve 呼叫順序與存檔版本規則 |
+| [CLI](CLI.md) | 單一入口的子命令、使用範例與舊指令對照 |
 | [METHODOLOGY](METHODOLOGY.md) | 物理模型、搜尋、計分與 GMAT 驗證的設計原理 |
 | [SCENARIOS](SCENARIOS.md) | 情境參數與測試目的；版控中的共用情境見 [configs/shared/](../configs/shared/) |
 | [solutions/README](solutions/README.md) | 初賽解、正式繳交資料與可重播的拆棒前存檔 |

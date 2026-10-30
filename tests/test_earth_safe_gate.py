@@ -14,14 +14,17 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-import main as app
-from src.burn_splitter import _osc_perigee, _arc_min_radius, _simulate_free, _simulate_free_reuse
-from src.core_math import (fast_norm, reaches_perigee, propagate_dop853,
+import odc.config.defaults as ref_defaults
+import odc.gmat.verification as ref_verification
+import odc.pipeline.stages as ref_stages
+from odc.split.burn_splitter import _osc_perigee, _arc_min_radius, _simulate_free, _simulate_free_reuse
+from odc.physics.core_math import (fast_norm, reaches_perigee, propagate_dop853,
                            initial_wait_min_radius, arc_radius_from_end)
-from src.earth_gate import analyze_radius_report, MIN_PERIAPSIS
-from src.optimizer import MissionOptimizer, fast_fitness_evaluator
-from src.script_generator import script_generator
-from src.scorer import calculate_score
+from odc.physics.earth_gate import analyze_radius_report, MIN_PERIAPSIS
+from odc.search.optimizer import MissionOptimizer
+from odc.search.fitness import fast_fitness_evaluator
+from odc.gmat.script_generator import script_generator
+from odc.scoring.scorer import calculate_score
 
 MU, RE = 398600.4418, 6378.137
 
@@ -35,7 +38,7 @@ def conic(rp, e, nu):
 
 class EarthGateTests(unittest.TestCase):
     def test_fixed_submission_uses_gmat_radius_after_dc_correction(self):
-        cfg = copy.deepcopy(app.DEFAULT_CONFIG)
+        cfg = copy.deepcopy(ref_defaults.DEFAULT_CONFIG)
         cfg["strategy"]["GRAVITY_DEGREE"] = 0
         opt = MissionOptimizer(cfg)
         mi = {"x": [100., .2, 0., 0., 0.], "num_burns": 1,
@@ -56,16 +59,16 @@ class EarthGateTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "The Targeter converged!", "")
 
             manifest = {"timings_sec": {}}
-            with patch.object(app.subprocess, "run", side_effect=fake), self.assertLogs("odc", level="INFO") as logs:
-                app.run_output_stage(cfg, [(0.1, 0., 0.)], [100., 1000.], mi, opt,
-                    args=app.parse_args([]), run_dir=folder, gmat_console_path=sys.executable, manifest=manifest)
+            with patch.object(ref_verification.subprocess, "run", side_effect=fake), self.assertLogs("odc", level="INFO") as logs:
+                ref_stages.run_output_stage(cfg, [(0.1, 0., 0.)], [100., 1000.], mi, opt,
+                    args=ref_stages.parse_args([]), run_dir=folder, gmat_console_path=sys.executable, manifest=manifest)
             self.assertTrue(manifest["verification"]["dc"]["earth_safe"])
             self.assertFalse(manifest["verification"]["fixed"]["checks_passed"])
             self.assertIn("BurnB0.Element1 = 0.0900000;", (folder/"output_submit.txt").read_text())
             self.assertTrue(any("不可繳交" in message for message in logs.output))
             self.assertFalse(any("可以直接繳交" in message for message in logs.output))
 
-    @unittest.skipUnless(Path(app.GMAT_CONSOLE_DEFAULT).is_file() and
+    @unittest.skipUnless(Path(ref_defaults.GMAT_CONSOLE_DEFAULT).is_file() and
                          (ROOT/"outputs/runs/macbench-rt/output_submit.txt").is_file(),
                          "需要本機 GMAT 與 macbench-rt 提交腳本")
     def test_real_gmat_verify_script(self):
@@ -73,8 +76,8 @@ class EarthGateTests(unittest.TestCase):
         before = source.read_bytes()
         with tempfile.TemporaryDirectory(prefix="odc-earth-gmat-") as tmp:
             folder = Path(tmp)/"run"
-            proc = subprocess.run([sys.executable, str(ROOT/"main.py"), "--verify-script", str(source),
-                "--gmat-console", app.GMAT_CONSOLE_DEFAULT, "--run-dir", str(folder)],
+            proc = subprocess.run([sys.executable, str(ROOT/"odc.py"), "verify", str(source),
+                "--gmat-console", ref_defaults.GMAT_CONSOLE_DEFAULT, "--run-dir", str(folder)],
                 cwd=ROOT, capture_output=True, text=True, timeout=150.)
             self.assertEqual(proc.returncode, 0, proc.stdout+proc.stderr)
             evidence = json.loads((folder/"gmat/verification.json").read_text())
@@ -131,7 +134,7 @@ class EarthGateTests(unittest.TestCase):
                                      np.float64(expected).tobytes())
 
     def test_wait_arc_search_replay_and_splitter(self):
-        cfg = copy.deepcopy(app.DEFAULT_CONFIG)
+        cfg = copy.deepcopy(ref_defaults.DEFAULT_CONFIG)
         cfg["strategy"].update(GRAVITY_DEGREE=0, LAMBERT_MAX_REVS=0)
         cfg["orbit_B"].update(SMA=7400., ECC=1000./7400., TA=180.)  # rp=6400, ra=8400
         cfg["rules"]["MAX_TOTAL_DV_MPS"] = 3000.
@@ -167,7 +170,7 @@ class EarthGateTests(unittest.TestCase):
     def test_verification_gate_preserves_source_and_checks_exact_cutoff(self):
         with tempfile.TemporaryDirectory(prefix="odc-earth-") as tmp:
             root = Path(tmp)
-            cfg = app.DEFAULT_CONFIG
+            cfg = ref_defaults.DEFAULT_CONFIG
             a, b = cfg["orbit_A"], cfg["orbit_B"]
             script = Path(script_generator(*a.values(), *b.values(), [(0., 0., 0.)], [0., 60.],
                 [9000., 0., 0.], final_burn_fixed_vnb=(0., 0., 0.), output_dir=root))
@@ -183,8 +186,8 @@ class EarthGateTests(unittest.TestCase):
                                         "60 7000 0 0 66.66666666666667 0 0\n")
                 return subprocess.CompletedProcess(command, 0, "", "")
 
-            with patch.object(app.subprocess, "run", side_effect=fake):
-                result = app.run_gmat_verification(sys.executable, script, artifacts_dir=root/"verify")
+            with patch.object(ref_verification.subprocess, "run", side_effect=fake):
+                result = ref_verification.run_gmat_verification(sys.executable, script, artifacts_dir=root/"verify")
             self.assertTrue(result["intercept_success"])
             self.assertFalse(result["checks_passed"])
             self.assertAlmostEqual(result["min_radius_before_intercept_km"], 6000.)
@@ -203,10 +206,10 @@ class EarthGateTests(unittest.TestCase):
                 radius.write_text(f"0 {r} 0 0 0 0 0\n60 {r} 0 0 0 0 0\n")
                 self.assertEqual(analyze_radius_report(radius, 60.)["earth_safe"], safe)
             radius.unlink()
-            with patch.object(app, "_run_gmat_verification", return_value={
+            with patch.object(ref_verification, "_run_gmat_verification", return_value={
                 "t_team_sec":60., "intercept_success":True, "final_burn_legal":True,
                 "targeter_converged":True}):
-                missing = app.run_gmat_verification(sys.executable, script, artifacts_dir=root/"missing")
+                missing = ref_verification.run_gmat_verification(sys.executable, script, artifacts_dir=root/"missing")
             self.assertFalse(missing["checks_passed"])
 
 

@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, REPO)
 import warnings; warnings.filterwarnings("ignore")
-from src.optimizer import MissionOptimizer
+from odc.search.optimizer import MissionOptimizer
 
 H = int(sys.argv[1]) if len(sys.argv) > 1 else 20
 d = np.load(os.path.join(REPO, "outputs", "research", "porkchop_h%d.npz" % H))

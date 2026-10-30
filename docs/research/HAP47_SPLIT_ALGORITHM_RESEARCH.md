@@ -28,19 +28,19 @@ PoC 補上了答案：是前者，HAP-47 建議降級。**
 ## 1. 現況基準：`split_even` + 錨點窮舉
 
 拆分邏輯在 `_generate_planechange_split_seed_candidates`
-（[optimizer.py:1000-1172](../../src/optimizer.py#L1000)），跟 `_generate_multiburn_seed_candidates`
+（[optimizer.py:1000-1172](../../odc/search/seeds.py#L205)），跟 `_generate_multiburn_seed_candidates`
 （relay）、`_generate_ladder_seed_candidates`（ladder）三個種子家族在
-[optimizer.py:581](../../src/optimizer.py#L581) 直接相加、不截斷、不互斥（[optimizer.py:582-587](../../src/optimizer.py#L582)
+[optimizer.py:581](../../odc/search/optimizer.py#L123) 直接相加、不截斷、不互斥（[optimizer.py:582-587](../../odc/search/optimizer.py#L124)
 的註解特別警告過：早期版本誤截斷過，把 ladder 種子整批丟掉）。
 
 機制拆成兩段，**兩段之間沒有共同優化**：
 
 1. **錨點（第一棒，抬高+換面）**：對每個 `t_wait ∈ {0, 0.05×Ta}`，在 B 的 VNB 標架下窮舉
    `cv∈{0.5,1.0}, cn∈{-1,-0.5,0.5,1.0}, cb∈{-1,0,1}` 三個係數的組合，燒滿 `MAX_DV_SOFT`
-   上限（[optimizer.py:1094-1122](../../src/optimizer.py#L1094)），排除逃逸軌道，滑到
+   上限（[optimizer.py:1094-1122](../../odc/search/seeds.py#L299)），排除逃逸軌道，滑到
    `coast_mult∈{0.5,0.75}` 比例的新週期附近（約等於遠地點）。全部寫死在函式內，沒有獨立
    config 開關。
-2. **收尾（剩下 `num_burns-1` 棒）**：`split_even()`（[optimizer.py:1062-1089](../../src/optimizer.py#L1062)）
+2. **收尾（剩下 `num_burns-1` 棒）**：`split_even()`（[optimizer.py:1062-1089](../../odc/search/seeds.py#L267)）
    逐段貪婪——每步重解一次 Lambert 瞄準最終目標，把「當下需求 Δv ÷ 剩餘段數」當這一步的
    量，平均分給剩下的段數。段數本身不是搜出來的，就是 `num_burns-1`，`num_burns` 由外層
    `config["optimization"]["MAX_BURNS"]` 陣列決定。
@@ -85,9 +85,9 @@ trust-constr（或 SOCP 若能凸化）求解。
 
 **跟本題約束的契合度**：這是唯一一個能**原生**、直接吃下本題全部約束的方向——不用像 (a)
 那樣繞道近似。而且可以直接重用既有工具，不用重寫底層力學：
-- Lambert 重解：`lam_best`（[optimizer.py:1044-1060](../../src/optimizer.py#L1044)，目前是
+- Lambert 重解：`lam_best`（[optimizer.py:1044-1060](../../odc/search/seeds.py#L249)，目前是
   `_generate_planechange_split_seed_candidates` 內的閉包，建議抽成獨立函式）。
-- 合規檢查：`arc_safe`（[optimizer.py:1037-1042](../../src/optimizer.py#L1037)）→
+- 合規檢查：`arc_safe`（[optimizer.py:1037-1042](../../odc/search/seeds.py#L242)）→
   `check_constraints`/`reaches_perigee`（`core_math.py`），跟 `fast_fitness_evaluator`
   用**同一套**判定，天生保證不是撞地球的假解（見 memory
   `odc-collision-check-verification-gap`——這個一致性是現行架構的硬要求，新拆分器也必須
@@ -196,8 +196,8 @@ w3·(棒數懲罰)」取代現行 `calculate_score` 裡單純看 Δv 的部分�
 `mission_metrics`/`reconstruct_mission_logs`，不在第二個地方重寫物理邏輯。
 
 實際函式：`_generate_nlp_refined_seed_candidates(self, num_burns, n_seeds, base_candidates)`
-（[optimizer.py:1191](../../src/optimizer.py#L1191)），接在
-[optimizer.py:581](../../src/optimizer.py#L581) 附近：
+（[optimizer.py:1191](../../odc/search/seeds.py#L396)），接在
+[optimizer.py:581](../../odc/search/optimizer.py#L123) 附近：
 
 ```python
 nlp_refined = self._generate_nlp_refined_seed_candidates(
@@ -226,13 +226,13 @@ return relay + ladder + pcsplit + nlp_refined
 - **回傳格式**：跟現行三家族一致，`list[np.ndarray]`，每個元素長度 =
   `decision_variable_dims(num_burns)`，球座標編碼
   `[t_wait, (r,θ,φ,coast_frac)×(num_burns-1), final_leg_frac, offset_r, offset_θ, offset_φ]`
-  （[optimizer.py:496-500](../../src/optimizer.py#L496)）——不用碰 L-SHADE 主流程或 bounds 生成。
+  （[optimizer.py:496-500](../../odc/search/optimizer.py#L38)）——不用碰 L-SHADE 主流程或 bounds 生成。
 - **建議抽成獨立函式重用**（目前是內嵌閉包，抽出來才能被新拆分器 import）：
-  - `lam_best`（[optimizer.py:1044-1060](../../src/optimizer.py#L1044)）
-  - `arc_safe`（[optimizer.py:1037-1042](../../src/optimizer.py#L1037)）——§2(f) 提到，這裡建議
+  - `lam_best`（[optimizer.py:1044-1060](../../odc/search/seeds.py#L249)）
+  - `arc_safe`（[optimizer.py:1037-1042](../../odc/search/seeds.py#L242)）——§2(f) 提到，這裡建議
     改成接受一個判定函式參數，而不是寫死呼叫 `reaches_perigee`/`check_constraints`，方便
     HAP-20 修完後直接替換成數值判定，NLP 框架不用重寫。
-  - `_direction_to_spherical`（[optimizer.py:850-859](../../src/optimizer.py#L850)）
+  - `_direction_to_spherical`（[optimizer.py:850-859](../../odc/search/seeds.py#L55)）
   - `check_constraints`/`reaches_perigee`（`core_math.py`）
   - `calculate_score`（`scorer.py`）
 

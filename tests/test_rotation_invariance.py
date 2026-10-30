@@ -43,8 +43,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import warnings
 warnings.filterwarnings("ignore")
 
-from src.optimizer import MissionOptimizer, decision_variable_dims
-from src.propagator import get_r0_v0
+from odc.search.optimizer import MissionOptimizer
+from odc.search.fitness import decision_variable_dims
+from odc.physics.propagator import get_r0_v0
 
 FAILS = []
 

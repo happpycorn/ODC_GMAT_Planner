@@ -1,7 +1,7 @@
 """
 HAP-47 PoC：split_even 貪婪拆分是不是已經到局部頂了？
 
-背景見 HAP47_SPLIT_ALGORITHM_RESEARCH.md 第 0/4 節。這支腳本**不改動 src/ 任何檔案**，
+背景見 HAP47_SPLIT_ALGORITHM_RESEARCH.md 第 0/4 節。這支腳本**不改動 odc/ 任何檔案**，
 只 import 既有工具函式（傳播器、近地點判定、計分函式），拿 `outputs/best_98.31_split5_rebalanced/`
 現有五棒解當 warm start，換一種決策變數表示法——不是現行 `split_even()` 的「先固定球座標方向、
 平均分配大小」，而是把「每段滑行時間 + 每棒 ECI Δv 三分量」共 21 個自由度一次丟給
@@ -30,10 +30,10 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__f
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from src.propagator import get_r0_v0, propagate, J2_VAL, J3_VAL, J4_VAL  # noqa: E402
-from src.core_math import fast_norm, fast_cross, reaches_perigee, ephem_state  # noqa: E402
-from src.scorer import calculate_score  # noqa: E402
-from src.optimizer import MissionOptimizer  # noqa: E402
+from odc.physics.propagator import get_r0_v0, propagate, J2_VAL, J3_VAL, J4_VAL  # noqa: E402
+from odc.physics.core_math import fast_norm, fast_cross, reaches_perigee, ephem_state  # noqa: E402
+from odc.scoring.scorer import calculate_score  # noqa: E402
+from odc.search.optimizer import MissionOptimizer  # noqa: E402
 
 # ----------------------------------------------------------------------------
 # 常數：全部照抄 optimizer.py 的內部安全邊界（不是規則原始值），確保跟
