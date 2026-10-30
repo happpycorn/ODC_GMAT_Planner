@@ -1,0 +1,593 @@
+{
+  "config_path": "/private/tmp/claude-501/-Users-corn-Documents-Program-ODC-Program--claude-worktrees-oracle-phase2-20f0b0/ea66b960-b6fd-4d2d-8ad1-09f07dd43a93/scratchpad/guard/smoke_D.json",
+  "config": {
+    "_comment_scenario": "Qualifier-format smoke test: A is a HYPERBOLIC flyby (ECC>1, SMA<0), which is the orbit type the ranking round uses. A enters at 96,215 km (TA=-130deg), passes periapsis at 10,000 km around t=19,974s, and exits symmetrically - so T_MAX_SEC=40,000 brackets the whole flyby. Probe results (scripts/research/probe_hyperbolic_A.py): propagation matches the farnocchia analytic solution to 0.002 m, Lambert converges on 3200/3200 grid points, energy floor 637.0 m/s, minimum single-burn 1257.2 m/s (under the 1500 cap, so one burn suffices). This is NOT a difficulty test - the point is that the qualifier code path had never been run end to end.",
+    "_comment_tmax": "T_MAX_SEC is INVENTED. The organizers have not announced how T_max is defined for the hyperbolic ranking round (the T_max = multiple x period formula has no meaning without a period). This file proves the code path works; it says nothing about whether the number is right. Replace it when the rules are published.",
+    "_comment_scoring": "k_t/C_t/k_v/C_v chosen so both terms actually move across the plausible range, per the lesson from lateral_burn_test. Fuel: 1257 m/s -> ~15.5 pts, 3000 m/s -> ~1.2 pts. Time: 10,000s -> ~20.4 pts, 35,000s -> ~6.7 pts. Sanity-check this whenever T_max changes.",
+    "orbit_A": {
+      "SMA": -50000.0,
+      "ECC": 1.2,
+      "INC": 30.0,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 230.0
+    },
+    "orbit_B": {
+      "SMA": 7000.0,
+      "ECC": 0.001,
+      "INC": 0.0,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 0.0
+    },
+    "rules": {
+      "MAX_DV_MPS": 250.0,
+      "MIN_MANEUVER_INTERVAL_SEC": 100.0,
+      "T_MAX_SEC": 40000.0,
+      "k_t": 0.0001,
+      "C_t": 25000.0,
+      "k_v": 0.002,
+      "C_v": 1500.0,
+      "MAX_TOTAL_DV_MPS": 3000.0
+    },
+    "strategy": {
+      "GRAVITY_DEGREE": 4,
+      "MISS_TOLERANCE_KM": 5.0,
+      "SPLIT_FAST_FD": true,
+      "SPLIT_WORKERS": 3,
+      "SPLIT_MULTISTART": [
+        0,
+        0.75,
+        1
+      ],
+      "SPLIT_PRUNE_REOPT_MPS": 1.0,
+      "SPLIT_WALL_BUDGET_SEC": 600,
+      "SPLIT_JACOBIAN": "stm",
+      "SPLIT_LEADING": true,
+      "SPLIT_AWARE_SEARCH": true,
+      "SPLIT_AWARE_MAX_FACTOR": 5,
+      "ORACLE_TWOBURN_SEED_DE": true
+    },
+    "optimization": {
+      "MAX_BURNS": [
+        1,
+        2
+      ],
+      "MAXITER": 600,
+      "POPSIZE": 20,
+      "NUM_THREADS": 5,
+      "MAX_EARLY_STOP": 40,
+      "TOL": 0.02,
+      "SEED": 0
+    }
+  },
+  "cases": {
+    "1": {
+      "x": [
+        13630.733632443158,
+        0.2374455882765095,
+        3.49999999999604,
+        1.1904642633270828,
+        2.8712849245711305
+      ],
+      "fitness": -85.24850442654278,
+      "epochs": 600,
+      "note": "\uff0c\u55ae\u57f7\u884c\u7dd2 (seed \u5df2\u8a2d\u5b9a)\uff0c1 \u500b\u7a2e\u5b50\u5df2\u7368\u7acb\u7cbe\u4fee",
+      "metrics": {
+        "score": 75.21555241221554,
+        "score_split_est": 85.21555241221554,
+        "split_terminal_count": 1,
+        "split_leading_count": 0,
+        "miss_km": 3.499700531231547,
+        "dv_mps": 851.2408004255292,
+        "t_team": 19968.255038680018,
+        "penalty_count": 0,
+        "over_dv_count": 1,
+        "total_dv_over": false,
+        "disqualified": true,
+        "dq_reasons": [
+          "1 \u68d2\u8d85\u904e\u55ae\u68d2\u4e0a\u9650 250 m/s\uff08\u6700\u5927 851.241 m/s\uff09"
+        ],
+        "official_score": null,
+        "dc_converged": true,
+        "earth_safe": true,
+        "min_arc_radius_km": 6988.058667704294
+      },
+      "replay": {
+        "x": [
+          13630.733632443158,
+          0.2374455882765095,
+          3.49999999999604,
+          1.1904642633270828,
+          2.8712849245711305
+        ],
+        "num_burns": 1,
+        "score": 75.21555241221554,
+        "miss_km": 3.499700531231547,
+        "total_dv_mps": 851.2408004255292,
+        "T_team": 19968.255038680018,
+        "score_split_est": 85.21555241221554,
+        "split_terminal_count": 1,
+        "split_leading_count": 0,
+        "penalty_count": 0,
+        "over_dv_count": 1,
+        "total_dv_over": false,
+        "disqualified": true,
+        "dq_reasons": [
+          "1 \u68d2\u8d85\u904e\u55ae\u68d2\u4e0a\u9650 250 m/s\uff08\u6700\u5927 851.241 m/s\uff09"
+        ],
+        "official_score": null,
+        "dc_converged": true,
+        "aim_point": [
+          9995.9862146575,
+          -41.97842196032238,
+          -21.31362904935389
+        ],
+        "final_burn_dv_mps": 851.2408004255292,
+        "earth_safe": true,
+        "min_arc_radius_km": 6988.058667704294,
+        "report_text": "\n\u2500\u2500 \u4efb\u52d9\u898f\u5283 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u7b49\u5f85 13,630.7s \u5f8c\u958b\u59cb\uff0c\u6700\u5f8c\u4e00\u68d2 Lambert \u8d70\u9806\u5411 (prograde)\n  [Final Burn] t=    13,630.7s   \u0394v=   851.2 m/s  \ud83d\udd34 \u8d85\u904e 250 m/s \u4e0a\u9650\uff08\u5931\u683c\uff09\n\n\u2500\u2500 Python \u9810\u6e2c (J2+J3+J4\uff0c\u4e0d\u7528\u958b GMAT) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u0394r_min          3,499.7 m   (\u9580\u6abb 5,000 m)\n  \u0394V_team           851.2 m/s   (\u4e0a\u9650 3,000 m/s)\n  T_team         19,968.3 s\n  \u9593\u9694\u9055\u898f              0\n  Score            \ud83d\udd34 \u5931\u683c   \u2014\u20141 \u68d2\u8d85\u904e\u55ae\u68d2\u4e0a\u9650 250 m/s\uff08\u6700\u5927 851.241 m/s\uff09\n             (\u641c\u5c0b\u7528\u5206\u6578 75.22\uff0c\u53ea\u4ee3\u8868\u8def\u7dda\u503c\u5f97\u62c6\u68d2\uff0c\u4e0d\u662f\u4ea4\u4ef6\u5206\u6578)\n  \u62c6\u5f8c\u4f30\u8a08          85.22 / 100   (\u7d42\u7aef\u68d2\u53ef\u62c6\uff0c\u641c\u5c0b/\u6311\u8d0f\u5bb6\u7528\u9019\u500b)\n  Earth-safe    \u2705   (\u5168\u7a0b\u6700\u4f4e\u9ad8\u5ea6        610 km,\u9580\u6abb 100 km)\n  \ud83d\udd34 \u6700\u5927\u55ae\u68d2\u8d85\u6a19 3 \u500d\u4e0a\u9650\uff08851 vs \u4e0a\u9650 250 m/s\uff09\u2014\u2014\u5be6\u52d9\u4e0a\u4ea4\u4e0d\u51fa\u53bb(DC \u6536\u6582\u4e0d\u5230)\uff0c\u901a\u5e38\u4ee3\u8868 T_max \u5167\u7121\u5408\u6cd5\u89e3\uff0c\u898b feasibility.py\u3002"
+      },
+      "refined": {
+        "x": [
+          13630.733632443158,
+          0.2374455882765095,
+          3.49999999999604,
+          1.1904642633270828,
+          2.8712849245711305
+        ],
+        "num_burns": 1,
+        "score": 75.21555241221554,
+        "miss_km": 3.499700531231547,
+        "total_dv_mps": 851.2408004255292,
+        "T_team": 19968.255038680018,
+        "score_split_est": 85.21555241221554,
+        "split_terminal_count": 1,
+        "split_leading_count": 0,
+        "penalty_count": 0,
+        "over_dv_count": 1,
+        "total_dv_over": false,
+        "disqualified": true,
+        "dq_reasons": [
+          "1 \u68d2\u8d85\u904e\u55ae\u68d2\u4e0a\u9650 250 m/s\uff08\u6700\u5927 851.241 m/s\uff09"
+        ],
+        "official_score": null,
+        "dc_converged": true,
+        "aim_point": [
+          9995.9862146575,
+          -41.97842196032238,
+          -21.31362904935389
+        ],
+        "final_burn_dv_mps": 851.2408004255292,
+        "earth_safe": true,
+        "min_arc_radius_km": 6988.058667704294,
+        "report_text": "\n\u2500\u2500 \u4efb\u52d9\u898f\u5283 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u7b49\u5f85 13,630.7s \u5f8c\u958b\u59cb\uff0c\u6700\u5f8c\u4e00\u68d2 Lambert \u8d70\u9806\u5411 (prograde)\n  [Final Burn] t=    13,630.7s   \u0394v=   851.2 m/s  \ud83d\udd34 \u8d85\u904e 250 m/s \u4e0a\u9650\uff08\u5931\u683c\uff09\n\n\u2500\u2500 Python \u9810\u6e2c (J2+J3+J4\uff0c\u4e0d\u7528\u958b GMAT) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u0394r_min          3,499.7 m   (\u9580\u6abb 5,000 m)\n  \u0394V_team           851.2 m/s   (\u4e0a\u9650 3,000 m/s)\n  T_team         19,968.3 s\n  \u9593\u9694\u9055\u898f              0\n  Score            \ud83d\udd34 \u5931\u683c   \u2014\u20141 \u68d2\u8d85\u904e\u55ae\u68d2\u4e0a\u9650 250 m/s\uff08\u6700\u5927 851.241 m/s\uff09\n             (\u641c\u5c0b\u7528\u5206\u6578 75.22\uff0c\u53ea\u4ee3\u8868\u8def\u7dda\u503c\u5f97\u62c6\u68d2\uff0c\u4e0d\u662f\u4ea4\u4ef6\u5206\u6578)\n  \u62c6\u5f8c\u4f30\u8a08          85.22 / 100   (\u7d42\u7aef\u68d2\u53ef\u62c6\uff0c\u641c\u5c0b/\u6311\u8d0f\u5bb6\u7528\u9019\u500b)\n  Earth-safe    \u2705   (\u5168\u7a0b\u6700\u4f4e\u9ad8\u5ea6        610 km,\u9580\u6abb 100 km)\n  \ud83d\udd34 \u6700\u5927\u55ae\u68d2\u8d85\u6a19 3 \u500d\u4e0a\u9650\uff08851 vs \u4e0a\u9650 250 m/s\uff09\u2014\u2014\u5be6\u52d9\u4e0a\u4ea4\u4e0d\u51fa\u53bb(DC \u6536\u6582\u4e0d\u5230)\uff0c\u901a\u5e38\u4ee3\u8868 T_max \u5167\u7121\u5408\u6cd5\u89e3\uff0c\u898b feasibility.py\u3002"
+      },
+      "refined_fitness": -85.24850442654278,
+      "refined_metrics": {
+        "score": 75.21555241221554,
+        "score_split_est": 85.21555241221554,
+        "split_terminal_count": 1,
+        "split_leading_count": 0,
+        "miss_km": 3.499700531231547,
+        "dv_mps": 851.2408004255292,
+        "t_team": 19968.255038680018,
+        "penalty_count": 0,
+        "over_dv_count": 1,
+        "total_dv_over": false,
+        "disqualified": true,
+        "dq_reasons": [
+          "1 \u68d2\u8d85\u904e\u55ae\u68d2\u4e0a\u9650 250 m/s\uff08\u6700\u5927 851.241 m/s\uff09"
+        ],
+        "official_score": null,
+        "dc_converged": true,
+        "earth_safe": true,
+        "min_arc_radius_km": 6988.058667704294
+      }
+    },
+    "2": {
+      "x": [
+        8693.584682769946,
+        0.4958801999387284,
+        1.5733456705567375,
+        4.681095856489094,
+        0.22975996830362078,
+        0.16142401266701517,
+        1.2965758610793117,
+        0.0,
+        2.8867034639250395
+      ],
+      "fitness": -86.74365188042137,
+      "epochs": 600,
+      "note": "\uff0c\u55ae\u57f7\u884c\u7dd2 (seed \u5df2\u8a2d\u5b9a)\uff0c12 \u500b\u7a2e\u5b50\u5df2\u7368\u7acb\u7cbe\u4fee",
+      "metrics": {
+        "score": -18.618407059091858,
+        "score_split_est": -18.620297540050963,
+        "split_terminal_count": 0,
+        "split_leading_count": 1,
+        "miss_km": 1.2866507191499508,
+        "dv_mps": 6602.951063295094,
+        "t_team": 19908.217189374336,
+        "penalty_count": 0,
+        "over_dv_count": 2,
+        "total_dv_over": true,
+        "disqualified": true,
+        "dq_reasons": [
+          "2 \u68d2\u8d85\u904e\u55ae\u68d2\u4e0a\u9650 250 m/s\uff08\u6700\u5927 6,107.071 m/s\uff09",
+          "\u7e3d \u0394v 6,602.951 m/s \u8d85\u904e\u4e0a\u9650 3,000 m/s"
+        ],
+        "official_score": null,
+        "dc_converged": true,
+        "earth_safe": true,
+        "min_arc_radius_km": 6988.058667704294
+      },
+      "replay": {
+        "x": [
+          8693.584682769946,
+          0.4958801999387284,
+          1.5733456705567375,
+          4.681095856489094,
+          0.22975996830362078,
+          0.16142401266701517,
+          1.2965758610793117,
+          0.0,
+          2.8867034639250395
+        ],
+        "num_burns": 2,
+        "score": -18.618407059091858,
+        "miss_km": 1.2866507191499508,
+        "total_dv_mps": 6602.951063295094,
+        "T_team": 19908.217189374336,
+        "score_split_est": -18.620297540050963,
+        "split_terminal_count": 0,
+        "split_leading_count": 1,
+        "penalty_count": 0,
+        "over_dv_count": 2,
+        "total_dv_over": true,
+        "disqualified": true,
+        "dq_reasons": [
+          "2 \u68d2\u8d85\u904e\u55ae\u68d2\u4e0a\u9650 250 m/s\uff08\u6700\u5927 6,107.071 m/s\uff09",
+          "\u7e3d \u0394v 6,602.951 m/s \u8d85\u904e\u4e0a\u9650 3,000 m/s"
+        ],
+        "official_score": null,
+        "dc_converged": true,
+        "aim_point": [
+          9990.778519150315,
+          -529.6326149765621,
+          -302.4255165710381
+        ],
+        "final_burn_dv_mps": 6107.070863356366,
+        "earth_safe": true,
+        "min_arc_radius_km": 6988.058667704294,
+        "report_text": "\n\u2500\u2500 \u4efb\u52d9\u898f\u5283 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u7b49\u5f85 8,693.6s \u5f8c\u958b\u59cb\uff0c\u6700\u5f8c\u4e00\u68d2 Lambert \u8d70\u9806\u5411 (prograde)\n  [Burn 1    ] t=     8,693.6s   \u0394v=   495.9 m/s  \ud83d\udd34 \u8d85\u904e 250 m/s \u4e0a\u9650\uff08\u5931\u683c\uff09\n  [Final Burn] t=    15,940.6s   \u0394v=  6107.1 m/s  \ud83d\udd34 \u8d85\u904e 250 m/s \u4e0a\u9650\uff08\u5931\u683c\uff09\n\n\u2500\u2500 Python \u9810\u6e2c (J2+J3+J4\uff0c\u4e0d\u7528\u958b GMAT) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u0394r_min          1,286.7 m   (\u9580\u6abb 5,000 m)\n  \u0394V_team         6,603.0 m/s   (\u4e0a\u9650 3,000 m/s)\n  T_team         19,908.2 s\n  \u9593\u9694\u9055\u898f              0\n  Score            \ud83d\udd34 \u5931\u683c   \u2014\u20142 \u68d2\u8d85\u904e\u55ae\u68d2\u4e0a\u9650 250 m/s\uff08\u6700\u5927 6,107.071 m/s\uff09\uff1b\u7e3d \u0394v 6,602.951 m/s \u8d85\u904e\u4e0a\u9650 3,000 m/s\n             (\u641c\u5c0b\u7528\u5206\u6578 -18.62\uff0c\u53ea\u4ee3\u8868\u8def\u7dda\u503c\u5f97\u62c6\u68d2\uff0c\u4e0d\u662f\u4ea4\u4ef6\u5206\u6578)\n  \u62c6\u5f8c\u4f30\u8a08         -18.62 / 100   (\u524d\u5c0e\u68d2 1 \u767c\u53ef\u62c6\uff0c\u641c\u5c0b/\u6311\u8d0f\u5bb6\u7528\u9019\u500b)\n  Earth-safe    \u2705   (\u5168\u7a0b\u6700\u4f4e\u9ad8\u5ea6        610 km,\u9580\u6abb 100 km)\n  \ud83d\udd34 \u6700\u5927\u55ae\u68d2\u8d85\u6a19 24 \u500d\u4e0a\u9650\uff086,107 vs \u4e0a\u9650 250 m/s\uff09\u2014\u2014\u5be6\u52d9\u4e0a\u4ea4\u4e0d\u51fa\u53bb(DC \u6536\u6582\u4e0d\u5230)\uff0c\u901a\u5e38\u4ee3\u8868 T_max \u5167\u7121\u5408\u6cd5\u89e3\uff0c\u898b feasibility.py\u3002"
+      },
+      "refined": {
+        "x": [
+          8693.584699104516,
+          0.49529494914855304,
+          1.5731988365622294,
+          4.68144900598163,
+          0.22977411327328567,
+          0.1614094471802329,
+          1.296581696636317,
+          5.487412303716161e-06,
+          2.8867034639250395
+        ],
+        "num_burns": 2,
+        "score": -18.481953936387967,
+        "miss_km": 1.2902166258487042,
+        "total_dv_mps": 6277.355168860593,
+        "T_team": 19908.237198765943,
+        "score_split_est": -18.48423328740063,
+        "split_terminal_count": 0,
+        "split_leading_count": 1,
+        "penalty_count": 0,
+        "over_dv_count": 2,
+        "total_dv_over": true,
+        "disqualified": true,
+        "dq_reasons": [
+          "2 \u68d2\u8d85\u904e\u55ae\u68d2\u4e0a\u9650 250 m/s\uff08\u6700\u5927 5,782.060 m/s\uff09",
+          "\u7e3d \u0394v 6,277.355 m/s \u8d85\u904e\u4e0a\u9650 3,000 m/s"
+        ],
+        "official_score": null,
+        "dc_converged": true,
+        "aim_point": [
+          9990.783682147941,
+          -529.4704650403042,
+          -302.33187305948417
+        ],
+        "final_burn_dv_mps": 5782.06021971204,
+        "earth_safe": true,
+        "min_arc_radius_km": 6988.058667704294,
+        "report_text": "\n\u2500\u2500 \u4efb\u52d9\u898f\u5283 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u7b49\u5f85 8,693.6s \u5f8c\u958b\u59cb\uff0c\u6700\u5f8c\u4e00\u68d2 Lambert \u8d70\u9806\u5411 (prograde)\n  [Burn 1    ] t=     8,693.6s   \u0394v=   495.3 m/s  \ud83d\udd34 \u8d85\u904e 250 m/s \u4e0a\u9650\uff08\u5931\u683c\uff09\n  [Final Burn] t=    15,941.0s   \u0394v=  5782.1 m/s  \ud83d\udd34 \u8d85\u904e 250 m/s \u4e0a\u9650\uff08\u5931\u683c\uff09\n\n\u2500\u2500 Python \u9810\u6e2c (J2+J3+J4\uff0c\u4e0d\u7528\u958b GMAT) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u0394r_min          1,290.2 m   (\u9580\u6abb 5,000 m)\n  \u0394V_team         6,277.4 m/s   (\u4e0a\u9650 3,000 m/s)\n  T_team         19,908.2 s\n  \u9593\u9694\u9055\u898f              0\n  Score            \ud83d\udd34 \u5931\u683c   \u2014\u20142 \u68d2\u8d85\u904e\u55ae\u68d2\u4e0a\u9650 250 m/s\uff08\u6700\u5927 5,782.060 m/s\uff09\uff1b\u7e3d \u0394v 6,277.355 m/s \u8d85\u904e\u4e0a\u9650 3,000 m/s\n             (\u641c\u5c0b\u7528\u5206\u6578 -18.48\uff0c\u53ea\u4ee3\u8868\u8def\u7dda\u503c\u5f97\u62c6\u68d2\uff0c\u4e0d\u662f\u4ea4\u4ef6\u5206\u6578)\n  \u62c6\u5f8c\u4f30\u8a08         -18.48 / 100   (\u524d\u5c0e\u68d2 1 \u767c\u53ef\u62c6\uff0c\u641c\u5c0b/\u6311\u8d0f\u5bb6\u7528\u9019\u500b)\n  Earth-safe    \u2705   (\u5168\u7a0b\u6700\u4f4e\u9ad8\u5ea6        610 km,\u9580\u6abb 100 km)\n  \ud83d\udd34 \u6700\u5927\u55ae\u68d2\u8d85\u6a19 23 \u500d\u4e0a\u9650\uff085,782 vs \u4e0a\u9650 250 m/s\uff09\u2014\u2014\u5be6\u52d9\u4e0a\u4ea4\u4e0d\u51fa\u53bb(DC \u6536\u6582\u4e0d\u5230)\uff0c\u901a\u5e38\u4ee3\u8868 T_max \u5167\u7121\u5408\u6cd5\u89e3\uff0c\u898b feasibility.py\u3002"
+      },
+      "refined_fitness": -86.74401449523984,
+      "refined_metrics": {
+        "score": -18.481953936387967,
+        "score_split_est": -18.48423328740063,
+        "split_terminal_count": 0,
+        "split_leading_count": 1,
+        "miss_km": 1.2902166258487042,
+        "dv_mps": 6277.355168860593,
+        "t_team": 19908.237198765943,
+        "penalty_count": 0,
+        "over_dv_count": 2,
+        "total_dv_over": true,
+        "disqualified": true,
+        "dq_reasons": [
+          "2 \u68d2\u8d85\u904e\u55ae\u68d2\u4e0a\u9650 250 m/s\uff08\u6700\u5927 5,782.060 m/s\uff09",
+          "\u7e3d \u0394v 6,277.355 m/s \u8d85\u904e\u4e0a\u9650 3,000 m/s"
+        ],
+        "official_score": null,
+        "dc_converged": true,
+        "earth_safe": true,
+        "min_arc_radius_km": 6988.058667704294
+      }
+    }
+  },
+  "oracle_routes": [
+    {
+      "rank": 0,
+      "t1": 8400.0,
+      "t2": 16640.0,
+      "t3": 20000.0,
+      "dv1": [
+        -0.12675978309633684,
+        -0.4775414437954049,
+        -0.12098820550002282
+      ],
+      "dv_mps": 698.0592668704975,
+      "est_score": 86.37548764710404,
+      "M": 0,
+      "structure": "2-burn"
+    },
+    {
+      "rank": 1,
+      "t1": 2480.0,
+      "t2": 16560.0,
+      "t3": 20000.0,
+      "dv1": [
+        -0.09940901665509155,
+        -0.2740287468513829,
+        -0.08896666584552115
+      ],
+      "dv_mps": 698.0825888758937,
+      "est_score": 86.37532508585501,
+      "M": 0,
+      "structure": "2-burn"
+    },
+    {
+      "rank": 2,
+      "t1": 3360.0,
+      "t2": 15600.0,
+      "t3": 20000.0,
+      "dv1": [
+        0.10526484913667154,
+        -0.2576915590529792,
+        0.0904997150325054
+      ],
+      "dv_mps": 698.1336538055351,
+      "est_score": 86.37496913063956,
+      "M": 0,
+      "structure": "2-burn"
+    },
+    {
+      "rank": 3,
+      "t1": 9040.0,
+      "t2": 15360.0,
+      "t3": 20000.0,
+      "dv1": [
+        0.1423462596076232,
+        -0.5231307514719417,
+        0.12138316057644019
+      ],
+      "dv_mps": 698.4548482431163,
+      "est_score": 86.37272964564495,
+      "M": 0,
+      "structure": "2-burn"
+    },
+    {
+      "rank": 4,
+      "t1": 2000.0,
+      "t2": 16000.0,
+      "t3": 20000.0,
+      "dv1": [
+        -0.1727212383653344,
+        -0.18187760408122627,
+        -0.10935823988815635
+      ],
+      "dv_mps": 711.8856372004569,
+      "est_score": 86.27822703672972,
+      "M": 0,
+      "structure": "2-burn"
+    },
+    {
+      "rank": 5,
+      "t1": 3840.0,
+      "t2": 16000.0,
+      "t3": 20000.0,
+      "dv1": [
+        0.2246589149221494,
+        -0.22622106717713764,
+        0.10663787129348976
+      ],
+      "dv_mps": 721.0173659315393,
+      "est_score": 86.21301298749869,
+      "M": 0,
+      "structure": "2-burn"
+    },
+    {
+      "rank": 6,
+      "t1": 7920.0,
+      "t2": 15600.0,
+      "t3": 20000.0,
+      "dv1": [
+        -0.24405864381036346,
+        -0.30253028924692627,
+        -0.12918093782797196
+      ],
+      "dv_mps": 721.8226999753737,
+      "est_score": 86.2072242637251,
+      "M": 0,
+      "structure": "2-burn"
+    },
+    {
+      "rank": 7,
+      "t1": 1520.0,
+      "t2": 15520.0,
+      "t3": 20000.0,
+      "dv1": [
+        -0.1955567876858645,
+        -0.06153753032721575,
+        -0.09655307789082655
+      ],
+      "dv_mps": 748.7580939768037,
+      "est_score": 86.01009917448451,
+      "M": 0,
+      "structure": "2-burn"
+    },
+    {
+      "rank": 8,
+      "t1": 9520.0,
+      "t2": 16000.0,
+      "t3": 20000.0,
+      "dv1": [
+        0.3748312553970061,
+        -0.501953482731413,
+        0.1277298835119532
+      ],
+      "dv_mps": 750.0170070789031,
+      "est_score": 86.00071835624354,
+      "M": 0,
+      "structure": "2-burn"
+    },
+    {
+      "rank": 9,
+      "t1": 7440.0,
+      "t2": 15200.0,
+      "t3": 20000.0,
+      "dv1": [
+        -0.2798506450387427,
+        -0.11369876939766257,
+        -0.09721079453533629
+      ],
+      "dv_mps": 774.7471308776459,
+      "est_score": 85.81338966477722,
+      "M": 0,
+      "structure": "2-burn"
+    }
+  ],
+  "oracle_seed_counts": {
+    "2": 10
+  },
+  "effective_config": {
+    "_comment_scenario": "Qualifier-format smoke test: A is a HYPERBOLIC flyby (ECC>1, SMA<0), which is the orbit type the ranking round uses. A enters at 96,215 km (TA=-130deg), passes periapsis at 10,000 km around t=19,974s, and exits symmetrically - so T_MAX_SEC=40,000 brackets the whole flyby. Probe results (scripts/research/probe_hyperbolic_A.py): propagation matches the farnocchia analytic solution to 0.002 m, Lambert converges on 3200/3200 grid points, energy floor 637.0 m/s, minimum single-burn 1257.2 m/s (under the 1500 cap, so one burn suffices). This is NOT a difficulty test - the point is that the qualifier code path had never been run end to end.",
+    "_comment_tmax": "T_MAX_SEC is INVENTED. The organizers have not announced how T_max is defined for the hyperbolic ranking round (the T_max = multiple x period formula has no meaning without a period). This file proves the code path works; it says nothing about whether the number is right. Replace it when the rules are published.",
+    "_comment_scoring": "k_t/C_t/k_v/C_v chosen so both terms actually move across the plausible range, per the lesson from lateral_burn_test. Fuel: 1257 m/s -> ~15.5 pts, 3000 m/s -> ~1.2 pts. Time: 10,000s -> ~20.4 pts, 35,000s -> ~6.7 pts. Sanity-check this whenever T_max changes.",
+    "orbit_A": {
+      "SMA": -50000.0,
+      "ECC": 1.2,
+      "INC": 30.0,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 230.0
+    },
+    "orbit_B": {
+      "SMA": 7000.0,
+      "ECC": 0.001,
+      "INC": 0.0,
+      "RAAN": 0.0,
+      "AOP": 0.0,
+      "TA": 0.0
+    },
+    "rules": {
+      "MAX_DV_MPS": 250.0,
+      "MIN_MANEUVER_INTERVAL_SEC": 100.0,
+      "T_MAX_SEC": 40000.0,
+      "k_t": 0.0001,
+      "C_t": 25000.0,
+      "k_v": 0.002,
+      "C_v": 1500.0,
+      "MAX_TOTAL_DV_MPS": 3000.0
+    },
+    "strategy": {
+      "GRAVITY_DEGREE": 4,
+      "MISS_TOLERANCE_KM": 5.0,
+      "SPLIT_FAST_FD": true,
+      "SPLIT_WORKERS": 3,
+      "SPLIT_MULTISTART": [
+        0,
+        0.75,
+        1
+      ],
+      "SPLIT_PRUNE_REOPT_MPS": 1.0,
+      "SPLIT_WALL_BUDGET_SEC": 600,
+      "SPLIT_JACOBIAN": "stm",
+      "SPLIT_LEADING": true,
+      "SPLIT_AWARE_SEARCH": true,
+      "SPLIT_AWARE_MAX_FACTOR": 5,
+      "ORACLE_TWOBURN_SEED_DE": true,
+      "LAMBERT_MAX_REVS": 0
+    },
+    "optimization": {
+      "MAX_BURNS": [
+        1,
+        2
+      ],
+      "MAXITER": 600,
+      "POPSIZE": 20,
+      "NUM_THREADS": 5,
+      "MAX_EARLY_STOP": 40,
+      "TOL": 0.02,
+      "SEED": 0
+    }
+  },
+  "wall_sec": 87.94925945799332,
+  "picked": {
+    "burns": 1,
+    "x": [
+      13630.733632443158,
+      0.2374455882765095,
+      3.49999999999604,
+      1.1904642633270828,
+      2.8712849245711305
+    ],
+    "fitness": -85.24850442654278
+  },
+  "legal_backup_burns": null,
+  "winner": {
+    "x": [
+      13630.733632443158,
+      0.2374455882765095,
+      3.49999999999604,
+      1.1904642633270828,
+      2.8712849245711305
+    ],
+    "num_burns": 1,
+    "score": 75.21555241221554,
+    "miss_km": 3.499700531231547,
+    "total_dv_mps": 851.2408004255292,
+    "T_team": 19968.255038680018,
+    "score_split_est": 85.21555241221554,
+    "split_terminal_count": 1,
+    "split_leading_count": 0,
+    "penalty_count": 0,
+    "over_dv_count": 1,
+    "total_dv_over": false,
+    "disqualified": true,
+    "dq_reasons": [
+      "1 \u68d2\u8d85\u904e\u55ae\u68d2\u4e0a\u9650 250 m/s\uff08\u6700\u5927 851.241 m/s\uff09"
+    ],
+    "official_score": null,
+    "dc_converged": true,
+    "aim_point": [
+      9995.9862146575,
+      -41.97842196032238,
+      -21.31362904935389
+    ],
+    "final_burn_dv_mps": 851.2408004255292,
+    "earth_safe": true,
+    "min_arc_radius_km": 6988.058667704294,
+    "report_text": "\n\u2500\u2500 \u4efb\u52d9\u898f\u5283 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u7b49\u5f85 13,630.7s \u5f8c\u958b\u59cb\uff0c\u6700\u5f8c\u4e00\u68d2 Lambert \u8d70\u9806\u5411 (prograde)\n  [Final Burn] t=    13,630.7s   \u0394v=   851.2 m/s  \ud83d\udd34 \u8d85\u904e 250 m/s \u4e0a\u9650\uff08\u5931\u683c\uff09\n\n\u2500\u2500 Python \u9810\u6e2c (J2+J3+J4\uff0c\u4e0d\u7528\u958b GMAT) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u0394r_min          3,499.7 m   (\u9580\u6abb 5,000 m)\n  \u0394V_team           851.2 m/s   (\u4e0a\u9650 3,000 m/s)\n  T_team         19,968.3 s\n  \u9593\u9694\u9055\u898f              0\n  Score            \ud83d\udd34 \u5931\u683c   \u2014\u20141 \u68d2\u8d85\u904e\u55ae\u68d2\u4e0a\u9650 250 m/s\uff08\u6700\u5927 851.241 m/s\uff09\n             (\u641c\u5c0b\u7528\u5206\u6578 75.22\uff0c\u53ea\u4ee3\u8868\u8def\u7dda\u503c\u5f97\u62c6\u68d2\uff0c\u4e0d\u662f\u4ea4\u4ef6\u5206\u6578)\n  \u62c6\u5f8c\u4f30\u8a08          85.22 / 100   (\u7d42\u7aef\u68d2\u53ef\u62c6\uff0c\u641c\u5c0b/\u6311\u8d0f\u5bb6\u7528\u9019\u500b)\n  Earth-safe    \u2705   (\u5168\u7a0b\u6700\u4f4e\u9ad8\u5ea6        610 km,\u9580\u6abb 100 km)\n  \ud83d\udd34 \u6700\u5927\u55ae\u68d2\u8d85\u6a19 3 \u500d\u4e0a\u9650\uff08851 vs \u4e0a\u9650 250 m/s\uff09\u2014\u2014\u5be6\u52d9\u4e0a\u4ea4\u4e0d\u51fa\u53bb(DC \u6536\u6582\u4e0d\u5230)\uff0c\u901a\u5e38\u4ee3\u8868 T_max \u5167\u7121\u5408\u6cd5\u89e3\uff0c\u898b feasibility.py\u3002"
+  }
+}

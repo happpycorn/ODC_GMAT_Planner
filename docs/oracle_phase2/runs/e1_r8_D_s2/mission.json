@@ -1,0 +1,195 @@
+{
+  "schema_version": 1,
+  "stage": "mission",
+  "saved_at": "2026-10-30T00:05:48",
+  "provenance": {
+    "git_commit": "ef87f65917a2a3e46dcdcf5e825918a3b592b194",
+    "python": "3.12.3",
+    "files": {
+      "src/core_math.py": "1eefddb136d75684f58c419e1f52fdce9fab511a25b93901f6ca8b2bddd10853",
+      "src/propagator.py": "229127d027a57982e17433a878e0c852a74dacc4e3162da6c0954268fa9a76bd",
+      "src/scorer.py": "ada8dcd408ea565ad6983a0b1df94fe8ea99315c39f16c406626c133f4d438bd",
+      "src/optimizer.py": "2fac4bca6627fbe916217faf0ae42aa399bc769d0a1cd35cf2fdace7b74091a3",
+      "src/burn_splitter.py": "4436f74cc309866b0635550b132bd5b3ba690aea37764f0cc3dffeef17f3576c",
+      "src/config_validator.py": "b1746e146df4eb40d2e77dc741bef13bfebb7c94b99a154193dd6a243de58837",
+      "uv.lock": "57650664982b28eaa921e68e653c2076d034d6440e7f862999d28a8543040b01",
+      "main.py": "bd76f7952ccc7de33db4cd65425d0421def96e6e097a6542e4a6cccec92e9c4d",
+      "src/script_generator.py": "f77063cd350b1c895372eff1e3c21c881caa6b048d4a569130a6a12d066d165a",
+      "src/pipeline_artifacts.py": "92168ae61bacdc5b4676d7790152ec29f2bdfa8776eb2b924232ac1663d5022a",
+      "src/gmat_env.py": "cde82fa6c78605ca69cea8f252be9478e5c7dd75d2d4d9c859276c8c2d245475",
+      "src/retarget.py": "778d4c42bdee976edf1a3e07150a9bc4e8739ca11790a4d3099d762e8f972227"
+    }
+  },
+  "source": null,
+  "config": {
+    "orbit_A": {
+      "SMA": -45553.2,
+      "ECC": 1.3325,
+      "INC": 43.13,
+      "RAAN": 264.83,
+      "AOP": 220.85,
+      "TA": 233.843
+    },
+    "orbit_B": {
+      "SMA": 6711.0,
+      "ECC": 0.00805,
+      "INC": 28.61,
+      "RAAN": 37.58,
+      "AOP": 198.23,
+      "TA": 19.93
+    },
+    "rules": {
+      "MAX_DV_MPS": 250.0,
+      "MAX_TOTAL_DV_MPS": 3000.0,
+      "MIN_MANEUVER_INTERVAL_SEC": 100.0,
+      "T_MAX_SEC": 77443.0,
+      "k_t": 5.11e-05,
+      "C_t": 47100.0,
+      "k_v": 0.00184,
+      "C_v": 1680.0
+    },
+    "strategy": {
+      "GRAVITY_DEGREE": 4,
+      "MISS_TOLERANCE_KM": 5.0,
+      "SPLIT_FAST_FD": true,
+      "SPLIT_WORKERS": 3,
+      "SPLIT_MULTISTART": [
+        0,
+        0.75,
+        1
+      ],
+      "SPLIT_PRUNE_REOPT_MPS": 1.0,
+      "SPLIT_WALL_BUDGET_SEC": 600,
+      "SPLIT_LEADING": true,
+      "SPLIT_AWARE_SEARCH": true,
+      "SPLIT_AWARE_MAX_FACTOR": 5,
+      "ORACLE_TWOBURN_SEED_DE": true,
+      "SPLIT_JACOBIAN": "stm",
+      "LAMBERT_MAX_REVS": 0
+    },
+    "optimization": {
+      "MAX_BURNS": [
+        3
+      ],
+      "MAXITER": 600,
+      "POPSIZE": 20,
+      "NUM_THREADS": 5,
+      "MAX_EARLY_STOP": 40,
+      "TOL": 0.02,
+      "SEED": 2
+    },
+    "_comment_e1": "E1 隨機題（e1_gen_scenarios.py --seed 20261029，第 10 抽）。rp_A=15147 km、能量下限 1352 m/s、T_max = 2×到近地點時間。佔位題，不是官方題目。"
+  },
+  "burns": [
+    [
+      0.24684584563779494,
+      0.009912686169376626,
+      -0.021516215844572865
+    ],
+    [
+      0.2474380666712892,
+      0.006287943614651458,
+      -0.015130939398286457
+    ],
+    [
+      0.24776994066106994,
+      0.002808560059787831,
+      -0.00981065212925025
+    ],
+    [
+      0.24791990388255883,
+      -0.0005438834389405025,
+      -0.00543192872450165
+    ],
+    [
+      0.24794394349281207,
+      -0.003786687574781638,
+      -0.0018820952272887265
+    ],
+    [
+      0.24788122413475028,
+      -0.006935572123322758,
+      0.0009364618413209009
+    ],
+    [
+      0.2477586827724482,
+      -0.010004008833692684,
+      0.003104080881178143
+    ],
+    [
+      0.1346692654360315,
+      -0.007072030679761195,
+      0.0025470647851296743
+    ]
+  ],
+  "times": [
+    26926.007526874393,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    8205.727072574202
+  ],
+  "mission_info": {
+    "x": [
+      26926.007526874393,
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      8205.727072574202,
+      0.19039196456965854,
+      -0.12122560740101071,
+      -0.10270994273955557,
+      0.2018740069139883,
+      -0.10209341451983667,
+      -0.10157706652671565,
+      0.21175231485325552,
+      -0.0821383086723519,
+      -0.09954062388157871,
+      0.2198916591855194,
+      -0.06160558424780153,
+      -0.09667724970295147,
+      0.22619457666936157,
+      -0.04078455391395865,
+      -0.09309518810018105,
+      0.23061901785537223,
+      -0.019994973056088827,
+      -0.08893340236328617,
+      0.23319106397313852,
+      0.000434371674187406,
+      -0.08435531639632675,
+      0.1272799128826142,
+      0.010982816055997326,
+      -0.04326099557464791
+    ],
+    "num_burns": 8,
+    "score": 76.33130240065776,
+    "miss_km": 3.4956161356099176,
+    "total_dv_mps": 1870.738879777516,
+    "T_team": 35831.734599448595,
+    "penalty_count": 0,
+    "over_dv_count": 0,
+    "total_dv_over": false,
+    "disqualified": false,
+    "dq_reasons": [],
+    "official_score": 76.33130240065776,
+    "dc_converged": true,
+    "aim_point": [
+      8425.484187232058,
+      19891.999629819493,
+      6182.2165720292705
+    ],
+    "final_burn_dv_mps": 134.87887977750793,
+    "earth_safe": true,
+    "min_arc_radius_km": 6656.269410285248
+  },
+  "verification": "python_only",
+  "artifact_id": "9a35ff1ffd489d783b5276aacd01ba2853c1e93c52130c67fd017bd1a0a5874d"
+}

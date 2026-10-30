@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "stage": "presplit",
+  "provenance": {
+    "git_commit": "ef87f65917a2a3e46dcdcf5e825918a3b592b194",
+    "python": "3.12.3",
+    "files": {
+      "src/core_math.py": "1eefddb136d75684f58c419e1f52fdce9fab511a25b93901f6ca8b2bddd10853",
+      "src/propagator.py": "229127d027a57982e17433a878e0c852a74dacc4e3162da6c0954268fa9a76bd",
+      "src/scorer.py": "ada8dcd408ea565ad6983a0b1df94fe8ea99315c39f16c406626c133f4d438bd",
+      "src/optimizer.py": "2fac4bca6627fbe916217faf0ae42aa399bc769d0a1cd35cf2fdace7b74091a3",
+      "src/burn_splitter.py": "4436f74cc309866b0635550b132bd5b3ba690aea37764f0cc3dffeef17f3576c",
+      "src/config_validator.py": "b1746e146df4eb40d2e77dc741bef13bfebb7c94b99a154193dd6a243de58837",
+      "uv.lock": "57650664982b28eaa921e68e653c2076d034d6440e7f862999d28a8543040b01",
+      "main.py": "bd76f7952ccc7de33db4cd65425d0421def96e6e097a6542e4a6cccec92e9c4d",
+      "src/script_generator.py": "f77063cd350b1c895372eff1e3c21c881caa6b048d4a569130a6a12d066d165a",
+      "src/pipeline_artifacts.py": "92168ae61bacdc5b4676d7790152ec29f2bdfa8776eb2b924232ac1663d5022a",
+      "src/gmat_env.py": "cde82fa6c78605ca69cea8f252be9478e5c7dd75d2d4d9c859276c8c2d245475",
+      "src/retarget.py": "778d4c42bdee976edf1a3e07150a9bc4e8739ca11790a4d3099d762e8f972227"
+    }
+  },
+  "saved_at": "2026-10-30T01:18:09",
+  "config": {
+    "orbit_A": {
+      "SMA": -62553.9,
+      "ECC": 1.4349,
+      "INC": 18.09,
+      "RAAN": 23.37,
+      "AOP": 214.71,
+      "TA": 240.608
+    },
+    "orbit_B": {
+      "SMA": 7384.8,
+      "ECC": 0.00164,
+      "INC": 43.11,
+      "RAAN": 321.64,
+      "AOP": 151.72,
+      "TA": 81.37
+    },
+    "rules": {
+      "MAX_DV_MPS": 250.0,
+      "MAX_TOTAL_DV_MPS": 3000.0,
+      "MIN_MANEUVER_INTERVAL_SEC": 100.0,
+      "T_MAX_SEC": 124960.0,
+      "k_t": 3.19e-05,
+      "C_t": 69900.0,
+      "k_v": 0.00242,
+      "C_v": 1710.0
+    },
+    "strategy": {
+      "GRAVITY_DEGREE": 4,
+      "MISS_TOLERANCE_KM": 5.0,
+      "SPLIT_FAST_FD": true,
+      "SPLIT_WORKERS": 3,
+      "SPLIT_MULTISTART": [
+        0,
+        0.75,
+        1
+      ],
+      "SPLIT_PRUNE_REOPT_MPS": 1.0,
+      "SPLIT_WALL_BUDGET_SEC": 513.2202607640065,
+      "SPLIT_LEADING": true,
+      "ORACLE_TWOBURN": true,
+      "SPLIT_JACOBIAN": "stm"
+    },
+    "optimization": {
+      "MAX_BURNS": [
+        1,
+        2
+      ],
+      "MAXITER": 600,
+      "POPSIZE": 20,
+      "NUM_THREADS": 5,
+      "MAX_EARLY_STOP": 40,
+      "TOL": 0.02,
+      "SEED": 4
+    },
+    "_comment_e1": "E1 隨機題（e1_gen_scenarios.py --seed 20261029，第 5 抽）。rp_A=27203 km、能量下限 1865 m/s、T_max = 2×到近地點時間。佔位題，不是官方題目。"
+  },
+  "burns": [
+    [
+      0.2540381592853886,
+      0.004937375672628,
+      -0.003490935432858636
+    ],
+    [
+      1.908697277279878,
+      0.5687863927164472,
+      -0.014727863784675166
+    ]
+  ],
+  "times": [
+    42736.319999999985,
+    6997.760000000009,
+    18993.91999999999
+  ],
+  "mission_info": {
+    "x": [
+      42736.319999999985,
+      0.2541101152686321,
+      2.2043048500224414,
+      3.394201074117045,
+      0.08409473947035792,
+      0.25149668716203394,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "num_burns": 2,
+    "score": 48.101852360194485,
+    "miss_km": 0.021716293647698087,
+    "total_dv_mps": 2245.807925381067,
+    "T_team": 68727.99999999999,
+    "score_split_est": 68.0501880899818,
+    "split_terminal_count": 1,
+    "split_leading_count": 1,
+    "penalty_count": 0,
+    "over_dv_count": 2,
+    "total_dv_over": false,
+    "disqualified": true,
+    "dq_reasons": [
+      "2 棒超過單棒上限 250 m/s（最大 1,991.698 m/s）"
+    ],
+    "official_score": null,
+    "dc_converged": true,
+    "aim_point": [
+      18111.292695875745,
+      -32362.58280893942,
+      -12050.687422575422
+    ],
+    "final_burn_dv_mps": 1991.6978101124348,
+    "earth_safe": true,
+    "min_arc_radius_km": 7370.128641719835,
+    "report_text": "\n── 任務規劃 ──────────────────────────────────────────────\n  等待 42,736.3s 後開始，最後一棒 Lambert 走順向 (prograde)\n  [Burn 1    ] t=    42,736.3s   Δv=   254.1 m/s  🔴 超過 250 m/s 上限（失格）\n  [Final Burn] t=    49,734.1s   Δv=  1991.7 m/s  🔴 超過 250 m/s 上限（失格）\n\n── Python 預測 (J2+J3+J4，不用開 GMAT) ─────────────────────────\n  Δr_min             21.7 m   (門檻 5,000 m)\n  ΔV_team         2,245.8 m/s   (上限 3,000 m/s)\n  T_team         68,728.0 s\n  間隔違規              0\n  Score            🔴 失格   ——2 棒超過單棒上限 250 m/s（最大 1,991.698 m/s）\n             (搜尋用分數 48.10，只代表路線值得拆棒，不是交件分數)\n  拆後估計          68.05 / 100   (前導棒 1 發、終端棒可拆，搜尋/挑贏家用這個)\n  Earth-safe    ✅   (全程最低高度        992 km,門檻 100 km)\n  🔴 最大單棒超標 8 倍上限（1,992 vs 上限 250 m/s）——實務上交不出去(DC 收斂不到)，通常代表 T_max 內無合法解，見 feasibility.py。"
+  }
+}

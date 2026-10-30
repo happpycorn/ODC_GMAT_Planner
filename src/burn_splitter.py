@@ -32,6 +32,49 @@ from src.core_math import (propagate_dop853, propagate_dop853_stm, fast_dynamics
 from src.scorer import calculate_score
 
 
+def presplit_leading(t0, leading_dvs, leading_coasts, terminal_coast, *, cap, min_coast):
+    """前導棒等分成合法小段，以原時刻為中心排開；抵達時刻固定，時間不夠回 None。"""
+    times = [float(t0)]
+    for coast in leading_coasts:
+        times.append(times[-1] + float(coast))
+    arrival = times[-1] + float(terminal_coast)
+    burns = []
+    for i, dv in enumerate(leading_dvs):
+        dv = np.asarray(dv, dtype=np.float64)
+        mag = float(np.linalg.norm(dv))
+        if mag < 1e-9:
+            continue
+        n = max(1, math.ceil(mag / cap - 1e-12))
+        start = max(0.0, times[i] - 0.5 * (n - 1) * min_coast)
+        if burns:
+            start = max(start, burns[-1][0] + min_coast)
+        for k in range(n):
+            burns.append((start + k * min_coast, dv / n))
+    terminal_time = max(times[-1], burns[-1][0] + min_coast if burns else 0.0)
+    if arrival - terminal_time < min_coast:
+        return None
+    if not burns:
+        return terminal_time, [], [], arrival - terminal_time
+    lead_dvs = [b[1] for b in burns]
+    lead_coasts = [burns[k + 1][0] - burns[k][0] for k in range(len(burns) - 1)]
+    lead_coasts.append(terminal_time - burns[-1][0])
+    return burns[0][0], lead_dvs, lead_coasts, arrival - terminal_time
+
+
+def leading_arcs_min_radius(t0, leading_dvs, leading_coasts, *,
+                            mu, j2, j3, j4, re, B_r0, B_v0, ephem=None):
+    """從 B 的 epoch 狀態檢查等待弧與各段前導滑行弧，回傳每段實際經過的最小半徑。"""
+    r0, v0 = np.array(B_r0, dtype=np.float64), np.array(B_v0, dtype=np.float64)
+    r, v = fixed_orbit_state(r0, v0, float(t0), mu, j2, j3, j4, re, ephem, 1)
+    radii = [initial_wait_min_radius(r0, v0, float(t0), r, mu, ephem)]
+    for dv, coast in zip(leading_dvs, leading_coasts):
+        v = v + np.asarray(dv, dtype=np.float64)
+        dt = float(coast)
+        radii.append(_arc_min_radius(r, v, dt, mu, j2, j3, j4, re))
+        r, v = propagate_dop853(r, v, dt, 60.0, mu, j2, j3, j4, re)
+    return np.asarray(radii, dtype=np.float64)
+
+
 def _lam_best(r0, r1, tof, vref, mu, max_revs):
     """掃所有 Lambert 分支 (圈數 M / lowpath / 順逆向)，回傳「相對 vref 最省 Δv」的到達前
     速度 v_needed 與該 Δv 大小。分支政策跟 fast_fitness_evaluator / split_even 完全一致。"""

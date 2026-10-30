@@ -1,0 +1,42 @@
+{
+  "name": "smoke10_SL",
+  "_說明": "smoke s4 差異調查：臂 SL，hyperbolic_smoke 排位賽 base，種子 0–9（A/C 種子 0–4 沿用四臂比較）。--slots 2，env 同四臂比較。",
+  "scenarios": [
+    {
+      "name": "hyperbolic_smoke",
+      "config": "configs/shared/hyperbolic_smoke.json",
+      "overrides": {
+        "rules.MAX_DV_MPS": 250.0,
+        "rules.MAX_TOTAL_DV_MPS": 3000.0,
+        "optimization.MAXITER": 600,
+        "optimization.POPSIZE": 20,
+        "optimization.NUM_THREADS": 5,
+        "strategy.SPLIT_FAST_FD": true,
+        "strategy.SPLIT_WORKERS": 3,
+        "strategy.SPLIT_MULTISTART": [
+          0,
+          0.75,
+          1
+        ],
+        "strategy.SPLIT_PRUNE_REOPT_MPS": 1.0,
+        "strategy.SPLIT_WALL_BUDGET_SEC": 600,
+        "strategy.SPLIT_JACOBIAN": "stm"
+      }
+    }
+  ],
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "base": {
+    "strategy.SPLIT_LEADING": true
+  }
+}

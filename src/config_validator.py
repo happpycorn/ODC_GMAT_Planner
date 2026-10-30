@@ -298,6 +298,31 @@ def _validate_strategy(strategy_cfg, errors: list):
         errors.append("strategy.AUTO_SPLIT_LEGALIZE 必須是 true/false，但收到 "
                       f"{strategy_cfg['AUTO_SPLIT_LEGALIZE']!r}（低棒數 route-first 贏家的動態拆棒開關）")
 
+    if "SPLIT_LEADING" in strategy_cfg and not isinstance(strategy_cfg["SPLIT_LEADING"], bool):
+        errors.append("strategy.SPLIT_LEADING 必須是 true/false，但收到 "
+                      f"{strategy_cfg['SPLIT_LEADING']!r}（拆棒階段先等分超標前導棒）")
+    for key in ("ORACLE_TWOBURN", "ORACLE_TWOBURN_SEED_DE"):
+        if key in strategy_cfg and not isinstance(strategy_cfg[key], bool):
+            errors.append(f"strategy.{key} 必須是 true/false，但收到 {strategy_cfg[key]!r}")
+    for key, minimum in (("ORACLE_TWOBURN_K", 1), ("ORACLE_TWOBURN_GRID_DIV", 10)):
+        if key in strategy_cfg:
+            v = strategy_cfg[key]
+            if not (_is_int(v) and v >= minimum):
+                errors.append(f"strategy.{key} 必須是 >={minimum} 的整數，但收到 {v!r}")
+    if "ORACLE_TWOBURN_WALL_SEC" in strategy_cfg:
+        v = strategy_cfg["ORACLE_TWOBURN_WALL_SEC"]
+        if not (_is_number(v) and v > 0):
+            errors.append(f"strategy.ORACLE_TWOBURN_WALL_SEC 必須是 >0 的數字，但收到 {v!r}")
+    if strategy_cfg.get("ORACLE_TWOBURN") is True and strategy_cfg.get("SPLIT_LEADING") is not True:
+        errors.append("strategy.ORACLE_TWOBURN=true 需要 SPLIT_LEADING=true")
+    if (strategy_cfg.get("ORACLE_TWOBURN_SEED_DE") is True
+            and not strategy_cfg.get("SPLIT_AWARE_SEARCH", False)):
+        log.warning("ORACLE_TWOBURN_SEED_DE 未開 SPLIT_AWARE_SEARCH：前導棒種子會夾回單棒上界（排位賽 248 m/s）")
+    if "SPLIT_AWARE_MAX_FACTOR" in strategy_cfg:
+        v = strategy_cfg["SPLIT_AWARE_MAX_FACTOR"]
+        if not (_is_int(v) and 1 <= v <= 14):
+            errors.append(f"strategy.SPLIT_AWARE_MAX_FACTOR 必須是 1~14 的整數，但收到 {v!r}")
+
     if "SPLIT_AWARE_TERMINAL" in strategy_cfg and not isinstance(strategy_cfg["SPLIT_AWARE_TERMINAL"], bool):
         errors.append("strategy.SPLIT_AWARE_TERMINAL 必須是 true/false，但收到 "
                       f"{strategy_cfg['SPLIT_AWARE_TERMINAL']!r}（C4：終端棒可拆時搜尋改用拆後估計分數）")

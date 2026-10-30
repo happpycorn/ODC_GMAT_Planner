@@ -34,7 +34,8 @@ from src.config_validator import validate_config, ConfigValidationError
 from src.split_defaults import SPLIT_DEFAULTS
 from src.core_math import propagate_dop853, fast_norm, to_vnb_frame
 from src.scorer import calculate_score, assess_legality, DV_LIMIT_TOL_MPS
-from src.burn_splitter import legalize_route, _simulate_free, prune_null_burns
+from src.burn_splitter import (legalize_route, _simulate_free, prune_null_burns,
+                               presplit_leading, leading_arcs_min_radius)
 from src.runlog import log, setup as setup_logging
 
 # GmatConsole 路徑的最後備援值 (只在 --gmat-console 沒給、config.json 也沒有
@@ -101,6 +102,7 @@ DEFAULT_CONFIG = {
                                     # 彈性調小 (甚至設 0 退回精準瞄準)，讓最後一棒 Lambert
                                     # 在容許範圍內找最省油的落點，而不是死盯著 A 的精確位置
         "AUTO_SPLIT_LEGALIZE": True,  # 低邏輯棒數先找 route，若贏家超標再動態拆成合法多棒解
+        "SPLIT_LEADING": False,  # 拆棒階段先等分超標前導棒，再重算終端攔截
         "SPLIT_AWARE_TERMINAL": True,  # C4：終端棒超標但拆得掉時，搜尋/挑贏家用「拆後估計分數」
                                        # 不扣 10 分；拆不出來會自動用 false 重搜當退路
         "REVS_ENSEMBLE": True,  # 預設在 REVS=0 與 REVS=LAMBERT_MAX_REVS 各跑一次完整搜尋、
@@ -616,8 +618,12 @@ def primer_guided_research(config, burns, times, mission_info, optimizer):
     eps = optimizer.TIEBREAK_SCORE_EPS
     # C4：SPLIT_AWARE_TERMINAL 開時新舊都比拆後估計（同一把尺），關時就是真實分數。
     se = optimizer.SPLIT_AWARE_TERMINAL
-    key_old = _mission_rank_key(mission_info, eps=eps, split_est=se)
-    key_new = _mission_rank_key(mi2, eps=eps, split_est=se)
+    if getattr(optimizer, "SPLIT_LEADING", False):
+        key_old = _primer_post_rank_key((burns, times, mission_info, optimizer), eps)
+        key_new = _primer_post_rank_key((b2, t2, mi2, opt2), eps)
+    else:
+        key_old = _mission_rank_key(mission_info, eps=eps, split_est=se)
+        key_new = _mission_rank_key(mi2, eps=eps, split_est=se)
     if key_new < key_old:
         log.info(f"🧭 primer 重搜勝出：{mission_info['score']:.4f} → {mi2['score']:.4f}"
                  f"（{N} → {N + 1} 棒，Δv {mission_info['total_dv_mps']:,.0f} → "
@@ -667,8 +673,11 @@ def _primer_fast_research(cfg2, seed, burns, times, mission_info, optimizer):
     if b is not None and t is not None and isinstance(mi, dict):
         candidates.append(("global", (b, t, mi, opt)))
     se, eps = optimizer.SPLIT_AWARE_TERMINAL, optimizer.TIEBREAK_SCORE_EPS
-    winner, result = min(candidates, key=lambda c: _mission_rank_key(
-        c[1][2], eps=eps, split_est=se))
+    if getattr(optimizer, "SPLIT_LEADING", False):
+        winner, result = min(candidates, key=lambda c: _primer_post_rank_key(c[1], eps))
+    else:
+        winner, result = min(candidates, key=lambda c: _mission_rank_key(
+            c[1][2], eps=eps, split_est=se))
     score_by_stage = {
         name: f"{r[2]['score']:.4f}"
         + (f" (split_est={r[2].get('score_split_est', r[2]['score']):.4f})" if se else "")
@@ -678,6 +687,13 @@ def _primer_fast_research(cfg2, seed, burns, times, mission_info, optimizer):
     log.info(f"🧭 primer fast：winner={winner}，local={local_sec:.2f}s，"
              f"global={global_sec:.2f}s，{scores}")
     return None if winner == "original" else result
+
+
+def _primer_post_rank_key(candidate, eps):
+    """拆後比同一把尺，候選本身仍保留拆前資料供 checkpoint 使用。"""
+    burns, times, mi, opt = candidate
+    _, _, post_mi = _legalize_stage(opt.config, burns, times, mi, opt)
+    return (not bool(post_mi.get("earth_safe", True)),) + _final_rank_key(post_mi, eps)
 
 
 def split_options(config):
@@ -746,6 +762,24 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
     icpt = cur + tfin
     r_A, _ = opt.state_A(icpt)
     target = r_A + _sph(x[-3], x[-2], x[-1])
+
+    if opt.SPLIT_LEADING and any(np.linalg.norm(dv) > opt.MAX_DV_SOFT for dv in leading_dvs):
+        counts = [max(1, math.ceil(float(np.linalg.norm(dv)) / opt.MAX_DV_SOFT - 1e-12))
+                  for dv in leading_dvs if np.linalg.norm(dv) > opt.MAX_DV_SOFT]
+        route = presplit_leading(t0, leading_dvs, leading_coasts, tfin,
+                                 cap=opt.MAX_DV_SOFT, min_coast=mc)
+        if route is None:
+            log.info("⚠️ 前導棒等分：拆開後時間不夠，沿用原解。")
+            return None
+        t0p, ldv, lco, _ = route
+        radii = leading_arcs_min_radius(t0p, ldv, lco, mu=mu, j2=j2, j3=j3, j4=j4, re=re,
+                                       B_r0=opt.B_r0, B_v0=opt.B_v0, ephem=opt.ephem)
+        if float(np.min(radii)) < opt.MIN_PERIAPSIS - 1e-3:
+            log.info("⚠️ 前導棒等分：等待弧或前導滑行弧不安全，沿用原解。")
+            return None
+        t0, leading_dvs, leading_coasts, tfin = route
+        log.info(f"✂️ 前導棒等分：{len(counts)} 發超標前導棒，各拆成 "
+                 + "、".join(str(n) for n in counts) + " 段。")
 
     options = split_options(config)
     res = legalize_route(
@@ -870,6 +904,14 @@ def _legalize_stage(config, burns, times, mi, opt):
     設了 SEED（或開了 SPLIT_FAST_FD / STM）時跟搜尋階段一樣把 BLAS 鎖單執行緒（見 run_study_over_revs 的重現性說明）：
     joint NLP（SLSQP）在父行程跑、原本沒鎖，多執行緒 BLAS 讓同一個拆棒前贏家拆出不同結果
     （2026-09-25 實測 contest：鎖 98.319106／7 棒 vs 不鎖 98.318995／6 棒）。"""
+    # primer 先拆過的候選直接取回；快取掛在 optimizer，不進拆前 checkpoint。
+    cache_key = None
+    if getattr(opt, "SPLIT_LEADING", False):
+        cache_key = (int(mi["num_burns"]), np.asarray(mi["x"], dtype=np.float64).tobytes())
+        if not hasattr(opt, "_legalize_cache"):
+            opt._legalize_cache = {}
+        if cache_key in opt._legalize_cache:
+            return opt._legalize_cache[cache_key]
     if bool(mi.get("earth_safe", True)):
         seed_set = config.get("optimization", {}).get("SEED") is not None
         # SPLIT_FAST_FD 開時不論有沒有 SEED 都鎖：SLSQP 的問題只有幾十維，多執行緒 BLAS 不會更快、
@@ -881,7 +923,10 @@ def _legalize_stage(config, burns, times, mi, opt):
             _legal = legalize_violating_winner(config, burns, times, mi, opt)
         if _legal is not None:
             burns, times, mi = _legal
-    return burns, times, mi
+    result = burns, times, mi
+    if cache_key is not None:
+        opt._legalize_cache[cache_key] = result
+    return result
 
 
 # 排位賽模式下搜尋找不到合法路線（所有候選都在失格層）時的結束碼，跟一般錯誤（1）分開，
@@ -905,7 +950,8 @@ def save_no_legal_route(path, optimizer):
     cap, soft = opt.MAX_DV * 1000.0, opt.MAX_DV_SOFT * 1000.0
     split_lim = opt.SPLIT_LIMIT * 1000.0
     over = [{"burn": i + 1, "dv_mps": d, "over_cap_mps": d - cap,
-             "splittable": i == len(dvs) - 1 and d <= split_lim}
+             "splittable": (i == len(dvs) - 1 and d <= split_lim)
+             or (opt.SPLIT_LEADING and i < len(dvs) - 1 and d <= opt.LEADING_SPLIT_LIMIT * 1000.0)}
             for i, d in enumerate(dvs) if d > cap + DV_LIMIT_TOL_MPS]
     total = float(mi["total_dv_mps"])
     total_cap = opt.MAX_TOTAL_DV_MPS
@@ -940,7 +986,8 @@ def save_no_legal_route(path, optimizer):
         lines.append(f"    第 {o['burn']} 棒 {o['dv_mps']:,.1f} m/s，超過單棒上限 {o['over_cap_mps']:,.1f} m/s"
                      + ("（拆棒範圍內）" if o["splittable"] else
                         f"（超出拆棒範圍 {split_lim:,.0f} m/s）" if o["burn"] == len(dvs) else
-                        "（前導棒，拆棒器只拆終端棒）"))
+                        f"（超出前導棒拆棒範圍 {opt.LEADING_SPLIT_LIMIT * 1000.0:,.0f} m/s）"
+                        if opt.SPLIT_LEADING else "（前導棒，拆棒器只拆終端棒）"))
     lines += [f"  已存檔（不可繳交、不產生任何腳本）：{path}", "  下一步："]
     lines += [f"    • {t}" for t in next_steps]
     lines.append("🔴" * 30)
@@ -959,11 +1006,14 @@ def patch_report_level(opt):
         opt._report_level = old
 
 
-def _search_stage(config):
+def _search_stage(config, oracle_seeds=None):
     """搜尋 + C2 primer 條件式重搜（拆棒之前的部分）。回傳 (burns, times, mission_info, optimizer)；
     搜尋失敗回 (None, None, None, optimizer)——optimizer 可能帶著 no_legal_route（排位賽模式下
     最接近合法的失格候選）。`_solve_pipeline` 與 C4 退路重搜共用。"""
-    burns, times, mi, opt = run_study_over_revs(config)
+    if oracle_seeds:
+        burns, times, mi, opt = run_study_over_revs(config, oracle_seeds=oracle_seeds)
+    else:
+        burns, times, mi, opt = run_study_over_revs(config)
     if burns is None or times is None:
         return None, None, None, opt
     _c2 = primer_guided_research(config, burns, times, mi, opt)
@@ -1024,18 +1074,28 @@ def _fallback_to_legal_backup(config, burns, times, mi, opt):
 
 def _final_rank_key(mi, eps=None):
     """拆棒之後（交件前）比兩個候選用的排名鍵：失格的一律排在不失格的後面，其餘照§6。
-    拆棒前的路線比較（REVS 集成、C2）不能用這個——那時超標路線還沒拆，正是要保留的候選。"""
+    拆棒前的路線仍用拆後估計；SPLIT_LEADING 開時 C2 先拆兩邊，再用這裡比較。"""
     return (is_disqualified(mi),) + _mission_rank_key(mi, eps=eps)
 
 
 def _solve_pipeline(config, output_dir="outputs"):
+    st = config.get("strategy", {})
+    if st.get("ORACLE_TWOBURN", False) or st.get("ORACLE_TWOBURN_SEED_DE", False):
+        return _solve_with_oracle(config, output_dir)
+    return _solve_de_pipeline(config, output_dir)
+
+
+def _solve_de_pipeline(config, output_dir="outputs", oracle_seeds=None):
     """一顆 SEED 的完整求解：搜尋 → C2 primer 條件式重搜 →（Earth-safe 時）拆棒合法化。
     回傳 (burns, times, mission_info, optimizer)；搜尋失敗回 (None, None, None, None)。
     **不印 Earth-safe 警告**——那只該對最終勝出解印一次（見 main / run_seed_portfolio），
     不然 seed-portfolio 會對每顆中間候選都吼一次。
 
     拆棒前的贏家會存到本次執行目錄的 `winner_presplit_seed<SEED>.json`（見 save_winner_checkpoint）。"""
-    burns, times, mi, opt = _search_stage(config)
+    if oracle_seeds:
+        burns, times, mi, opt = _search_stage(config, oracle_seeds=oracle_seeds)
+    else:
+        burns, times, mi, opt = _search_stage(config)
     if burns is None or times is None:
         return None, None, None, opt
     seed = config.get("optimization", {}).get("SEED")
@@ -1045,11 +1105,93 @@ def _solve_pipeline(config, output_dir="outputs"):
             opt, burns, times, mi)
     except (OSError, TypeError) as exc:            # 存檔失敗不該擋管線
         log.warning(f"⚠️ 拆棒前贏家存檔失敗（不影響本次結果）：{exc}")
+    if config.get("strategy", {}).get("ORACLE_TWOBURN", False):
+        opt._oracle_presplit_leading_mps = float(np.linalg.norm(burns[0]) * 1000) if len(burns) > 1 else 0.0
     burns, times, mi = _legalize_stage(config, burns, times, mi, opt)
     burns, times, mi, opt = _fallback_to_legal_backup(config, burns, times, mi, opt)
     save_mission(os.path.join(output_dir, f"mission_seed{'none' if seed is None else seed}.json"),
                  opt.config, burns, times, mi)
     return burns, times, mi, opt
+
+
+def _solve_with_oracle(config, output_dir):
+    # Imported only on the enabled path: no numba/runtime or output changes off.
+    from src.oracle_worker import OracleJob, oracle_core_budget
+    from src.oracle_twoburn import standard_x_from_route
+
+    st = config.get("strategy", {})
+    started = time.monotonic()
+    deadline = started + float(st.get("ORACLE_TWOBURN_WALL_SEC", 600))
+    routes, entries, seeds, job = None, [], {}, None
+    oracle_wall = 0.0
+    try:
+        if st.get("ORACLE_TWOBURN_SEED_DE", False):
+            # Same grid feeds both arms. No external_seeds / primer fast flag.
+            sync = OracleJob(config, cores=os.cpu_count() or 4, deadline=deadline, grid_only=True)
+            routes, _ = sync.collect()
+            oracle_wall += sync.wall_sec
+            seed_opt = MissionOptimizer(config)
+            for route in routes:
+                x, n = standard_x_from_route(seed_opt, route["t1"], route["dv1"], route["t2"], route["t3"])
+                if n in seed_opt.burns:
+                    seeds.setdefault(n, []).append(x)
+        if st.get("ORACLE_TWOBURN", False) and time.monotonic() < deadline:
+            spare = oracle_core_budget(config)
+            log.info("Oracle background core budget: %d", spare)
+            if spare == 1:
+                log.info("Oracle spare=1：可能與 DE 搶一個核心")
+            job = OracleJob(config, cores=spare, deadline=deadline, routes=routes)
+    except Exception as exc:
+        log.warning("Oracle startup/grid failed (DE continues): %s", exc)
+
+    try:
+        result = _solve_de_pipeline(config, output_dir, oracle_seeds=seeds)
+        if job is not None:
+            try:
+                routes, entries = job.collect()
+                oracle_wall += job.wall_sec
+            except Exception as exc:
+                log.warning("Oracle collection failed (DE continues): %s", exc)
+    finally:
+        if job is not None:
+            job.close()
+
+    b, t, mi, opt = result
+    table = ["Oracle comparison: source / pre-rank / leading m/s / post-score / burns / total m/s / DQ"]
+    if b is not None:
+        de_leading = getattr(opt, "_oracle_presplit_leading_mps", np.linalg.norm(b[0])*1000 if len(b)>1 else 0.)
+        table.append(f"DE / - / {de_leading:.3f} / "
+                     f"{mi['score']:.6f} / {mi['num_burns']} / {mi['total_dv_mps']:.3f} / {is_disqualified(mi)}")
+    selected = None
+    for entry in entries:
+        cb, ct, cm, co = entry["candidate"]
+        route = entry["route"]
+        leading = 0.0 if route["dv1"] is None else float(np.linalg.norm(route["dv1"]) * 1000)
+        table.append(f"oracle / {route['rank']} / {leading:.3f} / {cm['score']:.6f} / "
+                     f"{cm['num_burns']} / {cm['total_dv_mps']:.3f} / {is_disqualified(cm)}")
+        eps = opt.TIEBREAK_SCORE_EPS if opt is not None else co.TIEBREAK_SCORE_EPS
+        # Earth-unsafe candidates cannot win even if their score is high.
+        if bool(cm.get("earth_safe", True)) and (b is None or
+                _final_rank_key(cm, eps=eps) < _final_rank_key(mi, eps=eps)):
+            b, t, mi, opt = cb, ct, cm, co
+            selected = entry
+    log.info("\n".join(table))
+    seed = config.get("optimization", {}).get("SEED")
+    suffix = 'none' if seed is None else seed
+    try:
+        payload = dict(routes=routes or [], seeds=seeds, wall_sec=oracle_wall,
+                       pipeline_wall_sec=time.monotonic() - started,
+                       candidates=[dict(route=e["route"], x=e["x"], N=e["N"],
+                                        post_mission=e["candidate"][2], wall_sec=e["wall_sec"],
+                                        elapsed_sec=e["elapsed_sec"]) for e in entries])
+        write_json(os.path.join(output_dir, f"oracle_candidates_seed{suffix}.json"), _to_jsonable(payload))
+        if selected is not None:
+            save_winner_checkpoint(os.path.join(output_dir, f"winner_presplit_seed{suffix}.json"),
+                                   opt, *selected["presplit"])
+            save_mission(os.path.join(output_dir, f"mission_seed{suffix}.json"), opt.config, b, t, mi)
+    except (OSError, TypeError) as exc:
+        log.warning("Oracle artifact save failed (result remains available): %s", exc)
+    return b, t, mi, opt
 
 
 def run_seed_portfolio(config, output_dir="outputs"):
