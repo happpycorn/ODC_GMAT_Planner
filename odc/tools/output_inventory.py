@@ -4,10 +4,10 @@
 
 All generated files stay under the gitignored outputs/ directory. From repo root:
 
-    uv run python scripts/output_inventory.py index
-    uv run python scripts/output_inventory.py archive-logs
-    uv run python scripts/output_inventory.py verify-archive outputs/archive/<name>.tar.gz
-    uv run python scripts/output_inventory.py restore-archive outputs/archive/<name>.tar.gz
+    uv run python odc.py outputs index
+    uv run python odc.py outputs archive-logs
+    uv run python odc.py outputs verify-archive outputs/archive/<name>.tar.gz
+    uv run python odc.py outputs restore-archive outputs/archive/<name>.tar.gz
 """
 
 import argparse
@@ -120,7 +120,7 @@ def write_index():
     (OUTPUTS / "index.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    lines = ["# 本機執行成果索引", "", "由 `scripts/output_inventory.py index` 產生。",
+    lines = ["# 本機執行成果索引", "", "由 `odc.py outputs index` 產生。",
              "設定與執行資料留在 `outputs/`；精選、可分享的解見 `docs/solutions/`。", "",
              "## Sweep 結果", "",
              "最佳分數取自已完成搜尋的 Python 方案；是否通過 GMAT 須查該 run 的驗證資料。", "",

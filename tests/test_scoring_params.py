@@ -1,7 +1,7 @@
-"""計分參數換算與驗算工具（odc/config/scoring_params.py、scripts/check_scoring_params.py）。
+"""計分參數換算與驗算工具（odc/config/scoring_params.py、odc/tools/check_scoring_params.py）。
 
 直接執行：uv run python tests/test_scoring_params.py
-由 run_regression.py 自動發現（純 Python，秒級）。
+由 odc.py test 自動發現（純 Python，秒級）。
 
 核心案例是初賽範例題目：官方 kv = 1.1862 (km/s)^-1、Cv = 2.955723 km/s，參考解
 2,241.427 m/s @ 3,211.737 s 換對單位剛好 90.00 分，照抄只有 72.50 分。

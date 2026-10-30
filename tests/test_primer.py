@@ -3,7 +3,7 @@
 斷言**性質**（邊界條件對、最優解 |p|≤1、次優解被抓到 |p|>1），不賭確切數字——STM 積分
 換 scipy 版本尾數會飄，但性質必須守住。確定性（純幾何 + Lambert，不涉 DE/亂數）。
 
-被 run_regression.py 自動發現。全過 exit 0，任一不過 exit 1。
+被 odc.py test 自動發現。全過 exit 0，任一不過 exit 1。
 """
 import os
 import sys

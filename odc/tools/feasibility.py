@@ -31,9 +31,9 @@ feasibility.py —— 開跑之前先問「這個情境到底有沒有合法解�
    其實是不同的題目，結論就沒有意義。
 
 用法：
-    uv run feasibility.py --config configs/x.json              # 前兩層 (快)
-    uv run feasibility.py --config configs/x.json --burns 3    # 加做 3 棒可行性
-    uv run feasibility.py --config configs/x.json --grid 160   # 加密單棒網格
+    uv run python odc.py feasibility configs/local/x.json              # 前兩層 (快)
+    uv run python odc.py feasibility configs/local/x.json --burns 3    # 加做 3 棒可行性
+    uv run python odc.py feasibility configs/local/x.json --grid 160   # 加密單棒網格
 """
 import os
 import sys
@@ -278,8 +278,8 @@ def main(argv=None):
         print("  如果加密後仍然是 0，再考慮多棒。")
     else:
         print(f"  單棒可行且合法解佔 {rarity:.2f}%，MAX_BURNS 從 [1] 開始測就好。")
-        print("  多棒在這種情境通常只會退化成單棒（中間棒 Δv=0），用 sweep_burns.py 確認。")
-    print("\n  找出「需要幾棒最好」用 sweep_burns.py；這支工具只回答「有沒有解」。")
+        print("  多棒在這種情境通常只會退化成單棒（中間棒 Δv=0），用 odc.py sweep-burns 確認。")
+    print("\n  找出「需要幾棒最好」用 odc.py sweep-burns；這支工具只回答「有沒有解」。")
 
 
 if __name__ == "__main__":

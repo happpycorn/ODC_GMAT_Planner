@@ -35,9 +35,9 @@ MAXITER 預設會依 decision_variable_dims (4×燃燒次數+1) 依比例分配�
 真的需要多棒。
 
 用法：
-    uv run sweep_burns.py --config configs/local/config.json
-    uv run sweep_burns.py --config configs/weird_test.json --burns 1-8 --coarse-iters 80
-    uv run sweep_burns.py --config configs/weird_test.json --burns 1-8 --coarse-iters 80 --coarse-popsize 8
+    uv run python odc.py sweep-burns configs/local/config.json
+    uv run python odc.py sweep-burns configs/shared/weird_test.json --burns 1-8 --coarse-iters 80
+    uv run python odc.py sweep-burns configs/shared/weird_test.json --burns 1-8 --coarse-iters 80 --coarse-popsize 8
 
 跑完會印出兩張趨勢表 + 一個建議的 MAX_BURNS 範圍，用 --output-config 可以直接把
 建議寫成一份新的 config 檔。
@@ -57,7 +57,7 @@ from odc.search.fitness import decision_variable_dims, effective_burns
 from odc.search.ranking import tiebreak_rank_key
 from odc.config.validator import validate_config, ConfigValidationError
 
-# main.py 已經有讀取+驗證 config 的邏輯，這裡直接借用，不要重複寫一份容易兩邊不同步。
+# odc.config.defaults 已經有讀取+驗證 config 的邏輯，這裡直接借用，不要重複寫一份容易兩邊不同步。
 from odc.paths import ROOT
 sys.path.insert(0, str(ROOT))
 from odc.config.defaults import load_or_create_config  # noqa: E402
@@ -206,7 +206,7 @@ def main(argv=None):
     # 開掃之前先用能量下限剔掉「物理上不可能合法」的燃燒次數 (2026-08-15 加)。
     # 這是封閉解、微秒等級，但可以省下實打實的搜尋時間：如果 B 光是把軌道撐到碰得到 A
     # 就需要超過「棒數 × 每棒上限」的 Δv，那個案例注定只能找到違規解，掃它純粹浪費。
-    # 更完整的可行性分析 (合法解有多稀有、多棒構造存不存在) 用 feasibility.py。
+    # 更完整的可行性分析 (合法解有多稀有、多棒構造存不存在) 用 odc.py feasibility。
     probe_cfg = copy.deepcopy(config)
     probe_cfg["optimization"]["MAX_BURNS"] = [max(burns_range)]
     floor_mps = MissionOptimizer(probe_cfg).energy_floor_dv() * 1000.0

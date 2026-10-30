@@ -1,7 +1,7 @@
 """雙曲線結構煙霧回歸：輸入、種子產生器與 TA 漸近線驗證，無 DE。
 
 直接執行：uv run python tests/test_hyperbolic_smoke.py
-由 run_regression.py 自動發現，包含在 --quick 中。
+由 odc.py test 自動發現，包含在 --quick 中。
 """
 import os
 import sys

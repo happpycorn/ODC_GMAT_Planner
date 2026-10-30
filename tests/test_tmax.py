@@ -1,7 +1,7 @@
-"""排位賽 T_max 工具（odc/config/tmax.py、scripts/tmax_from_boundary.py）的驗證。
+"""排位賽 T_max 工具（odc/config/tmax.py、odc/tools/tmax_from_boundary.py）的驗證。
 
 直接執行：uv run python tests/test_tmax.py
-由 run_regression.py 自動發現（不是 SLOW；第一次 numba 編譯約 4 秒）。
+由 odc.py test 自動發現（不是 SLOW；第一次 numba 編譯約 4 秒）。
 
 分四塊：
   1. 解析解 vs 數值傳播：點質量要一致到 1 ms；J2–J4 的差量印出來並給上界。

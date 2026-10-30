@@ -1,4 +1,4 @@
-"""C2 fast 回歸；支援 pytest 或直接執行（run_regression.py 自動發現）。"""
+"""C2 fast 回歸；支援 pytest 或直接執行（odc.py test 自動發現）。"""
 import copy
 import json
 from pathlib import Path

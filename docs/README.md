@@ -6,8 +6,8 @@
 
 | 文件 | 用途 |
 |---|---|
-| [ranking/CONTEST_DAY](ranking/CONTEST_DAY.md) | 拿到題目後的逐步流程、每步預估時間、失格檢查清單與繳交 |
-| [ranking/RANKING_ROUND_RULES_20261006](ranking/RANKING_ROUND_RULES_20261006.md) | 排位賽規則跟初賽的差異，以及工具需要改的地方 |
+| [ranking/CONTEST_DAY](ranking/CONTEST_DAY.md) | 排位賽 60 分鐘作業手冊：時間盒、三人分工、逐步指令、保底與失格檢查清單 |
+| [ranking/RANKING_ROUND_RULES_20261006](ranking/RANKING_ROUND_RULES_20261006.md) | 排位賽規則跟初賽的差異，以及工具怎麼對應 |
 | [ranking/QUESTIONS_FOR_ORGANIZER](ranking/QUESTIONS_FOR_ORGANIZER.md) | 給主辦單位的問題草稿（尚未寄出）：太空船參數、曆元、驗證設定、T_max、繳交格式 |
 | [final/FINAL_STRATEGY](final/FINAL_STRATEGY.md) | 主攻排位賽前二的策略、賽前待辦與時程 |
 | [final/AIAA_CTS_RESEARCH](final/AIAA_CTS_RESEARCH.md) | AIAA Capture the Satellite Challenge 考古，及對金／銅牌賽的啟示 |
@@ -55,6 +55,7 @@
 
 | 文件 | 用途 |
 |---|---|
+| [archive/refactor_20261030/REFACTOR_REPORT](archive/refactor_20261030/REFACTOR_REPORT.md) | 10 月 30 日全面重構的分階段驗收證據；patch 對照在同目錄 REFACTOR_PATCH_TARGETS |
 | [archive/PROJECT_AUDIT_20260909](archive/PROJECT_AUDIT_20260909.md) | 9 月 9 日盤點快照；其中部分清理已完成 |
 | [archive/HANDOFF_20260928](archive/HANDOFF_20260928.md) | 9 月 28 日交接快照；任務 1–3 已在 9 月 29 日完成 |
 | [archive/FLOW_EFFICIENCY_AUDIT_20260923](archive/FLOW_EFFICIENCY_AUDIT_20260923.md) | 流程成本審計；其中部分提案已完成 |

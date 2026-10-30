@@ -16,7 +16,7 @@
   * 若像範例題目：參考解該得幾分    -> 驗算計分參數的單位有沒有換錯
 
 用法：
-    uv run python check_problem.py --config configs/official_sample.json
+    uv run python odc.py check configs/shared/official_sample.json
 """
 import argparse
 import math
@@ -80,7 +80,7 @@ def main(argv=None):
     print("（用 MissionOptimizer 初始化，回顯的是工具真正會用的數值）")
     print("=" * 66)
 
-    # 先跑跟 main.py 同一套 config 驗證：抄錯型別、排位賽格式漏填 MAX_TOTAL_DV_MPS 這類硬錯
+    # 先跑跟 odc.py solve 同一套 config 驗證：抄錯型別、排位賽格式漏填 MAX_TOTAL_DV_MPS 這類硬錯
     # 在這裡就擋下來，不要等到開跑才發現 (MissionOptimizer 本身不驗)。
     try:
         validate_config(cfg)
@@ -138,17 +138,17 @@ def main(argv=None):
     # 之後要用那個解的 T/V 重算，別直接拿這個上界當停止門檻。
     if m.k_v > 0:
         print(f"\n  時間 vs 燃料：早到 1 秒最多值得多花 {m.k_t/m.k_v:.2f} m/s（拐點上界，實際更低）")
-        print("    （拿到解之後用該解的 T/V 重算真正的交換率，見 CONTEST_DAY 第五節）")
+        print("    （拿到解之後用該解的 T/V 重算真正的交換率）")
 
     # --- 若參考解已知：驗算單位 ---
     # 排位賽格式（有 MAX_TOTAL_DV_MPS）不印：這組參考解是初賽範例題的，用排位賽參數算一定
     # 「不是 90」，2026-10-20 演練時這行的紅色警告會讓現場誤以為單位換錯。
     if m.MAX_TOTAL_DV_MPS is not None:
         print("\n【單位換算檢查】")
-        print("  排位賽格式：用 scripts/check_scoring_params.py 驗算單位"
+        print("  排位賽格式：用 odc.py scoring 驗算單位"
               "（docs/ranking/CONTEST_DAY.md 步驟 3），這裡不做初賽範例的 90 分對照。")
         print("\n" + "=" * 66)
-        print("體檢完成。逐項確認上面的數字都合理，再開始跑 main.py。")
+        print("體檢完成。逐項確認上面的數字都合理，再開始跑 odc.py solve。")
         print("=" * 66)
         return
     REF_DV, REF_T, REF_SCORE = 2241.427, 3211.737, 90.00
@@ -168,7 +168,7 @@ def main(argv=None):
         print("    （若這是別的題目，這行沒意義，忽略即可）")
 
     print("\n" + "=" * 66)
-    print("體檢完成。逐項確認上面的數字都合理，再開始跑 main.py。")
+    print("體檢完成。逐項確認上面的數字都合理，再開始跑 odc.py solve。")
     print("=" * 66)
 
 

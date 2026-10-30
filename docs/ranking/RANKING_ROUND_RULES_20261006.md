@@ -22,27 +22,27 @@
 同分時依序比：最小距離 `d_min` 小者優先 → 總 Δv 小者優先 → 完成時間短者優先 → 5 分鐘簡報。
 前四名晉級（1、2 名進金牌賽，3、4 名進銅牌賽），其餘都是佳作；金、銅牌賽規則另行通知。決賽全員要到場。
 
-## 對工具的影響
+## 工具怎麼對應這些規則（2026-10-30 狀態）
 
-1. **超過單次上限從扣分變成失格。** 超標棒現在由 `AUTO_SPLIT_LEGALIZE` 拆棒，但 `src/optimizer.py` 和 `src/scorer.py` 仍把超標當成扣 10 分。
-   排位賽要改成只要有一棒超標就當作不可行，拆棒結果也要保留比 10⁻⁵ m/s 更大的安全邊際（`strategy.MAX_DV_MARGIN_MPS`）。
-2. **250 m/s 的上限讓解法變成很多棒。** 總 Δv 2 km/s 至少要 8 棒，3 km/s 至少要 12 棒，每棒之間還要隔 100 s。
-   拆棒段數已經是動態計算，但還沒在這種棒數下測過收斂和執行時間。
-3. **總 Δv ≤ 3 km/s 是新的失格條件。** 目前搜尋和驗證都沒有檢查總 Δv 上限，要加到 `rules` 設定和可行性判定。
-4. **攝動模型和工具差很多。** Python 端只支援重力 J2–J4，GMAT 腳本用 `JGM2.cof`、`Drag = None`、`SRP = Off`。
-   要改用官方的力學模型，必須產生能用 EGM96 20×20、潮汐、阻力、輻射壓和第三體重新驗證的 GMAT 腳本。
-   SPADFile、質量和面積這些太空船參數規則沒寫，要問主辦單位或等開賽公布。開了攝動之後，Earth-safe 的數值複驗（backlog D1）也要排進來。
-   **狀態（2026-10-19）：已接進正式管線。** 落差量化見 [PERTURBATION_GAP_20261019.md](../research/PERTURBATION_GAP_20261019.md)。
-   `strategy.FORCE_MODEL`（預設 `contest_prelim`，初賽與回歸逐位元不變；`ranking_full` 是官方模型）控制腳本的力學模型，
-   太空船質量/Cd/Cr/面積/SPAD 檔與曆元做成 `strategy.GMAT_SPACECRAFT`／`GMAT_SPACECRAFT_A`／`GMAT_EPOCH`（`src/gmat_env.py`）。
-   新增 `main.py --from-mission <mission.json> --retarget-full-perturbation`：全攝動下 B 平面 DC 改一棒，
-   重新判定命中、Earth-safe（全攝動密集重播的攔截前最低高度，等於 D1 的數值複驗）、T_max、單棒/總 Δv 失格與機動間隔，
-   通過才產全攝動固定燃燒繳交腳本，否則保留原方案並警告（用法見 README〈排位賽：全攝動 B 平面重瞄準〉）。
-   還沒做：太空船參數還是佔位值（等主辦單位公布）；沒有在 250 m/s 上限的多棒解上實測（目前沒有這種解）；
-   A 用跟 B 同一個 ForceModel（規則說 A「僅受重力」，研究量到差 ≤ 0.6 km）；改一棒失格時不會自動換棒，要手動 `--retarget-burn`。
-5. **T_max 只能在開賽時填入。** 程式要求雙曲線情境必須有 `rules.T_MAX_SEC`，這個設計是對的。開賽時拿到任務邊界後，用 A 的軌道算出 T_max 再填進去。
-6. **計分參數在比賽當下才公布**，所以搜尋預算和流程要能在現場短時間跑完。拿到參數後先確認單位：初賽官方給的 `k_v`、`C_v` 是 km/s 制，工具用 m/s，要換算。
-7. 同分判定先比 `d_min`。分數是連續值，完全同分的機會很小，不值得為了這點犧牲時間或燃料。
+| 規則 | 工具的處理 | 設定／指令 |
+|---|---|---|
+| 單棒 > 250 + 10⁻⁵ m/s 失格 | 搜尋端用「失格層」排序，任何合法候選都排在失格候選前面；超標棒由拆棒器拆成每棒 ≤ 248 m/s | `rules.MAX_DV_MPS`、`AUTO_SPLIT_LEGALIZE`（預設開）、`strategy.MAX_DV_MARGIN_MPS`（預設 2） |
+| 總 Δv > 3 km/s 失格 | 同上，一起進失格層；找不到合法路線時存 `no_legal_route.json`、結束碼 3 | `rules.MAX_TOTAL_DV_MPS` |
+| 機動間隔 ≥ 100 s | 照舊，違規扣 10 分 | `rules.MIN_MANEUVER_INTERVAL_SEC` |
+| 攔截前穿越地球失格 | Python 端 Earth-safe 閘門擋繳交腳本；重瞄準時再用全攝動密集重播檢查攔截前最低高度 | 自動 |
+| T_max 由任務邊界決定 | 雙曲線 A 必須填 `rules.T_MAX_SEC`；現場用工具由邊界算 | `odc.py tmax` |
+| 計分參數比賽當下公布 | 單位換算與參考解驗算工具 | `odc.py scoring` |
+| 官方全攝動驗證 | Python 用 J2–J4 設計；比賽時用 GMAT 全攝動做 B 平面重瞄準，通過才產繳交腳本 | `odc.py retarget`（[攝動落差](../research/PERTURBATION_GAP_20261019.md)） |
+| 同分比 d_min → ΔV → T | 挑贏家照這個字典序；收尾微調在不掉分時壓小 d_min | `strategy.TIEBREAK_POLISH` |
+
+拆棒後常是 6–12 棒（總 Δv 2 km/s 至少 8 棒、3 km/s 至少 12 棒）。排位賽範本 [ranking_round.json](../../configs/shared/ranking_round.json)
+另開 `SPLIT_LEADING`、`ORACLE_TWOBURN`（[階段 2](../research/ORACLE_PHASE2_20261029.md)）。現場流程見 [CONTEST_DAY](CONTEST_DAY.md)。
+
+仍未處理：
+
+- 太空船質量、Cd/Cr、面積、SPADFile、曆元還是我們的佔位值（`strategy.GMAT_SPACECRAFT`／`GMAT_EPOCH`，見 [odc/config/gmat_env.py](../../odc/config/gmat_env.py)），等主辦公布。
+- 重瞄準時 A 跟 B 用同一個 ForceModel；規則說 A「僅受重力」，研究量到差 ≤ 0.6 km。
+- 重瞄準改的那一棒超標時不會自動換棒，要手動加 `--retarget-burn N`。
 
 ## 還不知道的事
 

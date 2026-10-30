@@ -1,6 +1,6 @@
 # 拆棒前贏家存檔（contest 幾何）
 
-`main.py --from-winner <檔>` 跳過搜尋、直接重跑拆棒 + 產腳本 + GMAT（~4 分鐘）。改拆棒器時用它做前後對照。
+`uv run python odc.py resume <檔>` 跳過搜尋、直接重跑拆棒 + 產腳本 + GMAT（~4 分鐘）。改拆棒器時用它做前後對照。
 存檔內的 config 已移除本機 `local` 區塊；重播時用 `--config <你的 config>` 提供 `local.gmat_console_path`。
 
 | 檔案 | 拆前 | 路線 | 拆後（2026-09-23，`_slot_after_capped` 後） |

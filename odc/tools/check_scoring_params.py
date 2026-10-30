@@ -7,16 +7,16 @@ k_v、C_v 的單位**必須明講**（沒有預設值）：初賽官方給的是
 
 用法（從專案根目錄）：
     # 初賽範例示範：照抄 vs 換對，參考解各得幾分
-    uv run python scripts/check_scoring_params.py --demo-prelim
+    uv run python odc.py scoring --demo-prelim
 
     # 當天：官方數字 + 單位；有參考解就加 --ref-*
-    uv run python scripts/check_scoring_params.py \\
+    uv run python odc.py scoring \\
         --kt 0.003982 --kt-unit 1/s --Ct 3763.526 --Ct-unit s \\
         --kv 1.1862 --kv-unit "1/(km/s)" --Cv 2.955723 --Cv-unit km/s \\
         --ref-dv 2.241427 --ref-dv-unit km/s --ref-t 3211.737
 
     # 讀 config 的 T_MAX_SEC / MAX_TOTAL_DV_MPS 做範圍檢查，確認後寫回 rules
-    uv run python scripts/check_scoring_params.py --config configs/ranking.json ... --write
+    uv run python odc.py scoring --config configs/local/ranking.json ... --write
 """
 import argparse
 import json

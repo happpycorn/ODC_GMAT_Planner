@@ -11,7 +11,7 @@ sweep_params.py —— 參數正式實驗的掃描工具：情境 × SEED × 參
   * 固定 numba 快取狀態——evaluator 冷編譯 vs 讀快取差 1 ulp 就會讓 DE 分岔（STATUS 待辦 A），
     所以開跑前先暖快取，每次 run 也檢查快取檔有沒有被改寫（有 = 這次有冷編譯，彙整時警告）。
 
-每次 run 用子行程跑 `main.py --stop-after solve`（與實際使用同一條管線，含 C2 與拆棒合法化；
+每次 run 用子行程跑 `odc.py solve`（與實際使用同一條管線，含 C2 與拆棒合法化；
 不跑 GMAT，要驗證加 --gmat），跑完讀本次目錄的 mission.json（拆後）、winner_presplit（拆前）、
 run.log（各棒數案例跑了幾代），整理成一行寫進 results.jsonl。可以隨時中斷，重跑同一份規格會跳過
 已完成的組合。執行順序是 SEED 在最外層，跑到一半停掉時每個組合都已經有前幾顆 SEED。
@@ -34,11 +34,11 @@ run.log（各棒數案例跑了幾代），整理成一行寫進 results.jsonl�
 情境可選填 seeds（頂層 seeds 的子集）；省略時沿用全部 seeds。
 
 用法：
-    uv run python sweep_params.py sweeps/budget_v1.json --dry-run    # 列出要跑哪些、共幾次
-    uv run python sweep_params.py sweeps/budget_v1.json              # 開跑（可中斷、可續跑）
-    uv run python sweep_params.py sweeps/budget_v1.json --slots 3    # 同時跑 3 個 (牆鐘會互相干擾)
-    uv run python sweep_params.py sweeps/budget_v1.json --summary    # 彙整已有結果
-    uv run python sweep_params.py sweeps/budget_v1.json --gmat --gmat-console /path/to/GmatConsole
+    uv run python odc.py sweep sweeps/budget_v1.json --dry-run    # 列出要跑哪些、共幾次
+    uv run python odc.py sweep sweeps/budget_v1.json              # 開跑（可中斷、可續跑）
+    uv run python odc.py sweep sweeps/budget_v1.json --slots 3    # 同時跑 3 個 (牆鐘會互相干擾)
+    uv run python odc.py sweep sweeps/budget_v1.json --summary    # 彙整已有結果
+    uv run python odc.py sweep sweeps/budget_v1.json --gmat --gmat-console /path/to/GmatConsole
 """
 import argparse
 import copy

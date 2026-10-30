@@ -2,44 +2,52 @@
 
 最後更新：2026-10-30
 
-TASA／淡江大學「第一屆軌道設計競賽」的太空船攔截任務規劃工具；初賽已獲第二名（[準備期紀錄](docs/log/DEVLOG_ranking.md)）。
+TASA／淡江大學「第一屆軌道設計競賽」的太空船攔截任務規劃工具；初賽第二名。下一場是 **2026-11-09 決賽的排位賽（10:45–11:45，60 分鐘）**，
+目標前二進金牌賽（[策略](docs/final/FINAL_STRATEGY.md)）。當天照 [CONTEST_DAY](docs/ranking/CONTEST_DAY.md) 做。
 
 ## 目前狀態
 
-- **比賽設定**以 [ranking_round.json](configs/shared/ranking_round.json) 為準：單棒上限 250 m/s、總 Δv 上限 3,000 m/s、機動間隔 100 s；重力階數 4、命中容差 5 km，開啟 `SPLIT_LEADING` 與 `ORACLE_TWOBURN`。
-- 該範本的 A/B 軌道、`T_MAX_SEC`、`k_t/C_t/k_v/C_v` 仍是佔位值，須在開賽時整組換成官方題目；搜尋設定為 `MAX_BURNS=[1,2]`、`MAXITER=1000`、`POPSIZE=20`、`NUM_THREADS=-1`、`SEED=null`。並行種子須各設不同 SEED（同上設定檔註解）。
-- **共用拆棒預設**見 [split_defaults.py](odc/config/split_defaults.py)：STM Jacobian、三起點 `[0,0.75,1]`、1 m/s 剔空棒重最佳化、600 s 牆鐘預算、3 行程。
+- **比賽設定**是 [ranking_round.json](configs/shared/ranking_round.json)：單棒 250 m/s、總 Δv 3,000 m/s、機動間隔 100 s；J2–J4、命中容差 5 km，
+  開 `SPLIT_LEADING` 與 `ORACLE_TWOBURN`；搜尋 `MAX_BURNS=[1,2]`、`MAXITER=1000`、`POPSIZE=20`、`SEED=null`。
+  A/B 軌道、`T_MAX_SEC`、`k_t/C_t/k_v/C_v` 是佔位值，開賽時換成官方題目。
+- **當天流程**（10-30 重寫）：單一行程用滿核心求解 → 全攝動 B 平面重瞄準 → GMAT 重驗 → 失格清單 → 11:20 前存保底、11:25 開始繳交。
+  Mac 實測三題求解 2.5–5 分鐘、重瞄準加驗證 < 20 秒（[附錄 A](docs/ranking/CONTEST_DAY.md#附錄-a實測紀錄)）。以前的 3 顆固定種子並行已不用：oracle 開了之後各種子同分，並行只會互搶核心。
+- **程式結構**（10-30 全面重構，commit `209953c`，重構前 tag `pre-refactor`）：入口只剩 `odc.py`，程式在 `odc/`，
+  設定分 `configs/shared/`（版控）與 `configs/local/`（本機）。重構前後 11 個案例逐位元相同、回歸 31/31（[驗收報告](docs/archive/refactor_20261030/REFACTOR_REPORT.md)）。
+- **文件**（10-30 重寫）：README、CONTEST_DAY、規則摘要的工具對應、METHODOLOGY 與其他現行文件的舊路徑已改成重構後的指令。
 
-2026-09-29 之後完成的主要功能（依 Git 紀錄與報告）：
+主要功能與依據：排位賽失格層與結束碼 3（[懲罰 v2](docs/research/RANKING_PENALTY_V2_20261019.md)）；拆棒 STM、多起點、剔空棒、600 s 預算
+（[拆棒加速](docs/research/SPLITTER_SPEED_20261020.md)）；全攝動重瞄準（[攝動落差](docs/research/PERTURBATION_GAP_20261019.md)）；
+星曆快取（[報告](docs/research/EPHEM_CACHE_20261028.md)）；前導棒拆分＋兩棒 oracle（[階段 2](docs/research/ORACLE_PHASE2_20261029.md)）。
+完整紀錄在 [DEVLOG_ranking](docs/log/DEVLOG_ranking.md)。
 
-- REVS 案例已共用行程池；提早停止已接通，但消融顯示掉分，預設維持關閉（[REVS 排程](docs/research/REVS_SCHEDULING_20260929.md)、[提早停止消融](docs/research/EARLY_STOP_ABLATION_20260929.md)）。
-- 排位賽硬性限制與搜尋「失格層」已接通；找不到合法路線時保存 `no_legal_route.json` 並以結束碼 3 結束（[搜尋懲罰 v2](docs/research/RANKING_PENALTY_V2_20261019.md)）。
-- T_max 計算、計分單位驗算工具及當天手冊已就緒；全攝動 B 平面重瞄準已接進正式管線（[決賽策略](docs/final/FINAL_STRATEGY.md#判斷)、[攝動落差](docs/research/PERTURBATION_GAP_20261019.md)）。
-- 拆棒加速、多起點、剔空棒重最佳化與牆鐘預算已實作；後續加入 STM Jacobian 與固定軌道星曆快取（[拆棒加速](docs/research/SPLITTER_SPEED_20261020.md)、[星曆快取](docs/research/EPHEM_CACHE_20261028.md)；Git `dfc2b0a`、`1277cf0`）。
-- 撞地球判定已補驗證腳本半徑關卡、雙曲線真近地點與第一棒前等待弧（Git `d97ca92`）；primer 快速重搜與搜尋滑行容差旋鈕已加入，預設仍維持 full／`1e-12`（[primer 對照](docs/research/PRIMER_FAST_V1_20261028.md)；Git `72e63a6`）。
-- 前導棒拆分、兩棒 oracle 附加候選與 SEARCH／LEADING 同開時計分修正已整合；排位賽範本已採四臂比較建議的 C 臂，並納入 e1_r4/r5/r8 共用情境（[階段 2](docs/research/ORACLE_PHASE2_20261029.md)、[計分修正](docs/research/SPLIT_AWARE_SEARCH_FIX_20261029.md)；Git `402faff`）。
+## 接下來
 
-## 比賽前時程
+依 [FINAL_STRATEGY 時程](docs/final/FINAL_STRATEGY.md#時程)：
 
-依 [FINAL_STRATEGY 時程表](docs/final/FINAL_STRATEGY.md#時程)：10/29–10/30 寫入 60 分鐘時間盒並開始 Mac 實測；10/31–11/02 完成機器實測與盲測題計時；11/03–11/07 彩排兩次並修手冊；11/08 凍結程式碼、重看官方規則；11/09 比賽，排位賽 10:45–11:45。
+| 日期 | 內容 |
+|---|---|
+| 盡快 | **寄出主辦提問**（[草稿](docs/ranking/QUESTIONS_FOR_ORGANIZER.md)，寄出紀錄仍是空的） |
+| 10/31–11/02 | 盲測題計時（含人工步驟）；Mac 量保底設定 |
+| 11/03–11/07 | 照 CONTEST_DAY 三人彩排兩次，含主辦機繳交；實測時間填回附錄 A |
+| 11/08 | 凍結程式碼，重看 TASA 頁的規則修訂 |
 
-## 已知問題與還沒做的事
+## 已知問題
 
-- [FINAL_STRATEGY 待辦](docs/final/FINAL_STRATEGY.md#待辦依優先序)：主辦提問、60 分鐘流程與保底設定、當天機器及低預算實測、盲測與三人彩排；官方參數回覆後須替換預設並重驗。金／銅牌賽細則公布前不再投入。
-- [階段 2 未驗證項目](docs/research/ORACLE_PHASE2_20261029.md#5-沒驗證到的地方)：Mac C 臂只量過 hyper_far 一個 run；其餘題牆鐘與現場核心分配未量。oracle 逾時清理只經單元測試，重瞄準＋GMAT 只驗每題每臂最佳 run。
-- 同報告記錄：`SPLIT_LEADING=false` 時 primer 重搜的搜尋／重播仍不同尺；smoke 的終端／前導拆棒預付估分會排反，其他題未驗證、未調參；B 臂跨機器非確定性尚未在修正後重測。
-- [primer 快速模式](docs/research/PRIMER_FAST_V1_20261028.md) 在已找到的救分案例比 full 少 0.51 分；[全域對照](docs/research/GLOBAL_ORACLE_20261028.md#hyper_far-的拆棒盲點) 的長滑行終端路線、[E1](docs/research/E1_FREQUENCY_20261029.md#限制) 的 e1_r7 拆棒失敗原因仍未查明。
+- **繳交（步驟 8）沒有計時過**，主辦機能不能交整份自製 Script 也不知道（[問題 12–14](docs/ranking/QUESTIONS_FOR_ORGANIZER.md)）。
+- 太空船質量、Cd/Cr、面積、SPADFile、曆元還是佔位值；重瞄準時 A 用跟 B 同一個力學模型（規則說 A 只受重力，研究量到差 ≤ 0.6 km）。
+- primer 加棒重搜（`PRIMER_GUIDED_RESEARCH`）沒有時間上限，觸發時多一整輪搜尋；當天靠手冊的保底設定處理。fast 模式有 300 s 上限，但救分案例少 0.51 分（[primer 對照](docs/research/PRIMER_FAST_V1_20261028.md)）。
+- [階段 2 未驗證項目](docs/research/ORACLE_PHASE2_20261029.md#5-沒驗證到的地方)：oracle 逾時清理只經單元測試；`SPLIT_LEADING=false` 時 primer 重搜的搜尋／重播不同尺。
+- [全域對照](docs/research/GLOBAL_ORACLE_20261028.md#hyper_far-的拆棒盲點)的長滑行終端路線、[E1](docs/research/E1_FREQUENCY_20261029.md#限制) 的 e1_r7 拆棒失敗原因仍未查明。
+- 求解時「最大單棒超標 N 倍」的警告文字還寫「見 feasibility.py」，應為 `odc.py feasibility`；改它會讓既有 `mission.json` 的版本雜湊失效，留到賽後。
 
 ## 環境（本機、不進 git）
 
-- **目前開發機：Mac（Darwin）。** GMAT R2026a 在 `/Users/corn/Documents/GMAT R2026a/bin/GmatConsole`
-  （已存在，寫進各 `configs/local/*.json` 的 `local.gmat_console_path`，或帶 `--gmat-console`）。
-- `configs/` 整個被 gitignore、換機器不會帶過來。**設定檔的完整重建參數記在 [SCENARIOS.md](docs/SCENARIOS.md)**
-  （configs/ 遺失就靠這份重建）。
-- 2026-08-15 曾在 WSL2+Ryzen 上開發，那套 GMAT-on-WSL 修補若日後回 WSL 用得上，記在 DEVLOG_prelim.md 末段。
+- 開發機是 Mac；GMAT R2026a 在 `/Users/corn/Documents/GMAT R2026a/bin/GmatConsole`，用 `odc.py new-config <名稱> --gmat-console <路徑>` 寫進本機設定。
+- `configs/local/` 與 `outputs/` 被 gitignore。共用情境在 `configs/shared/`；本機設定遺失時照 [SCENARIOS.md](docs/SCENARIOS.md) 重建。
+- 另一台開發機 Corn（Ryzen 7 5800X、WSL2）負責長批次；兩邊透過 `Master` 同步，在 Mac 動手前先 `git pull`。WSL 上的 GMAT 修補記在 DEVLOG_prelim 末段。
 
 ## 文件入口
 
-- [README](README.md)：安裝、設定、執行與輸出。
+- [README](README.md)：安裝、設定、指令與輸出。
 - [docs/README](docs/README.md)：比賽當天、現行參考、研究與封存導覽。
-- [docs/log/](docs/log/)：初賽與排位賽準備期的完整開發紀錄。

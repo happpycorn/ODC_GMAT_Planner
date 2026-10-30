@@ -20,19 +20,19 @@
 
 每次數值子行程均固定 OMP、OPENBLAS、MKL、NUMBA、NUMEXPR 執行緒為 1，PYTHONHASHSEED=0，並使用新建的空 NUMBA_CACHE_DIR。
 GMAT 腳本逐位元比較；燃燒、滑行與 mission_info 所有數值完全相等，沒有套用數值容忍度。
-排除環境資料的實際鍵路徑見 [基準報告](../outputs/equivalence/baseline/equivalence_report.md#正規化時排除的鍵)：時間戳、絕對路徑、run_dir、provenance、artifact_id、來源存檔雜湊與牆鐘時間欄位。
+排除環境資料的實際鍵路徑見 [基準報告](../../../outputs/equivalence/baseline/equivalence_report.md#正規化時排除的鍵)：時間戳、絕對路徑、run_dir、provenance、artifact_id、來源存檔雜湊與牆鐘時間欄位。
 oracle 會把剩餘時間寫回贏家 config.strategy.SPLIT_WALL_BUDGET_SEC，因此此時間衍生欄位也排除；原始快照與設定副本均保留。
 備份檔名 history/output_YYYYMMDD_HHMMSS.txt 只在檔名比對時正規化；其內容仍逐位元檢查。
 ranking_oracle 的候選 JSON 證明 spawn 完成，audit hook 記錄父行程及 oracle worker 的 fork 建立事件，且沒有觸發牆鐘期限。
 
 | 階段 | quick 通過 | 正式紀錄 |
 |---|---|---|
-| 0 | 22/22；242.5 s | [原始紀錄](../outputs/equivalence/baseline/regression.txt) |
-| 1 | 22/22；244.9 s | [原始紀錄](../outputs/equivalence/stage1_regression.txt) |
-| 2 | 23/23；306.4 s | [原始紀錄](../outputs/equivalence/stage2_regression.txt) |
-| 3 | 23/23；228.2 s | [原始紀錄](../outputs/equivalence/stage3_regression.txt) |
-| 4 | 23/23；238.5 s | [原始紀錄](../outputs/equivalence/stage4_regression.txt) |
-| 5 | 23/23；223.3 s | [原始紀錄](../outputs/equivalence/stage5_regression.txt) |
+| 0 | 22/22；242.5 s | [原始紀錄](../../../outputs/equivalence/baseline/regression.txt) |
+| 1 | 22/22；244.9 s | [原始紀錄](../../../outputs/equivalence/stage1_regression.txt) |
+| 2 | 23/23；306.4 s | [原始紀錄](../../../outputs/equivalence/stage2_regression.txt) |
+| 3 | 23/23；228.2 s | [原始紀錄](../../../outputs/equivalence/stage3_regression.txt) |
+| 4 | 23/23；238.5 s | [原始紀錄](../../../outputs/equivalence/stage4_regression.txt) |
+| 5 | 23/23；223.3 s | [原始紀錄](../../../outputs/equivalence/stage5_regression.txt) |
 
 以上均排除 test_retarget_gmat_e2e；runner 的實際指令與篩選名稱寫在各紀錄第一行。
 另有一次階段 4 的 8 項針對性檢查漏設固定執行緒，雖為 8/8 通過但耗時 2660.6 s；不作正式效能或等價判定，正式驗收已另以固定環境執行。
@@ -95,7 +95,7 @@ src/ 為 0 筆；src. 只有 test_retarget_gmat_e2e.py 的區域變數 src.read_
 ### 使用者核准的腳本註解例外
 
 使用者選擇更新 src/gmat_env.py 與 src/script_generator.py 的生成註解路徑，接受這兩段文字差異。
-額外以原版產生器對照 ranking_full、全攝動 replay 與 B 平面 DC 三種腳本，確認僅這兩處路徑註解不同，其餘位元組相同；見 [紀錄](../outputs/equivalence/authorized_script_comment_check.json)。
+額外以原版產生器對照 ranking_full、全攝動 replay 與 B 平面 DC 三種腳本，確認僅這兩處路徑註解不同，其餘位元組相同；見 [紀錄](../../../outputs/equivalence/authorized_script_comment_check.json)。
 
 ## 階段 2：單一入口
 
@@ -233,7 +233,7 @@ configs/shared/weird_test.json
 | `configs/c4/E5_playground_on.json` | `configs/local/c4/E5_playground_on.json` | `969fd1f3a6eb` |
 | `configs/c4/E6_contest_default.json` | `configs/local/c4/E6_contest_default.json` | `8c2028036383` |
 
-完整 SHA256 見 [搬移紀錄](../outputs/equivalence/stage3_config_moves.json)。
+完整 SHA256 見 [搬移紀錄](../../../outputs/equivalence/stage3_config_moves.json)。
 
 ## 階段 4：主管線拆分
 
@@ -318,15 +318,15 @@ odc.search.optimizer.MissionOptimizer → odc.search.seeds.SeedCandidatesMixin �
 
 ## 階段 6：文件與最終檢查
 
-- 新增 [ARCHITECTURE.md](ARCHITECTURE.md)，94 行，包含實際檔案樹、套件職責、solve 順序與版本驗證。
+- 新增 [ARCHITECTURE.md](../../ARCHITECTURE.md)，94 行，包含實際檔案樹、套件職責、solve 順序與版本驗證。
 - 新增 REFACTOR_REPORT.md 與 REFACTOR_PATCH_TARGETS.md，保存階段報告與每個 patch 的對照。
-- 新增 [CLI.md](CLI.md)，14 個子命令各提供 2 至 3 個範例與舊指令對照；30 個範例的 help 退出碼均為 0，所有選項均出現在原工具 help。
+- 新增 [CLI.md](../../CLI.md)，14 個子命令各提供 2 至 3 個範例與舊指令對照；30 個範例的 help 退出碼均為 0，所有選項均出現在原工具 help。
 - README、STATUS、比賽當天手冊與工具導覽只機械式更新指令、路徑及必要索引。
 - 使用者核准歷史 Markdown 只修改連結目標；目前共 39 個目標更新，正文、標籤與歷史指令經去除 URL 後逐字相同。
 - 原先受保護的 29 個依賴設定、fixture、解與規則檔案之 SHA256 全部不變；50 個本機設定亦再驗雜湊一致。
 
-連結檢查包含 Markdown 檔案目標、標題 anchor 及 Python #L 行號；排除 .venv、outputs、.git，結果見 [檢查紀錄](../outputs/equivalence/stage6_link_check.json)。
-CLI 範例驗證採各實際指令附加 --help，再將範例的旗標逐個與原工具 help 比對，沒有執行新增設定、成果索引、封存或覆寫操作；見 [驗證紀錄](../outputs/equivalence/stage6_cli_validation.json)。
+連結檢查包含 Markdown 檔案目標、標題 anchor 及 Python #L 行號；排除 .venv、outputs、.git，結果見 [檢查紀錄](../../../outputs/equivalence/stage6_link_check.json)。
+CLI 範例驗證採各實際指令附加 --help，再將範例的旗標逐個與原工具 help 比對，沒有執行新增設定、成果索引、封存或覆寫操作；見 [驗證紀錄](../../../outputs/equivalence/stage6_cli_validation.json)。
 
 ## 非搬移程式碼調整
 
@@ -358,7 +358,7 @@ ROOT 深度、預設設定提示、快取 glob、子行程入口及 PHYSICS_FILE
 ## 驗證範圍與使用者後續操作
 
 本次按要求執行 quick 與 11 個等價案例；指定的 GMAT 端到端測試留待外部執行，Windows 未做實機驗證。既有 POSIX 工具的限制保留，新 CLI／路徑／設定建立程式使用 pathlib 與參數清單子行程。
-舊 mission.json 的版本相容性處理見 [版本驗證](ARCHITECTURE.md#版本驗證)。
+舊 mission.json 的版本相容性處理見 [版本驗證](../../ARCHITECTURE.md#版本驗證)。
 
 依指示未執行任何寫入 Git 的指令。請在外部補跑 GMAT 測試，檢閱變更後加入版控並提交：
 

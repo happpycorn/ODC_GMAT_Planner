@@ -7,7 +7,7 @@
 掃一組固定的抵達時機、斷言「**至少能合法化一個**超標終端攔截」，而不是賭單一幾何——確定性
 （純幾何傳播，不涉 DE/亂數），又不會因為某個難搞幾何誤報失敗。
 
-被 run_regression.py 自動發現（tests/test_*.py）。全過 exit 0，任一不過 exit 1。
+被 odc.py test 自動發現（tests/test_*.py）。全過 exit 0，任一不過 exit 1。
 """
 SLOW = True  # 約 20 秒；quick 保留在 60 秒左右，完整回歸仍執行。
 

@@ -1,418 +1,217 @@
-# 🚀 軌道攔截設計賽 - 任務規劃工具 (Rocket Trajectory Calculator)
+# 軌道攔截設計賽：任務規劃工具
 
-本程式是「軌道攔截設計賽」的任務規劃工具：讓太空船 B 以多次瞬時脈衝機動，在時間限制內攔截太空船 A，同時兼顧燃料消耗與任務效率。初賽已結束；目前用初賽及自建情境驗證下一輪可能用到的雙曲線攔截流程，下一輪正式軌道與計分參數仍待主辦方公布。程式以多行程、Numba、L-SHADE 搜尋與局部微調找解，最後產出可匯入 GMAT 的任務腳本。
+TASA／淡江大學「第一屆軌道設計競賽」用的任務規劃工具。我方太空船 B 以多次瞬時脈衝機動，在 T_max 內攔截只受重力的太空船 A；
+工具用 L-SHADE 搜尋路線、把超標的棒拆成合法多棒解，再產生 GMAT 腳本並用 GMAT 驗證。初賽第二名，下一場是 2026-11-09 決賽的排位賽。
 
-為了確保最佳的執行效能與最簡便的安裝體驗，本專案使用新一代極速套件管理工具 `uv`，不需要手動設定虛擬環境。
-
-**從這裡看安裝、設定、執行與輸出。** 目前進度和未完成工作見 [STATUS.md](STATUS.md)；物理模型與求解流程見 [METHODOLOGY.md](docs/METHODOLOGY.md)；研究紀錄、情境與初賽封存資料見 [文件導覽](docs/README.md)。
+| 想做什麼 | 看哪裡 |
+|---|---|
+| **比賽當天照著做** | [docs/ranking/CONTEST_DAY.md](docs/ranking/CONTEST_DAY.md) |
+| 目前狀態、未完成的事 | [STATUS.md](STATUS.md) |
+| 每個子命令的選項與範例 | [docs/CLI.md](docs/CLI.md) |
+| 程式在哪個檔案、呼叫順序 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| 物理模型、搜尋、計分的原理 | [docs/METHODOLOGY.md](docs/METHODOLOGY.md) |
+| 所有文件的導覽 | [docs/README.md](docs/README.md) |
 
 ---
 
-## ⚠️ 系統環境需求
+## 安裝
 
-本專案需要 **Python 3.12 或以上版本**（`pyproject.toml` 寫死 `requires-python = ">=3.12"`）。不用自己先裝好——下面的 `uv` 工具會自動抓一份對的版本回來，不會跟你電腦上其他專案用的 Python 打架。
-
----
-
-## 步驟一：安裝 `uv` 工具
-
-請打開終端機 (Mac) 或 命令提示字元/PowerShell (Windows)，輸入以下指令：
+需要 Python 3.12 以上，由 `uv` 自動下載，不用自己裝。
 
 ```bash
 pip install uv
 ```
 
-### 每次 `git pull` 之後：跑一次 `uv sync`
-
 ```bash
 uv sync
 ```
 
-`uv run` 平常會自動補齊缺少的套件，但**不會清掉已經不需要的舊套件**。如果別人改過
-`pyproject.toml`/`uv.lock`（例如移除某個依賴），你的環境會留著殘骸，而殘骸會掩蓋
-問題——這個專案至少踩過兩次：一次是 `tqdm` 從來沒被列進依賴、靠殘留的舊環境活著，
-換到全新機器就 `ModuleNotFoundError`；一次是清掉 `torch` 之後本機還留著整套 CUDA
-套件，1GB 的東西白佔空間。
+**每次 `git pull` 之後都跑一次 `uv sync`**。`uv run` 會補缺的套件，但不會刪多的；殘留套件曾經掩蓋過漏列的依賴（`tqdm`），換新機器才爆。
 
-`uv sync` 會讓環境**精確等於** lockfile，多的砍掉、缺的補上。養成 pull 完跑一次的
-習慣，就不會遇到「在我這台好好的」這種問題。
+GMAT 要另外裝（本機是 GMAT R2026a）。工具只用無頭的 `GmatConsole`，路徑的優先順序是：
+`--gmat-console` 參數 > 設定檔的 `local.gmat_console_path` > [odc/config/defaults.py](odc/config/defaults.py) 寫死的備援值（作者 Mac 的路徑）。
+
+所有指令都要在專案根目錄執行，入口只有一個：
+
+```bash
+uv run python odc.py --help
+```
 
 ---
 
-## 步驟二：設定 `configs/local/config.json`
+## 快速試跑
 
-程式第一次執行時，如果找不到設定檔會自動生成一份預設範例，但**正式提交前務必手動確認以下欄位是主辦方公布的正式數字**，不是範例值：
+```bash
+uv run python odc.py new-config trial --from hyperbolic_smoke
+```
 
-共用的重現情境放在版控中的 [`configs/shared/`](configs/shared/)；個人使用的 `configs/local/config.json` 與其他 `configs/local/*.json` 仍留在本機。共用檔不含 `local` 區塊，要跑 GMAT 可帶 `--gmat-console` 或使用本機設定檔。各情境用途與完整參數見 [SCENARIOS.md](docs/SCENARIOS.md)。
+```bash
+uv run python odc.py solve configs/local/trial.json --no-gmat
+```
 
-config 分四大塊 + 一塊選填，各自對應「誰決定這個數字」：`orbit_A`/`orbit_B`（軌道六根數）、`rules`（主辦方規定/公告的數字，我們不能改）、`strategy`（我們自己的任務設計選項，不是規則要求）、`optimization`（純演算法搜尋設定，只影響找不找得到好解/要跑多久，不影響規則本身）、`local`（選填，跟任務/規則完全無關的「這台機器」設定，見下）。
+`new-config` 從 `configs/shared/` 複製一份到 `configs/local/`（不覆蓋已存在的檔，加 `--gmat-console <路徑>` 會一起寫進 `local`）。
+`--no-gmat` 跳過 GMAT，只看 Python 端結果。有裝 GMAT 就拿掉它，會自動做無頭驗證。
 
-| 欄位 | 說明 |
-|---|---|
-| `orbit_A` / `orbit_B` | 太空船 A / B 的軌道六根數 (SMA, ECC, INC, RAAN, AOP, TA) |
-| `rules.MAX_DV_MPS` / `MIN_MANEUVER_INTERVAL_SEC` / `T_MAX_PERIOD_MULTIPLE` | 規則規定的數字（規則第 2、3 節）：單次機動 Δv 上限 (m/s)、兩次機動間隔下限 (秒)、`T_max` 是 A 軌道週期的幾倍。預設值就是目前初賽規則的 1500 / 100 / 4，晉級賽如果規則數字不一樣，改這裡就好 |
-| `rules.k_t` / `C_t` / `k_v` / `C_v` | 主辦方公告的計分參數（規則第 5 節），跟軌道分布狀況有關，每次比賽前會公告 |
-| `strategy.GRAVITY_DEGREE` | 重力場要算到第幾階 zonal harmonic：`0`=純點質量、`2`=J2、`3`=J2+J3、`4`=J2+J3+J4。Python 端跟產生的 GMAT script 會同步套用，不用改程式碼。**建議用 `4`**——實測最準；設 `0` 雖然讓兩邊模型一致，但等於兩邊都在算不真實的物理，比賽當天主辦方環境若有開擾動就會對不上 |
-| `strategy.GMAT_MODEL_SCALE`（選填，預設 0.5） | GMAT 3D 視窗裡太空船模型的大小。GMAT 自己的預設是 3.0，但相機距離現在會依軌道大小自動拉遠，模型不會跟著縮，大場景就變成整個畫面都是飛船。覺得太小看不到就調大（允許 0.001~1000）。純視覺設定，不影響計算 |
-| `strategy.MISS_TOLERANCE_KM` | 規則只要求 Δr ≤ 這個值 (預設對齊規則的 5km)，可以彈性調小 (甚至設 0 退回精準瞄準)，讓最後一棒 Lambert 在容許範圍內找最省油的落點，而不是死盯著 A 的精確位置 |
-| `optimization.MAX_BURNS` | 要嘗試的燃燒次數列表，例如 `[1, 2, 3]` 會三種都跑，選分數最高的 |
-| `optimization.MAXITER` / `POPSIZE` | 搜尋精細度。`POPSIZE` 是「每個決策變數維度分配幾個個體」(族群大小 = 維度數 × POPSIZE)，不是總數，越大越準但越久 |
-| `optimization.EARLY_STOP_ENABLED`（選填，預設 `false`） | 啟用後才會使用 `MAX_EARLY_STOP` 與 `TOL` 提早停止搜尋；`TOL` 是分數單位。2026-09-29 消融發現多個情境明顯掉分，維持關閉較穩妥。見 [實驗結果](docs/research/EARLY_STOP_ABLATION_20260929.md) |
-| `local.gmat_console_path`（選填） | 這台機器上 `GmatConsole` 的路徑。不填就用 `--gmat-console` 參數，或 `odc/config/defaults.py` 裡寫死的最後備援值（那是我這台機器的路徑，換一台機器大概率對不上）。優先順序：`--gmat-console` > 這個欄位 > 寫死的備援值。config.json 本來就被 `.gitignore` 排除，填在這裡不會跟著 git 到處跑，換電腦/換人開發各自維護自己的這一項就好，不用每次執行都手動打 `--gmat-console` |
-| `optimization.NUM_THREADS` | 每個燃燒次數案例要用幾條執行緒平行評估族群；設 `-1` 或 0 以下會自動用「可用核心數 ÷ 燃燒次數案例數」估一個合理值 |
-| `optimization.SEED` | 設一個整數可以讓同一組設定每次重現一模一樣的結果，方便比較「改了東西到底有沒有用」。**注意：設了 SEED 會自動退回單執行緒**（多執行緒下亂數搶用有 race condition，seed 保證不了重現性），犧牲速度換可重現性；不設 (`null`，預設) 就照樣用多執行緒換速度，兩者只能選一個 |
-
-規則摘要（詳見 `rules/` 裡的正式規則文件）：單次機動 Δv ≤ 1500 m/s、兩次機動間隔 ≥ 100 秒、任務時間上限 T_max = 4×(A 的軌道週期)、相對距離 ≤ 5 km 視為攔截成功。這幾個數字現在都能在 config 裡調，程式不用改。
-
-想在多份設定間切換（例如測試資料 vs. 正式測資）不用互相覆蓋，可以用 `--config` 指到不同的檔案（見下）。
+不給設定檔時用 `configs/local/config.json`；那個檔不存在會自動產生**初賽格式的範例**（單棒 1500 m/s、沒有總 Δv 上限），排位賽不要用它，改用 `new-config`。
 
 ---
 
-## 步驟三：執行計算程式
+## 設定檔
 
-```bash
-uv run python odc.py solve
-```
+`configs/shared/` 跟著 Git，是可以重現的共用情境；`configs/local/` 被 gitignore，放自己的設定與當天題目。
+共用情境的用途與參數見 [SCENARIOS.md](docs/SCENARIOS.md)。排位賽範本是 [configs/shared/ranking_round.json](configs/shared/ranking_round.json)。
 
-或是指定其他設定檔（預設是 `configs/local/config.json`）：
+設定檔分五塊，依「誰決定這個數字」區分：
 
-```bash
-uv run python odc.py solve configs/local/my_scenario.json
-```
-
-執行完後會依序做三件事：
-
-1. **Python 端高精度預覽**：終端機直接印出這組解的預估成績（用含 J2 的高精度模型算出來的真實 Δr_min / ΔV_team / T_team / 違規次數 / Score），不用等 GMAT 就能先判斷這組解值不值得。
-2. **保存方案與產出 GMAT 任務腳本**：寫到本次獨立目錄的 `mission.json` 與 `output.txt`；目錄預設為 `outputs/runs/<唯一識別碼>/`，啟動時會印出。
-3. **自動呼叫 GMAT 做無頭驗證**：透過 `GmatConsole --exit --run` 在背景直接把腳本跑一次（不會跳出 GMAT 視窗），讀回 GMAT 自己算出來的 `InterceptSuccess`/`MissDistance`/`T_team`，跟 Python 的預測印在一起對照。**整個流程一次跑完，不用手動開 GMAT。**
-
-GMAT 相關參數：
-
-```bash
-uv run python odc.py solve --gmat-console "/path/to/GMAT R2026a/bin/GmatConsole"  # 換一台機器/重灌過時指定路徑
-uv run python odc.py solve --no-gmat                                              # 只要 Python 端結果，跳過自動驗證
-```
-
-若沒裝 GMAT 或路徑不對，這步只會印警告，不會讓程式中斷；Python 算出來的結果跟 `output.txt` 照樣正常產出。
-
-### 分段執行：修改後不用每次從搜尋重跑
-
-`odc.py` 仍可一次跑到底。開發時，可先存下求解結果，再從需要驗證的階段接著跑：
-
-```bash
-# 1. 搜尋＋primer＋拆棒，完成後保存 mission.json，不產腳本、不跑 GMAT
-uv run python odc.py solve configs/local/contest.json  --stop-after solve --run-dir outputs/runs/solve-a
-
-# 2. 只重產腳本：不搜尋、不拆棒、不跑 GMAT
-uv run python odc.py export outputs/runs/solve-a/mission.json  --stop-after export --run-dir outputs/runs/export-a
-
-# 3. 用已保存方案產腳本並跑 GMAT DC／固定燃燒版雙驗證，不重新求解
-uv run python odc.py export outputs/runs/solve-a/mission.json  --run-dir outputs/runs/verify-a
-
-# 4. 只重驗既有固定燃燒腳本，不重新求解或重產任務
-uv run python odc.py verify outputs/runs/verify-a/output_submit.txt  --run-dir outputs/runs/recheck-a
-
-# 5. 排位賽：在官方全攝動模型下 B 平面重瞄準，產生全攝動固定燃燒繳交腳本（見下節）
-uv run python odc.py retarget outputs/runs/solve-a/mission.json   --run-dir outputs/runs/retarget-a
-```
-
-`--run-dir` 可省略，程式會自動建立唯一目錄；指定時必須是**尚不存在**的目錄，避免覆蓋先前結果。
-`--no-gmat` 等同停在 export。只改模型大小可加 `--model-scale 0.8`，不需修改存檔。
-
-改拆棒器時，仍用 `--from-winner <winner_presplit_seed*.json>`，跳過搜尋、重跑拆棒；舊版存檔也可讀。
-新執行會把每顆 seed 的拆前／拆後結果及最終 `mission.json` 放在同一個 run 目錄。
-`mission.json` 表示已完成 Python 求解，不保證合法或已通過 GMAT；Earth-safe 閘門仍會擋下不安全的繳交腳本。
-
-重播會使用存檔內的軌道、規則與求解設定；不需要本機 `configs/local/config.json`。
-重播時若另外給 `--config`，只讀取其中的 `local.gmat_console_path`，不覆寫物理設定。
-存檔有格式版本、內容雜湊、程式來源雜湊與來源鏈；改動求解/物理模組或 `uv.lock` 後會拒絕直接重用拆後方案，
-請重新求解，或在只改拆棒器時從 `--from-winner` 重播。產腳本程式的修改不會要求重跑搜尋。
-
-### 排位賽：全攝動 B 平面重瞄準
-
-Python 只算 J2–J4，排位賽官方驗證開 EGM96 20×20、潮汐、NRLMSISE00 阻力、日月、SRP、相對論。
-同一組脈衝放進全攝動，短任務偏 0.5–1.3 km，22.6 h 的 hyper_far 偏到 111 km
-（[研究報告](docs/research/PERTURBATION_GAP_20261019.md)）。所以排位賽的流程是：
-
-1. 照舊求解＋拆棒＋GMAT 驗證（`FORCE_MODEL` 保持預設 `contest_prelim`，GMAT 與 Python 模型對齊）。
-2. `--from-mission <mission.json> --retarget-full-perturbation`：在全攝動下用 GMAT DifferentialCorrector
-   改一棒（預設最後一棒，`--retarget-burn N` 指定，0 起算、同腳本的 `BurnB<N>`），**只消掉垂直於相對速度的
-   兩個分量**；最後一段滑行改成停在最近點。不用「預定時刻位置對齊」：那在 hyper_far 會多花 272 m/s、末棒 361 m/s 直接失格。
-3. 重新判定：d_min ≤ 5 km、攔截前 Earth-safe（≥ 100 km）、最近點 ≤ T_max、單棒 ≤ 250 m/s 與總 Δv ≤ 3 km/s
-   （跟求解端同一個 `assess_legality`，看的是寫進腳本的 7 位小數值）、機動間隔（違規只扣分，會列出）。
-4. 全部通過才寫 `output_submit.txt`（全攝動、全部固定燃燒），再用 GMAT 跑一次確認命中與末棒合規。
-   任何一步不過：**保留原方案**、不產新繳交腳本，終端機印紅色警告、列出原因和每棒的單棒餘裕
-   （可以改用餘裕大的棒重試）。原執行目錄一個檔都不會動。
-
-整段只開一個 GMAT 行程、串行跑 3–4 次，hyper_far 約 25 秒。實測結果跟研究報告一致
-（hyper_far 末棒：111 km → 0.14 km，總 Δv +4.6 m/s，DC 5 次迭代）。B 平面是在預定時刻線性化，
-相對速度只有百 m/s 級時最近點會偏離預定時刻，d_min 壓不到 0（端到端測試的 LEO 例子 3.5 → 3.05 km，仍命中）；
-d_min > 1 km 時會額外警告餘裕不足。
-
-**太空船參數與曆元**（主辦單位還沒公布）放在 `strategy`，全部選填，只影響 GMAT 端：
-
-```json
-"FORCE_MODEL": "contest_prelim",
-"GMAT_SPACECRAFT": {"DRY_MASS_KG": 850, "CD": 2.2, "CR": 1.8, "DRAG_AREA_M2": 6, "SRP_AREA_M2": 8,
-                    "SPAD_DRAG_FILE": null, "SPAD_SRP_FILE": null},
-"GMAT_SPACECRAFT_A": {},
-"GMAT_EPOCH": "21545",
-"GMAT_EPOCH_FORMAT": "TAIModJulian"
-```
-
-預設值就是以前腳本寫死的值，沒設時產出的腳本逐位元不變。`GMAT_SPACECRAFT_A` 只覆寫 A 的欄位；
-`SPAD_*_FILE` 給絕對路徑時該項改用 SPADFile（兩艘船要一致）。開賽才拿到這些值時，不用重解：
-重瞄準時另給 `--config <檔>`，那份設定 `strategy` 裡的 `GMAT_SPACECRAFT`／`GMAT_SPACECRAFT_A`／`GMAT_EPOCH`／
-`GMAT_EPOCH_FORMAT` 會蓋過存檔（`FORCE_MODEL` 不會，重瞄準一律用全攝動）。
-`FORCE_MODEL: "ranking_full"` 會讓一般流程的 `output.txt`／`output_submit.txt` 也改用全攝動，但一般版 DC
-是定時位置對齊、Python 端仍是 J2–J4，程式會警告；建議只用上面的重瞄準階段。
-
-GMAT 單獨驗證支援本工具產生、含 `Report_Intercept` 的腳本；會保存執行副本，只改報表目的地，原始腳本保持不變。
-每次驗證的 `verification.json` 記錄腳本雜湊、結果與 `checks_passed`（命中、末棒合規、DC 模式另需收斂）。
-此欄位不代表重新檢查了全軌跡 Earth-safe 或每一棒的合規性；完整方案的 Python 檢查仍在 `mission.json`。
-GMAT 路徑字串需使用 ASCII；自動驗證會將報表分開保存，不再共用 GMAT 安裝目錄的報表。
-
----
-
-## 拿到一個新情境時的建議順序
-
-```
-新測資 → odc.py feasibility → (範圍很寬才需要 odc.py sweep-burns) → odc.py solve → 檢查 run_history
-```
-
-**前面兩步都可以跳過**——`odc.py` 已經內建了最關鍵的檢查（見下），直接跑不會出事。
-
-### 1. `odc.py feasibility`：先問「這題有沒有解」
-
-```bash
-uv run python odc.py feasibility configs/local/x.json            # 快，只做前兩層
-uv run python odc.py feasibility configs/local/x.json  --burns 3 # 加做 3 棒可行性 (較慢)
-```
-
-回答三件事：**能量下限（至少要幾棒）**、**合法單棒解存不存在**、**有多稀有**。
-
-存在的理由很實際：搜尋跑完沒找到合法解時，**分不清是「工具不夠力」還是「這題本來
-就無解」**——沒有這個答案，結果完全沒辦法解讀。
-
-輸出怎麼看：
-
-| 情況 | 建議 |
-|---|---|
-| 能量下限 = 0、合法解常見（>1%） | 直接 `odc.py`，`MAX_BURNS` 用 `[1]` 或 `[1,2]` |
-| 能量下限 > 每棒上限 | 若 `AUTO_SPLIT_LEGALIZE=true`（預設），可保留較低棒數作為 route-first 候選，贏家會再動態拆棒；關閉自動拆棒時，才應讓 `MAX_BURNS` 從直接合法下限起跳 |
-| 合法解極稀有（<0.05%） | 窄窗地形，用正式預算別省，靠種子機制找 |
-
-### 2. `odc.py sweep-burns`：燃燒次數範圍很寬時才划算
-
-```bash
-uv run python odc.py sweep-burns configs/local/x.json  --burns 2-8
-```
-
-先用調低的 `MAXITER` 粗掃一個寬範圍，找出分數大概從哪裡開始不再明顯進步，再針對
-那附近用 config 原本的 `MAXITER` 重跑一次「公平」的精細驗證。常用參數：`--burns 1-8`、
-`--coarse-iters 300`、`--output-config x.json`（把建議寫成新的 config 檔）。
-
-**範圍在 3~4 個以內就跳過這步**——`odc.py` 本來就會平行跑所有燃燒次數並自動挑
-贏家，再多一層 sweep 只是浪費時間。它真正划算的場合是 `MAX_BURNS` 有十幾個值的時候。
-
-**這是效率工具，不是最終判定**：工具的結論是「分數打平」，但規則的平手判定看的是
-`Δr_min`/`ΔV_team`/`T_team` 這些原始數字。從 2026-08-25 起 `odc.py sweep-burns` 會直接把
-這三個數字列成表印出來（而且會分清楚「真的同分」和「只是在 `--plateau-tol` 以內」），
-不用再自己回頭翻上面的 Mission Plan。
-
-### `odc.py` 已經內建的檢查（所以前面兩步可以跳過）
-
-* **開跑前**：如果 `MAX_BURNS` 裡有「搜尋輸出當下不可能直接合法」的燃燒次數，會直接
-  說明。預設開啟 `AUTO_SPLIT_LEGALIZE` 時，這些低棒數會保留作為 route-first 候選，若勝出
-  再動態拆成合法多棒解，**不會自動刪除，也不應只因警告手動拿掉**；只有關閉自動拆棒時，
-  才會建議移除。能量下限是封閉解，算一次不到微秒，所以這項檢查不影響速度。
-* **印任務規劃時**：如果贏家其實是「中間棒 Δv≈0 的空燒」，會明講「這是 N 棒的方案但
-  實際只用到 M 棒」——多棒解退化成單棒很常見，光看棒數會誤以為用了多棒策略。
-* **挑贏家時**：分數打平的候選是照**規則第 6 節的平手判定**排名次的
-  （`Δr_min` → `ΔV_team` → `T_team`），不是「誰先跑完誰贏」。打平的候選會先各自跑一次
-  收尾微調再比，比的是「會交出去的那一版」。詳見下面的〈平手判定〉。
-
-### 初賽當天（已封存）
-
-**[docs/archive/prelim/CONTEST_DAY.md](docs/archive/prelim/CONTEST_DAY.md)** —— 9/5 初賽當天照著做的作業手冊（時間地點、90 分鐘怎麼分配、指令、繳交前檢查清單、已知地雷）。初賽已結束，這份是歷史文件；決賽站別卡見 `docs/archive/prelim/runbooks/`（同樣是初賽版，決賽開始前需要另開一份）。
-
-### `strategy` 裡幾個值得知道的開關
-
-| 欄位 | 預設 | 什麼時候調 |
+| 區塊 | 內容 | 誰決定 |
 |---|---|---|
-| `SEARCH_COAST_RTOL` | `1e-12` | 一般 L-SHADE 搜尋時，前 N−1 棒後滑行傳播的相對容差，須為有限正數且 ≤ `1e-6`。可試 `1e-9` 加速搜尋；搜尋贏家會以 `1e-12` 重算再比較。種子精修、primer fast 的 deadline 比較、重播及驗證維持精確容差。 |
-| `LAMBERT_MAX_REVS` | `4` | 最後一棒 Lambert 要考慮的**最大圈數**。規則的 `T_max` 是 A 的四個週期，所以最多也就塞得下約 4 圈。對**單點評估**是嚴格更大的搜尋空間、不可能讓那一點變差（分支選擇是在固定的抵達時間下取最省的那條，時間分不變、燃料只會更好），成本 1.01 倍。但對**搜尋結果**不成立——L-SHADE 偶爾會收斂到更差的盆地（見 HAP-42），所以預設 `REVS_ENSEMBLE=true` 會同時排程 `REVS=0` 和 `REVS=4` 的燃燒案例、取兩者較好者，見 [排程驗證](docs/research/REVS_SCHEDULING_20260929.md)。設 `0` 可退回 2026-08-28 之前的行為（也讓 REVS_ENSEMBLE 自動退成單跑）。 |
-| `MAX_DV_MARGIN_MPS` | `2.0` | 搜尋階段每棒 Δv 上限往內縮多少（安全邊界，見 METHODOLOGY 第 6 節）。最佳解有棒數頂到上限時調小可以白賺幾 m/s，**調完要確認違規次數還是 0**。 |
-| `TIEBREAK_POLISH` | `true` | 規則第 6 節優先序 1 的收尾微調，見下面〈平手判定〉。 |
-| `SPLIT_LEADING` | `false` | 拆棒階段先等分超標前導棒，再交給既有拆棒器；重播與挑贏家也視為可拆，可拆上限 = `SPLIT_AWARE_MAX_FACTOR`×單棒上限（預設 3 倍）。只在 `AUTO_SPLIT_LEGALIZE=true` 時生效。見 [docs/research/ORACLE_INTEGRATION_PLAN_20261029.md](docs/research/ORACLE_INTEGRATION_PLAN_20261029.md) §3.2。 |
-| `ORACLE_TWOBURN` | `false` | 兩棒 oracle 與 DE 同跑，前 K 名走重播／拆棒後參與比較；需要 `SPLIT_LEADING=true`。 |
-| `ORACLE_TWOBURN_K` | `10` | 去重後候選數（整數 ≥1）。 |
-| `ORACLE_TWOBURN_WALL_SEC` | `600` | 網格加候選拆棒的牆鐘上限（秒，>0）；到期只收已完成候選。 |
-| `ORACLE_TWOBURN_GRID_DIV` | `100` | 粗網格步長 = T_max / 此值（整數 ≥10）；單棒用 max(MIN_COAST/2, h/4)。 |
-| `ORACLE_TWOBURN_SEED_DE` | `false` | DE 前同步跑網格，按棒數把 oracle 種子放進兩趟 REVS 初始族群最前面；建議同開 `SPLIT_AWARE_SEARCH`，`SPLIT_AWARE_MAX_FACTOR` 可設 5（合法範圍 1–14）。兩個 oracle 開關同開只算一次網格。 |
-| `SPLIT_AWARE_TERMINAL` | `true` | 終端棒超標但拆得掉（≤ `SPLIT_AWARE_TERMINAL_MAX_FACTOR`×上限，預設 5）時，搜尋與挑贏家改用「拆後估計分數」、不扣 10 分，避免收斂到省油但晚到的合法家族。拆棒真的失敗會自動用 `false` 重跑一輪搜尋當退路（最差 = 關閉時的結果，但多花一輪搜尋時間）。只在 `AUTO_SPLIT_LEGALIZE=true` 時生效。見 [docs/research/C4_TERMINAL_SPLIT_AWARE_PLAN.md](docs/research/C4_TERMINAL_SPLIT_AWARE_PLAN.md)。 |
-| `SPLIT_JACOBIAN` | `"stm"` | 拆棒 joint NLP 使用 STM Jacobian；設 `"fd"` 退回有限差分。 |
-| `SPLIT_WORKERS` | `3` | 拆棒行程數，最多使用 `os.cpu_count()` 個核心（至少 1）；設 `1` 退回單行程。 |
-| `SPLIT_MULTISTART` | `[0, 0.75, 1]` | 終端棒起點往前挪的倍數，預設三起點；設 `null` 或 `[]` 退回單起點。 |
-| `SPLIT_PRUNE_REOPT_MPS` | `1.0` | 剔除低於此值（m/s）的空棒後重最佳化；設 `0` 或 `null` 關閉。 |
-| `SPLIT_WALL_BUDGET_SEC` | `600` | 拆棒牆鐘預算（秒），軟上限，交目前最好的合法解；觸發時不可逐位元重現。設 `0` 或 `null` 退回不限時。 |
-| `SPLIT_FAST_FD` | `false` | fd 路徑的疊合有限差分開關；stm 下沒作用，保留供明確選用 fd 時使用。 |
-| `TIEBREAK_SCORE_EPS` | `1e-9` | 「分數差多少以內算打平」，見下面〈平手判定〉。 |
+| `orbit_A`、`orbit_B` | 六根數 `SMA, ECC, INC, RAAN, AOP, TA`（km、度）。雙曲線的 SMA 是負的、ECC > 1 | 題目 |
+| `rules` | 規則數字與計分參數 | 主辦單位，不能改 |
+| `strategy` | 力學模型、命中容差、拆棒與 oracle 等任務設計選項 | 我們 |
+| `optimization` | 搜尋預算與種子，只影響找不找得到好解、要跑多久 | 我們 |
+| `local`（選填） | 這台機器的 `gmat_console_path` | 各機器自己 |
 
-### 測試
+### rules
 
-```bash
-uv run python tests/test_tiebreak.py
-```
-
-```bash
-uv run python tests/test_arc_safety.py
-```
-
-不需要 pytest，直接跑就會印結果。`test_arc_safety.py` 守的是 2026-08-28 那個「拆棒解被誤判成撞地球」的 bug。
-
-### 平手判定（規則第 6 節）
-
-分數一樣的時候，名次是這樣排的：
-
-| 優先序 | 看什麼 | 誰排前面 |
+| 欄位 | 排位賽 | 說明 |
 |---|---|---|
-| 1 | `Δr_min` 相對距離 | 小的 |
-| 2 | `ΔV_team` 總速度增量 | 少的 |
-| 3 | `T_team` 任務完成時間 | 短的 |
-| 4 | 設計理論 | 上台講 5 分鐘軌道設計方法論 |
+| `MAX_DV_MPS` | 250 | 單棒上限，超過 250 + 10⁻⁵ m/s 失格（初賽是 1500、超標扣分） |
+| `MAX_TOTAL_DV_MPS` | 3000 | 總 Δv 上限，超過失格；不填等於沒有上限（初賽） |
+| `MIN_MANEUVER_INTERVAL_SEC` | 100 | 兩棒最小間隔，違規每次扣 10 分 |
+| `T_MAX_SEC` | 開賽算 | 任務時間上限（秒，從 epoch 起算）。A 是雙曲線時必填，用 `odc.py tmax` 由任務邊界算 |
+| `T_MAX_PERIOD_MULTIPLE` | 不用 | 初賽用：沒給 `T_MAX_SEC` 時 T_max = 倍數 × A 週期 |
+| `k_t`、`C_t`、`k_v`、`C_v` | 開賽公布 | 計分參數，工具用秒與 m/s；用 `odc.py scoring` 換單位並驗算 |
 
-工具在兩個地方照這個順序做事（順帶帶來一個更重要的改變：**挑贏家現在是用重播算出來的
-真實分數，不是搜尋用的代理值**——代理值在長飛行時間的情境上可以差到幾十分，初賽這種
-幾小時的尺度則幾乎完全一致，見 METHODOLOGY 第 8.1 節）：
+計分：`50·exp(−(Δr_min−5)/100) + 25/(1+e^{k_t(T−C_t)}) + 25/(1+e^{k_v(ΔV−C_v)}) − 罰分`，Δr ≤ 5 km 距離項拿滿。
+規則全文與初賽差異見 [RANKING_ROUND_RULES](docs/ranking/RANKING_ROUND_RULES_20261006.md)。
 
-* **挑贏家**（`odc.py`）：分數打平的燃燒次數候選，先各自跑一次收尾微調，再照上表比。
-  舊版是「誰先跑完誰贏」，而完成順序由作業系統排程決定——同一份設定重跑兩次可能
-  拿到不同方案。
-* **收尾微調**（`_tiebreak_polish`）：計分函式在 `Δr ≤ 5km` 內完全平坦（`Δr_min` 被
-  `max(Δr, 5)` 地板夾住），所以**壓小 Δr 有時候不用付分數的代價**，那就是白拿的優先序 1
-  優勢。這一步在「分數一分都不能少」的前提下把瞄準偏移壓到最小，做不到就原封不動退回。
+### optimization
 
-#### 兩個要自己拿捏的地方
+| 欄位 | 排位賽範本 | 說明 |
+|---|---|---|
+| `MAX_BURNS` | `[1, 2]` | 拆棒**前**的路線棒數。DE 先找少棒路線，拆棒器再拆成合法多棒，不要照能量下限放大 |
+| `MAXITER`、`POPSIZE` | 1000、20 | 搜尋代數與每維族群倍數（族群 = 維度 × POPSIZE）。要省時先降代數，不要加大 POPSIZE |
+| `NUM_THREADS` | -1 | 每個燃燒案例的執行緒數；≤ 0 自動用「核心數 ÷ 案例數」 |
+| `SEED` | `null` | 設整數可重現，但**搜尋會退回單執行緒**；`null` 用多執行緒換速度 |
+| `EARLY_STOP_ENABLED` | 不填（關） | 開了才用 `MAX_EARLY_STOP`、`TOL`；消融顯示會掉分（[報告](docs/research/EARLY_STOP_ABLATION_20260929.md)） |
 
-**一、`strategy.TIEBREAK_SCORE_EPS`（預設 `1e-9`）—— 要不要賭官方會四捨五入。**
+### strategy
 
-實測 `playground` 情境：瞄準偏移從 0 拉到規則極限 3.5km，對分數的影響只有 **0.001 分**，
-比搜尋本身的重跑變異（~0.02 分）還小。預設值會為了這 0.001 分白白讓出 3.5km 的距離
-優勢——而優先序 1 是**硬性**的字典序比較，3.5km 輸給 0km 沒得商量。
+全部選填，下表是程式預設值；排位賽範本另開 `SPLIT_LEADING`、`ORACLE_TWOBURN`。
 
-如果官方的驗證程式把分數四捨五入到小數點後兩位（我們不知道），那 0.001 分根本不存在，
-這筆交易純虧。想賭就設 `0.005`：
-
-```json
-"strategy": { "TIEBREAK_SCORE_EPS": 0.005 }
-```
-
-實測開下去的效果：`Δr_min` 從 3,499.9 m 掉到 **0.1 m**，分數 90.6877 → 90.6862
-（掉 0.0015 分，兩者都是 90.67）。工具會把實際付出的分數代價印出來，不會假裝沒成本。
-不想跑這一步（省幾秒）就設 `"TIEBREAK_POLISH": false`。
-
-**二、優先序 1 到底是哪個距離。** 規則第 6 節寫的符號是 `d_min,team`，但這個符號
-**全文沒有定義**；第 4/5 節計分用的是 `Δr_min = max(Δr(T_team), 5)`。兩種讀法會選出
-不同的贏家：
-
-* 用**原始**最近距離（工具的預設）：優先序 1 對成功攔截的隊伍有效。
-* 用第 4 節的地板值：所有成功的隊伍這一項全都等於 5，優先序 1 直接失效，落到優先序 2。
-
-工具不替你決定，但兩種讀法選出不同方案時會明講，把數字擺出來讓你自己定案。
-
-驗證：`uv run python tests/test_tiebreak.py`
-
-### 現成的測試情境
-
-`configs/shared/` 的共用情境跟著 Git 走；其餘本機 `configs/local/*.json` 不會。**所有長期使用的測試情境之參數、目的與實測難度記在 [SCENARIOS.md](docs/SCENARIOS.md)**，可用來重建尚未納入共用目錄的情境。
-
-需要批次比較參數或重跑 C4 實驗時，先看 [研究工具封存導覽](scripts/research/README.md#封存) 的預覽、執行與彙整指令；C4 runner 以 Linux `/proc` 監看行程，需在 Linux 執行。實驗結果仍寫入本機 `outputs/`。
+| 欄位 | 預設 | 說明 |
+|---|---|---|
+| `GRAVITY_DEGREE` | 2（範本 4） | Python 與 GMAT 同步套用的 zonal 階數：0 點質量、2–4 為 J2–J4。排位賽設計用 4，官方驗證的全攝動靠重瞄準補 |
+| `MISS_TOLERANCE_KM` | 5 | 末棒 Lambert 可瞄在 A 周圍多遠內的最省油點。實際瞄約 3.5 km，留 1.5 km 給攝動 |
+| `AUTO_SPLIT_LEGALIZE` | `true` | 贏家有棒超標時自動拆成合法多棒 |
+| `MAX_DV_MARGIN_MPS` | 2.0 | 拆棒時每棒上限往內縮多少（250 → 248 m/s） |
+| `SPLIT_LEADING` | `false` | 拆棒階段也拆超標的前導棒；可拆上限 = `SPLIT_AWARE_MAX_FACTOR`（預設 3）× 單棒上限 |
+| `ORACLE_TWOBURN` | `false` | 背景跑兩棒網格 oracle，前 `ORACLE_TWOBURN_K`（10）名跟 DE 贏家一起拆棒比較；需要 `SPLIT_LEADING`。網格加拆棒的牆鐘上限 `ORACLE_TWOBURN_WALL_SEC`（600 s） |
+| `SPLIT_AWARE_TERMINAL` | `true` | 終端棒超標但拆得掉（≤ 5 倍）時，搜尋改用拆後估分；拆不掉會自動用 `false` 重搜一輪 |
+| `SPLIT_JACOBIAN` | `"stm"` | 拆棒 NLP 的 Jacobian；`"fd"` 退回有限差分 |
+| `SPLIT_WORKERS` | 3 | 拆棒行程數 |
+| `SPLIT_MULTISTART` | `[0, 0.75, 1]` | 拆棒多起點；`null` 退回單起點 |
+| `SPLIT_PRUNE_REOPT_MPS` | 1.0 | 剔除小於此值的空棒後重最佳化 |
+| `SPLIT_WALL_BUDGET_SEC` | 600 | 拆棒牆鐘軟上限，到期交目前最好的合法解（觸發時不可逐位元重現） |
+| `REVS_ENSEMBLE` | `true` | REVS=0 與 REVS=`LAMBERT_MAX_REVS`（4）各跑一趟搜尋取好的；關掉約省 37% CPU，但有情境掉 1.7 分（[排程驗證](docs/research/REVS_SCHEDULING_20260929.md)） |
+| `SEARCH_COAST_RTOL` | `1e-12` | 搜尋時滑行傳播容差；`1e-9` 較快，贏家仍以 `1e-12` 重算 |
+| `TIEBREAK_POLISH` | `true` | 不掉分的前提下把 d_min 壓小（同分先比 d_min） |
+| `TIEBREAK_SCORE_EPS` | `1e-9` | 分差多少內算同分；設 0.005 等於賭官方四捨五入到小數兩位 |
+| `FORCE_MODEL` | `"contest_prelim"` | 一般流程 GMAT 腳本的力學模型（與 Python 對齊）。全攝動交給 `odc.py retarget`，不建議改成 `"ranking_full"` |
+| `GMAT_SPACECRAFT`、`GMAT_SPACECRAFT_A`、`GMAT_EPOCH`、`GMAT_EPOCH_FORMAT` | 850 kg、Cd 2.2、Cr 1.8、阻力 6 m²、SRP 8 m²；`"21545"` TAIModJulian | 只影響 GMAT 端。官方公布後填進當天設定；重瞄準時 `--config` 給的這幾項會蓋過存檔 |
 
 ---
 
-## 📂 資料夾讀寫說明
+## 執行
 
-輸入仍為 `configs/local/config.json`；以下輸出皆相對於本次 `outputs/runs/<id>/`（或指定的 `--run-dir`）。
-新流程不再覆寫舊的 `outputs/output.txt`、`outputs/output_submit.txt`、`outputs/run.log` 或全域歷史紀錄。
+常用子命令（完整選項見 [docs/CLI.md](docs/CLI.md) 或 `--help`）：
+
+| 子命令 | 做什麼 |
+|---|---|
+| `new-config <名稱> [--from <共用情境>]` | 建本機設定（預設從 `ranking_round` 複製） |
+| `solve [設定檔]` | 搜尋 → 拆棒 → 存 `mission.json` → 產腳本 → GMAT 驗證 |
+| `retarget <mission.json>` | GMAT 全攝動 B 平面重瞄準，通過才產全攝動繳交腳本（排位賽必做） |
+| `verify <腳本>` | 用 GMAT 獨立重驗一份腳本 |
+| `resume <winner_presplit_seed*.json>` | 從拆棒前存檔重跑拆棒與後續（改拆棒器時用） |
+| `export <mission.json>` | 從已存方案重產腳本、重跑 GMAT，不重新求解 |
+| `tmax`、`scoring` | 比賽當天算 T_max、換計分參數單位 |
+| `check`、`feasibility`、`sweep-burns` | 檢查情境、估能量下限、掃燃燒次數 |
+| `test [--quick]` | 跑回歸測試 |
+| `sweep`、`outputs` | 批次實驗、本機成果索引 |
+
+### 分段執行
+
+`solve` 預設一次跑完。加 `--stop-after solve|export|verify` 可停在某一階段，之後用存檔接著跑，不必重新搜尋：
+
+```bash
+uv run python odc.py solve configs/local/x.json --stop-after solve --run-dir outputs/runs/x
+uv run python odc.py export outputs/runs/x/mission.json --run-dir outputs/runs/x-export
+uv run python odc.py retarget outputs/runs/x/mission.json --config configs/local/x.json --run-dir outputs/runs/x-rt
+uv run python odc.py verify outputs/runs/x-rt/output_submit.txt --config configs/local/x.json --run-dir outputs/runs/x-verify
+```
+
+- `--run-dir` 必須是不存在的目錄；省略時自動建 `outputs/runs/<唯一識別碼>/`。
+- 重播用存檔裡的軌道、規則與設定；另給 `--config` 時只讀 `local.gmat_console_path`（重瞄準另外讀太空船參數與曆元）。
+- 存檔記錄格式版本與 21 個物理相關來源檔的雜湊；那些檔改過後，`mission.json` 會被拒絕重用，要重新求解或從 `resume` 接（[版本驗證](docs/ARCHITECTURE.md#版本驗證)）。
+- `-q` 終端機只印警告，完整日誌照樣寫進執行目錄的 `run.log`；`-v` 印全部細節。
+
+### 全攝動重瞄準（排位賽）
+
+Python 只算 J2–J4，官方驗證開 EGM96 20×20、潮汐、阻力、日月、SRP、相對論。同一組脈衝放進全攝動，短任務偏 0.5–1.3 km，
+22.6 h 的 hyper_far 偏上百 km（[攝動落差](docs/research/PERTURBATION_GAP_20261019.md)）。`odc.py retarget` 的做法：
+
+1. 在 GMAT 全攝動下用 DifferentialCorrector 改一棒（預設最後一棒；`--retarget-burn N` 指定，0 起算，同腳本 `BurnB<N>`），
+   **只消掉垂直於相對速度的兩個 B 平面分量**。不用定時位置對齊：那在 hyper_far 會多花 272 m/s、末棒 361 m/s 直接失格。
+2. 重新判定 d_min ≤ 5 km、攔截前 Earth-safe、最近點 ≤ T_max、單棒與總 Δv、機動間隔。
+3. 全部通過才寫全攝動、全固定燃燒的 `output_submit.txt`，再用 GMAT 跑一次確認；`retarget.json` 的 `status` 是 `accepted`。
+4. 任一步不過就保留原方案、不產繳交腳本，終端機列出原因與每棒餘裕，可改用餘裕大的棒重試。
+
+---
+
+## 輸出
+
+每次執行一個目錄（`outputs/runs/<id>/` 或 `--run-dir`），不覆寫舊結果。`outputs/` 不進版控，值得留的解複製到 [docs/solutions/](docs/solutions/README.md)。
 
 | 檔案 | 用途 |
 |---|---|
-| `mission.json` | 最終 Python 方案，可用 `--from-mission` 重新產腳本／驗證 |
-| `winner_presplit_seed*.json` | 各 seed 拆棒前贏家，可用 `--from-winner` 重跑拆棒 |
-| `mission_seed*.json` | 各 seed 拆棒後方案（portfolio 也保留非最終贏家） |
-| `output.txt` | 一般 GMAT 腳本，末棒由 DifferentialCorrector 修正 |
-| `output_submit.txt` | 固定燃燒繳交版；應搭配本次固定版報表確認結果 |
-| `gmat_dc/`、`gmat_fixed/` | 各自的 `executed.script`、`GMAT_InterceptReport.txt`、stdout/stderr 和 `verification.json` |
-| `gmat/` | `--verify-script` 的獨立驗證資料，格式同上 |
-| `retarget.json` | `--retarget-full-perturbation` 的結果：通過／不通過與原因、重瞄準前後的棒與滑行時間、全攝動 d_min、合法性與官方分數估計、用的太空船參數與曆元 |
-| `gmat_retarget/` | 重瞄準的全攝動重播與 B 平面 DC 腳本、報表、stdout/stderr（通過時 `output_submit.txt` 是全攝動版；不通過時沒有這個檔，固定版驗證沒過時改名為 `output_submit_REJECTED.txt`） |
-| `run.json` | 來源鏈、程式版本、執行狀態、各階段時間與驗證結果 |
-| `run.log` | 本次完整日誌 |
-| `run_history.jsonl` | 產腳本／驗證階段的成績與 GMAT 結果 |
-| `history/` | 腳本產生器保留的時間戳副本 |
+| `mission.json` | 最終 Python 方案；`mission_info` 有 `score`、`disqualified`、`num_burns`、`total_dv_mps`、`miss_km`、`T_team` |
+| `winner_presplit_seed*.json` | 拆棒前贏家，給 `resume` 用 |
+| `mission_seed*.json`、`oracle_candidates_seed*.json` | 各種子拆後方案、oracle 候選 |
+| `no_legal_route.json` | 找不到合法路線時（結束碼 3）最接近的候選與超標量 |
+| `output.txt` | 一般 GMAT 腳本，末棒由 DC 修正 |
+| `output_submit.txt` | 固定燃燒版（不含求解器）。重瞄準目錄裡的才是排位賽繳交版 |
+| `gmat_dc/`、`gmat_fixed/`、`gmat/`、`gmat_retarget/` | 各次 GMAT 執行的腳本副本、報表、stdout/stderr、`verification.json` |
+| `retarget.json` | 重瞄準結果：`accepted`／`rejected` 與原因、前後的棒、全攝動 d_min、合法性、官方分數估計、太空船參數 |
+| `run.json` | 來源鏈、程式版本、執行狀態、`elapsed_sec` |
+| `run.log`、`run_history.jsonl` | 完整日誌；產腳本與驗證階段的成績 |
 
-`run.json.status=completed` 表示要求的階段執行完畢，不代表可繳交。
-只停在 solve/export 時尚未 GMAT 驗證；完整模式遇到 GMAT 執行失敗會記錄
-`verification_status=failed`，Python 方案仍保留。`--verify-script` 執行失敗會以非零退出碼結束。
-在 GMAT GUI 手動執行可使用 `output.txt`／`output_submit.txt`；它們保留相對報表名稱，便於移到其他電腦。
-
-### 查找與封存本機結果
-
-`outputs/` 不進版控。執行下列命令可重建本機的 `outputs/INDEX.md` 與 `outputs/index.json`，列出已保存的 run、sweep 結果與驗證狀態：
+`run.json` 的 `status=completed` 只表示要求的階段跑完，不代表可以交。能不能交看 `mission.json` 的 `disqualified` 與 `retarget.json` 的 `status`。
+重瞄準不通過時沒有 `output_submit.txt`（固定版驗證沒過時改名 `output_submit_REJECTED.txt`）。
 
 ```bash
 uv run python odc.py outputs index
 ```
 
-舊 sweep 的大量 `.console.log` 可壓縮到 `outputs/archive/`；工具先驗證封存內容與 SHA-256，再移除已封存的原檔。需要取回時，把下例的 `YYYYMMDD_HHMMSS` 換成自己 `outputs/INDEX.md` 列出的封存檔名：
+重建 `outputs/INDEX.md`，列出本機所有 run 與驗證狀態。
+
+---
+
+## 測試
 
 ```bash
-uv run python odc.py outputs archive-logs
-uv run python odc.py outputs verify-archive outputs/archive/sweep-console-logs-YYYYMMDD_HHMMSS.tar.gz
-uv run python odc.py outputs restore-archive outputs/archive/sweep-console-logs-YYYYMMDD_HHMMSS.tar.gz
+uv run python odc.py test --quick -q
 ```
 
-`docs/solutions/` 保存經挑選並納入版控的初賽成果；本機 `outputs/` 的索引與壓縮檔仍須自行備份。
+不需要 pytest；`--quick` 跳過慢測試，不加就全跑（含 GMAT 端到端）。也可以只跑檔名含某字串的測試，例如 `odc.py test tiebreak`。
 
 ---
 
-## 🖥️ 部署到一台全新電腦
+## 部署到新電腦
 
-分兩種情況，需要的東西差很多：
+1. 裝 `uv`、`git clone https://github.com/happpycorn/ODC_GMAT_Planner.git`、`uv sync`（第一次要網路，約 1 GB）。
+2. 另裝 GMAT，用 `new-config ... --gmat-console <路徑>` 或 `--gmat-console` 參數指過去。
+3. `configs/local/` 不會跟著 clone，需要的設定另外複製，或照 [SCENARIOS.md](docs/SCENARIOS.md) 重建。
+4. 先跑 `odc.py test --quick -q` 和上面的快速試跑，再試 GMAT。
 
-### A. 要在新電腦上跑整套設計工具（例如隊友的筆電）
-
-1. **裝 `uv`**：`pip install uv`（Windows 用命令提示字元/PowerShell，Mac/Linux 用終端機）。
-2. **拿到程式碼**：`git clone https://github.com/happpycorn/ODC_GMAT_Planner.git`，或直接把整個資料夾複製過去。
-3. **準備設定檔**：`git clone` 會帶入 `configs/shared/` 的共用情境，不會帶入本機 `configs/local/config.json`。可以指定共用情境，例如 `uv run python odc.py solve configs/shared/official_sample.json`；也可直接跑 `uv run python odc.py solve`，由程式產生佔位範例後填入正式數字。若要沿用自己原有的 `configs/local/*.json`，需另外複製。
-4. **第一次執行會比較慢**：`uv run python odc.py solve` 第一次跑，`uv` 會自動下載對應版本的 Python（3.12+）跟所有套件（`numpy`/`numba`/`scipy`/`astropy`/`poliastro`/`mealpy` 等，現在裝起來大約 1GB 左右——早期版本不小心留了 `torch`/`optuna`/`pymoo` 這些完全沒用到的重量級依賴，已經清掉了，不然會大好幾倍），**這一步需要網路**。之後每次執行都是用裝好的環境，不會重新下載。
-5. **GMAT 是完全獨立的一套軟體，`uv` 不會幫你裝**：這台新電腦要另外安裝 GMAT，然後用 `--gmat-console` 指到正確路徑：
-   ```bash
-   uv run python odc.py solve --gmat-console "C:\Program Files\GMAT\bin\GmatConsole.exe"   # Windows 範例路徑
-   uv run python odc.py solve --gmat-console "/path/to/GMAT/bin/GmatConsole"               # Mac/Linux 範例路徑
-   ```
-   （`odc/config/defaults.py` 裡寫死的預設路徑是我這台機器的路徑，新電腦上一定對不上，一定要用這個參數蓋掉，不然只會印警告然後跳過 GMAT 驗證。）
-6. **建議先拿一個小情境跑一次 `--no-gmat` 版本，確認 Python 端能跑，再測 GMAT 那段**；情境可從 [SCENARIOS.md](docs/SCENARIOS.md) 選擇。
-
-### B. 比賽當天，主辦單位準備的電腦
-
-**不需要部署上面這整套東西。** 規則寫明「太空船的指令下達與模擬，需使用主辦/承辦單位所準備的電腦」，但正式要拿去執行的 本次目錄的 `output_submit.txt` 本身就是一份**純文字的 GMAT script**，不含任何求解器（見上面「固定燃燒版本」的說明）——只要那台電腦上有裝 GMAT（官方應該會確保這件事，畢竟整場比賽都靠 GMAT 跑），直接把這個檔案帶過去（USB/email 都行），在 GMAT 裡開檔執行就好，完全不需要 Python、`uv`、或這個 repo 的任何程式碼。
-
-真正需要在自己電腦上（賽前「先期模擬與運算」）跑的是這整套工具，用來**找出**這份 script；比賽現場要交出去的只是**結果**。兩件事分開想，能大幅降低「主辦單位電腦環境跟我們不一樣」的風險——順便也是這個 session 加「固定燃燒版本」的動機。
-
----
-
-## ✅ 正式提交前
-
-規則附則：「所有結果以主辦單位驗證程式為準；若結果無法重現，主辦單位得取消其成績。」`odc.py` 現在每次執行都會自動跑 GMAT 驗證，**正式提交前還是建議再手動確認一次**：本次目錄的 `run_history.jsonl` 那筆記錄裡：
-
-1. `gmat_verified.intercept_success`、`targeter_converged` 都是 `true`，且沒有任何一次燃燒超過 1500 m/s（一般版本，本次目錄的 `output.txt`，用來確認算出來的方案本身沒問題）。
-2. `fixed_script_verified.intercept_success`、`final_burn_legal` 都是 `true`（固定燃燒版本，本次目錄的 `output_submit.txt`，**這份才是建議繳交的檔案**，不含任何求解器，換電腦跑結果會更穩定）。
-
-排位賽另外確認重瞄準那次目錄的 `retarget.json` 是 `"status": "accepted"`，繳交的是那裡的 `output_submit.txt`
-（全攝動版）；`rejected` 時照終端機警告處理，不要交那次目錄的任何腳本。
-
-如果沒有 `fixed_script_verified` 這個欄位，代表一般版本沒有通過驗證（或是有加 `--no-fixed-script`），先確認一般版本乾淨過了，再重跑一次讓固定版本產生出來。
-
-（補充：這份規則 PDF 裡沒有明確寫「繳交格式」是腳本還是別的，「所有結果以主辦單位驗證程式為準」比較像是主辦方會自己重新執行驗證，建議另外跟主辦方確認實際的繳交方式。）
+主辦單位的電腦不需要這套工具：繳交的 `output_submit.txt` 是純文字 GMAT 腳本，不含求解器，只要那台有 GMAT 就能直接開來跑。
+規則附則寫「所有結果以主辦單位驗證程式為準」，所以交之前要在那台機器上跑一次確認結果一致。

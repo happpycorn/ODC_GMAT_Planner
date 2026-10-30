@@ -8,17 +8,17 @@ T_max 的定義（排位賽規則）：A 過近地點後，地心距離第一次
 
 用法（從專案根目錄）：
     # 已經把 A 填進 config：讀 orbit_A 和 strategy.GRAVITY_DEGREE
-    uv run python scripts/tmax_from_boundary.py --config configs/ranking.json --boundary-km 100000
+    uv run python odc.py tmax --config configs/local/ranking.json --boundary-km 100000
 
     # 邊界給的是高度而不是地心距離
-    uv run python scripts/tmax_from_boundary.py --config configs/ranking.json --boundary-alt-km 93621.863
+    uv run python odc.py tmax --config configs/local/ranking.json --boundary-alt-km 93621.863
 
     # 直接打根數（INC/RAAN/AOP 只影響 J2–J4 的數值傳播）
-    uv run python scripts/tmax_from_boundary.py --sma -50000 --ecc 1.2 --inc 30 --raan 0 --aop 0 --ta 230 \\
+    uv run python odc.py tmax --sma -50000 --ecc 1.2 --inc 30 --raan 0 --aop 0 --ta 230 \\
         --boundary-km 100000
 
     # 確認無誤後寫回 config 的 rules.T_MAX_SEC（會先印舊值）
-    uv run python scripts/tmax_from_boundary.py --config configs/ranking.json --boundary-km 100000 --write
+    uv run python odc.py tmax --config configs/local/ranking.json --boundary-km 100000 --write
 """
 import argparse
 import json

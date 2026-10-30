@@ -42,13 +42,13 @@ config.json (軌道六根數 + 規則參數)
 outputs/runs/<id>/mission.json、output.txt（GMAT script）及本次驗證資料
 ```
 
-②③④ 都在 [`src/optimizer.py`](../odc/search/optimizer.py) 的 `MissionOptimizer` 裡；①用 [`src/propagator.py`](../odc/physics/propagator.py)；⑤在 [`src/script_generator.py`](../odc/gmat/script_generator.py) + `main.py` 的 `run_gmat_verification`。
+②③④ 都在 [`odc/search/optimizer.py`](../odc/search/optimizer.py) 的 `MissionOptimizer` 裡；①用 [`odc/physics/propagator.py`](../odc/physics/propagator.py)；⑤在 [`odc/gmat/script_generator.py`](../odc/gmat/script_generator.py) + [`odc/gmat/verification.py`](../odc/gmat/verification.py) 的 `run_gmat_verification`。
 
 ---
 
 ## 3. 物理模型：軌道怎麼傳播
 
-核心是 [`src/core_math.py`](../odc/physics/core_math.py) 的 `propagate_dop853`：
+核心是 [`odc/physics/core_math.py`](../odc/physics/core_math.py) 的 `propagate_dop853`：
 
 - **動力學方程**（`fast_dynamics`）：二體重力 `-μr/|r|³` 加上 zonal harmonic 攝動項。
   `strategy.GRAVITY_DEGREE` 決定算到第幾階：`0`=純點質量、`2`=J2、`3`=J2+J3、`4`=J2+J3+J4。
@@ -215,7 +215,7 @@ L-SHADE 找到的解丟進 `scipy.optimize.minimize`（L-BFGS-B）在窄範圍�
 
 ## 8. 計分公式怎麼實作的
 
-規則第 5 節的公式（`src/scorer.py` 的 `calculate_score`）：
+規則第 5 節的公式（`odc/scoring/scorer.py` 的 `calculate_score`）：
 
 ```
 Δr = max(Δr_min, 5)
@@ -235,7 +235,7 @@ Score = 50·exp(-(Δr-5)/100)                       # 距離分：Δr=5(剛好�
 分數只決定**分數**，名次還有一層。規則第 6 節規定同分時依序比 `Δr_min`（小者前）→
 `ΔV_team`（少者前）→ `T_team`（短者前）→ 設計理論報告。工具在 `tiebreak_rank_key()`
 實作這個字典序，用在兩個地方：`_pick_best_case()`（不同燃燒次數的候選誰出線）跟
-`sweep_burns.py` 的結論表。
+`odc.py sweep-burns` 的結論表。
 
 **順帶修掉的一件更重要的事：挑贏家改用「真實分數」而不是「代理值」。**
 平手判定需要 `Δr_min/ΔV_team/T_team`，那要重播才算得出來，所以 `_pick_best_case()`
@@ -293,7 +293,7 @@ GMAT script（[`script_generator.py`](../odc/gmat/script_generator.py)）裡幾�
 ### 9.1 為什麼還有第二份「固定燃燒版本」（本次目錄的 `output_submit.txt`）
 一般版本的最後一棒要靠 GMAT 的 DC（`Target/Vary/Achieve`）在執行當下即時收斂，這代表**繳交當天在主辦單位的電腦上執行時，DC 的收斂行為理論上得跟我們自己測試時一致，結果才會一樣**——雖然 DC 是 GMAT 核心功能不是外掛，正常不會「跑不出來」，但求解器的收斂路徑本來就比較不容易保證跨環境完全一致。
 
-所以 `main.py` 在一般版本驗證乾淨通過（`InterceptSuccess`/`targeter_converged`/`FinalBurnLegal` 都成立）之後，會多做一步：把 GMAT 剛剛**自己收斂出來**的最後一棒 VNB 分量（不是 Python 的估計值，是 GMAT 實際跑出來的答案，透過 `Report_Intercept` 多加的三欄讀回來）直接當常數寫進一份新腳本，跟其他棒一樣用固定的 `Maneuver` 施加，整份腳本完全不含 `DifferentialCorrector`。這份腳本本身也會再送去 GMAT 驗證一次，確認重新單純傳播出來的結果跟一般版本幾乎一致（實測過差距在公尺等級，可視為雜訊）。
+所以管線在一般版本驗證乾淨通過（`InterceptSuccess`/`targeter_converged`/`FinalBurnLegal` 都成立）之後，會多做一步：把 GMAT 剛剛**自己收斂出來**的最後一棒 VNB 分量（不是 Python 的估計值，是 GMAT 實際跑出來的答案，透過 `Report_Intercept` 多加的三欄讀回來）直接當常數寫進一份新腳本，跟其他棒一樣用固定的 `Maneuver` 施加，整份腳本完全不含 `DifferentialCorrector`。這份腳本本身也會再送去 GMAT 驗證一次，確認重新單純傳播出來的結果跟一般版本幾乎一致（實測過差距在公尺等級，可視為雜訊）。
 
 換句話說：**用求解器去找出正確答案（一般版本），但用單純的、確定性的傳播去交出答案（固定版本）**——找答案跟交答案分開，繳交的東西不依賴任何環境相關的收斂行為。
 
@@ -387,6 +387,6 @@ GMAT script（[`script_generator.py`](../odc/gmat/script_generator.py)）裡幾�
 - **「多圈、逆向這些分支會不會反而挑到更差的解？」** → 不會，分支是在**固定抵達時間**下取需求 Δv 最小者，
   時間分不變、只有燃料可能更便宜，是嚴格更大的搜尋空間。
 - **「這個分數是不是把違規解也算進去了？」** → 違規照規則每次只扣 10 分（不是取消資格），所以在**根本沒有合法解**的
-  情境裡分數可能好看但交不出去；我們對「最大單棒超標 >3 倍」會明確警告，並建議用 `feasibility.py` 確認。
+  情境裡分數可能好看但交不出去；我們對「最大單棒超標 >3 倍」會明確警告，並建議用 `odc.py feasibility` 確認。
 - **「換了正式測資這套還準嗎？」** → 物理跟搜尋不綁情境；但第 6 節的安全邊界、第 3 節的傳播容忍度是經驗值，
   正式測資一公布會用真實軌道參數重驗一次（見第 10 節「已知限制」，這點我們講在明面上）。

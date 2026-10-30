@@ -11,10 +11,10 @@ PASS/FAIL 總結。平常用 --quick（約 60 秒），commit 前跑 full（約 
 完全一致，不用為了湊成一個 runner 去改動任何一支測試。
 
 跑法：
-  uv run python run_regression.py            # 跑全部
-  uv run python run_regression.py --quick    # 跳過檔頂標記 SLOW = True 的測試
-  uv run python run_regression.py -q         # 只印每支的 PASS/FAIL 一行，不印內文
-  uv run python run_regression.py test_rotation_invariance   # 只跑名字含這個字串的
+  uv run python odc.py test            # 跑全部
+  uv run python odc.py test --quick    # 跳過檔頂標記 SLOW = True 的測試
+  uv run python odc.py test -q         # 只印每支的 PASS/FAIL 一行，不印內文
+  uv run python odc.py test test_rotation_invariance   # 只跑名字含這個字串的
 """
 
 import argparse

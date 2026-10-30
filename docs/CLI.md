@@ -152,7 +152,7 @@ uv run python odc.py outputs restore-archive outputs/archive/sweep-console-logs.
 
 從共用情境複製本機設定；目標已存在時保留原檔，驗證失敗會清掉本次新檔。
 
-舊指令對照：`新增命令`。
+舊指令對照：無，重構時新增。
 
 ```bash
 uv run python odc.py new-config ranking
