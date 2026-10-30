@@ -4,7 +4,7 @@
   "scenarios": [
     {
       "name": "e1_r4",
-      "config": "configs/research/e1/e1_r4.json",
+      "config": "configs/shared/e1_r4.json",
       "overrides": {
         "rules.MAX_DV_MPS": 250.0,
         "rules.MAX_TOTAL_DV_MPS": 3000.0,
@@ -25,7 +25,7 @@
     },
     {
       "name": "e1_r5",
-      "config": "configs/research/e1/e1_r5.json",
+      "config": "configs/shared/e1_r5.json",
       "overrides": {
         "rules.MAX_DV_MPS": 250.0,
         "rules.MAX_TOTAL_DV_MPS": 3000.0,
@@ -46,7 +46,7 @@
     },
     {
       "name": "e1_r8",
-      "config": "configs/research/e1/e1_r8.json",
+      "config": "configs/shared/e1_r8.json",
       "overrides": {
         "rules.MAX_DV_MPS": 250.0,
         "rules.MAX_TOTAL_DV_MPS": 3000.0,

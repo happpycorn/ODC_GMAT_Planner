@@ -29,9 +29,12 @@
     "k_v": 0.002,
     "C_v": 1500.0
   },
+  "_comment_oracle": "SPLIT_LEADING＋ORACLE_TWOBURN（臂 C）：四臂比較 4 題排位賽題 5/5 種子比現行高 0.10–0.22 分，smoke／contest 打平，見 docs/ORACLE_PHASE2_20261029.md。oracle 在背景跟 DE 並行，K=10、WALL_SEC=600 用預設。",
   "strategy": {
     "GRAVITY_DEGREE": 4,
-    "MISS_TOLERANCE_KM": 5.0
+    "MISS_TOLERANCE_KM": 5.0,
+    "SPLIT_LEADING": true,
+    "ORACLE_TWOBURN": true
   },
   "optimization": {
     "MAX_BURNS": [

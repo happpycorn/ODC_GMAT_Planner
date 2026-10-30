@@ -23,6 +23,9 @@ configs/shared/*
 !configs/shared/hyperbolic_test.json
 !configs/shared/playground.json
 !configs/shared/ranking_round.json
+!configs/shared/e1_r4.json
+!configs/shared/e1_r5.json
+!configs/shared/e1_r8.json
 
 outputs/*
 
