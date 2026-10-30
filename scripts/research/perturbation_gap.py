@@ -72,17 +72,17 @@ ORBIT_KEYS = ("SMA", "ECC", "INC", "RAAN", "AOP", "TA")
 def _parse_submit_script(path):
     txt = open(path, encoding="ascii").read()
     sol = {"orbit_A": {}, "orbit_B": {}, "epoch": None}
-    for ship, key in (("ShipA", "orbit_A"), ("ShipB", "orbit_B")):
+    for ship, key in (("(?:ShipA|SC_Alien)", "orbit_A"), ("(?:ShipB|SC_Human)", "orbit_B")):
         for k in ORBIT_KEYS:
             m = re.search(r"^%s\.%s\s*=\s*([-\d.eE+]+);" % (ship, k), txt, re.M)
             sol[key][k] = float(m.group(1))
-    sol["epoch"] = re.search(r"^ShipA\.Epoch\s*=\s*'([^']+)'", txt, re.M).group(1)
+    sol["epoch"] = re.search(r"^(?:ShipA|SC_Alien)\.Epoch\s*=\s*'([^']+)'", txt, re.M).group(1)
     elems = {}
     for m in re.finditer(r"^BurnB(\d+)\.Element(\d)\s*=\s*([-\d.eE+]+);", txt, re.M):
         elems.setdefault(int(m.group(1)), [0.0, 0.0, 0.0])[int(m.group(2)) - 1] = float(m.group(3))
     seq = txt[txt.index("BeginMissionSequence"):]
     coasts, burns, pending = [], [], 0.0
-    for m in re.finditer(r"^(Propagate[^\n]*ElapsedSecs\s*=\s*([\d.eE+-]+)\}|Maneuver BurnB(\d+)\(ShipB\))",
+    for m in re.finditer(r"^(Propagate[^\n]*ElapsedSecs\s*=\s*([\d.eE+-]+)\}|Maneuver BurnB(\d+)\((?:ShipB|SC_Human)\))",
                          seq, re.M):
         if m.group(2) is not None:
             pending += float(m.group(2))

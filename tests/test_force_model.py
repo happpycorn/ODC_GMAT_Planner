@@ -97,10 +97,10 @@ class GeneratorTest(unittest.TestCase):
                      "DefaultProp_ForceModel.PointMasses = {Sun, Luna};",
                      "DefaultProp_ForceModel.SRP = On;",
                      "DefaultProp_ForceModel.RelativisticCorrection = On;",
-                     "ShipB.DryMass = 123.5;", "ShipB.Cd = 2.1;", "ShipB.Cr = 1.3;",
-                     "ShipB.DragArea = 2.25;", "ShipB.SRPArea = 3.5;",
-                     "ShipA.DryMass = 4000;", "ShipA.Cd = 2.1;",
-                     "ShipA.DateFormat = UTCGregorian;", "ShipB.Epoch = '09 Nov 2026 01:00:00.000';"):
+                     "SC_Human.DryMass = 123.5;", "SC_Human.Cd = 2.1;", "SC_Human.Cr = 1.3;",
+                     "SC_Human.DragArea = 2.25;", "SC_Human.SRPArea = 3.5;",
+                     "SC_Alien.DryMass = 4000;", "SC_Alien.Cd = 2.1;",
+                     "SC_Alien.DateFormat = UTCGregorian;", "SC_Human.Epoch = '09 Nov 2026 01:00:00.000';"):
             self.assertIn(line, txt)
         for gone in ("Drag = None;", "SRP = Off;", "JGM2.cof", "TideModel = 'None'"):
             self.assertNotIn(gone, txt)
@@ -117,8 +117,8 @@ class GeneratorTest(unittest.TestCase):
                        **resolve_gmat_env(cfg)).decode("ascii")
         self.assertIn("DefaultProp_ForceModel.Drag.DragModel = 'SPADFile';", txt)
         self.assertIn("DefaultProp_ForceModel.SRP.SRPModel = SPADFile;", txt)
-        self.assertIn("ShipA.SPADDragFile = '/abs/sat.spo';", txt)
-        self.assertIn("ShipB.SPADSRPFile = '/abs/sat.spo';", txt)
+        self.assertIn("SC_Alien.SPADDragFile = '/abs/sat.spo';", txt)
+        self.assertIn("SC_Human.SPADSRPFile = '/abs/sat.spo';", txt)
 
     def test_env_validation(self):
         self.assertEqual(validate_gmat_env(ref_defaults.DEFAULT_CONFIG, []), [])
@@ -157,8 +157,8 @@ class GeneratorTest(unittest.TestCase):
         lines = txt.splitlines()
         i_target = lines.index("Target DC {SolveMode = Solve, ExitMode = SaveAndContinue};")
         # Target 在第 1 棒之前的滑行之後、第 1 棒之前；只 Vary 第 1 棒
-        self.assertTrue(lines[i_target - 1].startswith("Propagate Prop(ShipA, ShipB) {ShipA.ElapsedSecs = 500.12346"))
-        self.assertEqual(lines[i_target - 2], "Maneuver BurnB0(ShipB);")
+        self.assertTrue(lines[i_target - 1].startswith("Propagate Prop(SC_Alien, SC_Human) {SC_Alien.ElapsedSecs = 500.12346"))
+        self.assertEqual(lines[i_target - 2], "Maneuver BurnB0(SC_Human);")
         varies = [ln for ln in lines if "Vary DC(" in ln]
         self.assertEqual(len(varies), 3)
         self.assertTrue(all("BurnB1.Element" in ln for ln in varies))
@@ -166,7 +166,7 @@ class GeneratorTest(unittest.TestCase):
         achieves = [ln for ln in lines if "Achieve DC(" in ln]
         self.assertEqual([a.split("(")[1].split(" ")[0] for a in achieves], ["p1", "p2"])
         self.assertNotIn("Achieve DC(dX", txt)
-        self.assertTrue(all("ShipB.Earth.Altitude = 50" in ln for ln in lines if ln.startswith("Propagate")))
+        self.assertTrue(all("SC_Human.Earth.Altitude = 50" in ln for ln in lines if ln.startswith("Propagate")))
         self.assertIn("EGM96.cof", txt)
         self.assertIn("Report RS BurnB1.Element1 BurnB1.Element2 BurnB1.Element3 dX dY dZ;", txt)
         # 上下限要比原本分量大（1.5 km/s 的初賽棒）
@@ -177,7 +177,7 @@ class GeneratorTest(unittest.TestCase):
             full_perturbation_script(ORBIT_A, ORBIT_B, BURNS, TIMES, env, report_path="relative.report")
         rep = full_perturbation_script(ORBIT_A, ORBIT_B, BURNS, TIMES, env, report_path="/tmp/a.report")
         self.assertNotIn("Target", rep)
-        self.assertTrue(rep.rstrip().endswith("{ShipA.ElapsedSecs = 600.00000, ShipB.Earth.Altitude = 50};"))
+        self.assertTrue(rep.rstrip().endswith("{SC_Alien.ElapsedSecs = 600.00000, SC_Human.Earth.Altitude = 50};"))
 
 
 class AnalysisTest(unittest.TestCase):
@@ -384,7 +384,7 @@ class StageTest(unittest.TestCase):
         sub = (folder / "output_submit.txt").read_text()
         self.assertIn("PotentialFile = 'EGM96.cof'", sub)
         self.assertIn("BurnB0.Element1 = 0.0226827;", sub)   # DC 改過的值（+1.2 m/s），7 位小數
-        self.assertIn("{ShipA.ElapsedSecs = 2901.50000}", sub)  # 最後一段停在最近點
+        self.assertIn("{SC_Alien.ElapsedSecs = 2901.50000}", sub)  # 最後一段停在最近點
         self.assertNotIn("Target DC_Targeter", sub)
         run = json.loads((folder / "run.json").read_text())
         self.assertEqual((run["status"], run["last_stage"], run["checks_passed"]), ("completed", "retarget", True))
@@ -422,7 +422,7 @@ class StageTest(unittest.TestCase):
         self.assertEqual(rec["gmat_env"]["sc_B"]["DRY_MASS_KG"], 321.0)
         self.assertEqual(rec["gmat_env"]["epoch"], "27000")
         self.assertEqual(rec["gmat_env"]["force_model"], "ranking_full")  # 開關不能被蓋掉
-        self.assertIn("ShipB.DryMass = 321;", (folder / "output_submit.txt").read_text())
+        self.assertIn("SC_Human.DryMass = 321;", (folder / "output_submit.txt").read_text())
 
     def test_gmat_unavailable_marks_verification_failed(self):
         runner, _ = fake_runner()

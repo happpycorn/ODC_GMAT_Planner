@@ -6,7 +6,7 @@
 
 ## 冠軍（實際繳交）
 
-- [`98.32_champion_team19.md`](98.32_champion_team19.md) — Score 98.32、零違規、Earth-safe、GMAT 驗證過的五棒解
+- [`98.32_champion_team19.md`](98.32_champion_team19.md) — 零違規、Earth-safe、GMAT 驗證過的五棒解；**官方成績 98.3144（第二名）**，檔內原本寫的 98.3191 少算了 5 m/s，見檔首更正
 - `98.32_champion_team19_report.txt` — 對應的 GMAT Report（2.1MB，實際上傳的繳交件）
 
 ## 分數演進（各解的設計理由與取捨）

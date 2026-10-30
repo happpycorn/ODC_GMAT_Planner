@@ -49,6 +49,7 @@
 | [RANKING_PENALTY_V2_20261019](research/RANKING_PENALTY_V2_20261019.md) | 排位賽搜尋懲罰改成「失格層」：任何合法候選都排在總 Δv 超標／拆不掉的候選前面 |
 | [REVS_SCHEDULING_20260929](research/REVS_SCHEDULING_20260929.md) | REVS 案例共用行程池的驗證 |
 | [SPLITTER_SPEED_20261020](research/SPLITTER_SPEED_20261020.md) | 拆棒器加速與穩定化：3 顆種子並行 22 分鐘、疊合差分（逐位元不變）、多起點拆棒；現場設定已寫進 ranking_round.json |
+| [MARGIN_SENSITIVITY_20261030](research/MARGIN_SENSITIVITY_20261030.md) | 單棒餘裕壓到 0.5 m/s 只多 0.0004 分、0.05 m/s 會讓重瞄準被拒；曆元或太空船參數不對時 d_min 偏 0.5–161 km，瞄準距離不要放寬 |
 | [SPLIT_AWARE_SEARCH_FIX_20261029](research/SPLIT_AWARE_SEARCH_FIX_20261029.md) | SEARCH 與 LEADING 同開時修正搜尋／重播不同尺；LEADING 關時保留原行為與已知問題 |
 
 ## 封存

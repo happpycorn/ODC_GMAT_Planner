@@ -34,6 +34,7 @@ TASA／淡江大學「第一屆軌道設計競賽」的太空船攔截任務規�
 
 ## 已知問題
 
+- **曆元與太空船參數要照官方填**：填錯時重瞄準後的解在 GMAT 偏 0.5–161 km（[敏感度實測](docs/research/MARGIN_SENSITIVITY_20261030.md)）；官方驗證會不會沿用我們腳本裡的參數也還不知道。
 - **繳交（步驟 8）沒有計時過**，主辦機能不能交整份自製 Script 也不知道（[問題 12–14](docs/ranking/QUESTIONS_FOR_ORGANIZER.md)）。
 - 太空船質量、Cd/Cr、面積、SPADFile、曆元還是佔位值；重瞄準時 A 用跟 B 同一個力學模型（規則說 A 只受重力，研究量到差 ≤ 0.6 km）。
 - primer 加棒重搜（`PRIMER_GUIDED_RESEARCH`）沒有時間上限，觸發時多一整輪搜尋；當天靠手冊的保底設定處理。fast 模式有 300 s 上限，但救分案例少 0.51 分（[primer 對照](docs/research/PRIMER_FAST_V1_20261028.md)）。

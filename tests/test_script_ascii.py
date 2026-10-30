@@ -34,7 +34,7 @@ def main():
     print("=== GMAT 腳本 ASCII 防呆（HAP-34）===")
 
     # ── 純 ASCII 一律放行 ──
-    check("純 ASCII 內容原樣放行", _require_ascii("Create Spacecraft ShipA;\nx = 1.0;") is not None)
+    check("純 ASCII 內容原樣放行", _require_ascii("Create Spacecraft SC_Alien;\nx = 1.0;") is not None)
 
     # ── 官方範例真的走一遍 script_generator，必須無錯且寫出的檔是 ASCII ──
     with tempfile.TemporaryDirectory() as output_dir:

@@ -100,6 +100,19 @@ uv run python odc.py new-config ranking --gmat-console "/Users/corn/Documents/GM
 - 題目給的若是狀態向量不是根數，用 GMAT 開題目 Script 讀出 Keplerian 根數再抄。
 - 主控與隊友 A **各抄一次，逐字元對**。
 
+**曆元與太空船參數一定要抄**（題目 Script 或官方公布有給的話）。它們決定日月位置、大氣密度與阻力，
+只影響重瞄準與 GMAT 腳本，不影響求解。漏抄的話重瞄準是對著錯的模型瞄：實測曆元差 30 天，hyper_far 偏 161 km；
+阻力參數差 50%，低軌題偏 7–17 km（[敏感度實測](../research/MARGIN_SENSITIVITY_20261030.md)）。在 `strategy` 加：
+
+```json
+"GMAT_EPOCH": "<題目 Script 的 Epoch>",
+"GMAT_EPOCH_FORMAT": "<UTCGregorian、TAIModJulian 等，照 Script 的 DateFormat>",
+"GMAT_SPACECRAFT": {"DRY_MASS_KG": 850, "CD": 2.2, "CR": 1.8, "DRAG_AREA_M2": 6, "SRP_AREA_M2": 8}
+```
+
+`GMAT_SPACECRAFT` 只填官方有給的欄位，數字換成官方值，其他維持上面的預設。A 的參數跟 B 不同時另填 `GMAT_SPACECRAFT_A`。
+格式可用 `TAIModJulian`、`UTCModJulian`、`TTModJulian`、`A1ModJulian` 與對應的 `…Gregorian`。
+
 ### 步驟 2：T_max（1 分鐘）
 
 **官方直接公布 T_max 秒數**：把它填進 `rules.T_MAX_SEC`，跳過這步。
@@ -220,7 +233,7 @@ print('全攝動 d_min %.3f km | GMAT 固定版 Δr %.3f km 命中 %s'%(x['retar
 2. 看 Report 的命中距離跟步驟 7 的 GMAT 固定版 Δr 一致（差幾公尺以內）。不一致就停下來問工作人員他們的力學設定。
 3. Report 檔名照官方要求，Script＋Report 上傳，確認上傳成功。
 
-如果**只能改題目 Script**：把 `output_submit.txt` 裡 B 的初始狀態、每一棒 `ImpulsiveBurn` 的 VNB 分量與滑行時間，照抄進題目 Script 對應的地方。
+我們的腳本跟官方一樣把 A 叫 `SC_Alien`、B 叫 `SC_Human`。如果**只能改題目 Script**：把 `output_submit.txt` 裡 `SC_Human` 的初始狀態、每一棒 `ImpulsiveBurn`（`BurnB0`、`BurnB1`…）的 VNB 分量與滑行時間，照抄進題目 Script 對應的地方。
 這種情況比較花時間，所以隊友 B 開賽就要先看懂題目 Script。
 
 腳本必須全 ASCII（中文註解會讓 GMAT 解析失敗，初賽踩過三次）；工具產的腳本已經是 ASCII，手改時不要加中文。

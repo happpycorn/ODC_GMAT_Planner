@@ -285,7 +285,7 @@ Python 端（第 3~8 節）已經能自己估出一個相當準的分數，**但
 
 GMAT script（[`script_generator.py`](../odc/gmat/script_generator.py)）裡幾個值得知道的設計：
 
-- **`Target/Vary/Achieve`（DifferentialCorrector）**：最後一棒的燃燒方向/大小，GMAT 自己還會再修一次，讓 `ShipB` 的最終位置精準命中 `Achieve` 指定的目標點。這個目標點**必須是 Python 算好的 `aim_point`（第 5 節那個容許球內的省油偏移點），不能是 A 的精確位置**——早期版本這裡曾經是個真 bug：GMAT 的打靶目標寫死瞄準 `ShipA` 的精確位置，會讓 GMAT 自己的 DC 悄悄把 Python 刻意設計出來的「打偏一點比較省油」的方案修正掉，等於白做了第 5 節的優化。修成瞄準絕對座標的 `aim_point` 之後才修好。
+- **`Target/Vary/Achieve`（DifferentialCorrector）**：最後一棒的燃燒方向/大小，GMAT 自己還會再修一次，讓 `SC_Human`（B）的最終位置精準命中 `Achieve` 指定的目標點。這個目標點**必須是 Python 算好的 `aim_point`（第 5 節那個容許球內的省油偏移點），不能是 A 的精確位置**——早期版本這裡曾經是個真 bug：GMAT 的打靶目標寫死瞄準 `ShipA` 的精確位置，會讓 GMAT 自己的 DC 悄悄把 Python 刻意設計出來的「打偏一點比較省油」的方案修正掉，等於白做了第 5 節的優化。修成瞄準絕對座標的 `aim_point` 之後才修好。
 - **`FinalBurnDvMps`/`FinalBurnLegal`**：GMAT 的 DC 可以自由調整最後一棒的方向/大小去命中目標點，所以它實際收斂後的 Δv 不一定等於 Python 預測的那個值。`InterceptSuccess` 只檢查距離，不檢查這個——GMAT 自己的打靶器完全可能悄悄修出一把超過規則上限的燃燒而沒人發現。所以額外算了 `FinalBurnDvMps`（真實收斂後大小）跟 `FinalBurnLegal`（是否 ≤ `MAX_DV_MPS`），兩者都要看才能確認這一棒真的合規。
 - **裝飾用參數**：`DryMass`/`Cd`/`Cr`/`DragArea`/`SRPArea`/`Isp`/`GravitationalAccel` 這些欄位不影響任何計算結果——`ForceModel` 的 `Drag=None`、`SRP=Off`（阻力/太陽輻射壓根本沒開），`BurnB*.DecrementMass=false`（質量不會因燃燒減少）。純粹是 GMAT 建立物件的必填欄位，填一艘典型中型化學推進衛星的量級讓腳本看起來完整。
 - **script 內容全程限定 ASCII**：GMAT 的解析器碰到中文/非 ASCII 字元會直接報錯，所以 script 裡（不是 Python 端的 print/註解，是實際寫進本次 `output.txt` 的內容）一律用英文。

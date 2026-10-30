@@ -11,13 +11,17 @@ from odc.gmat.retarget import _hermite
 
 MIN_PERIAPSIS = 6378.137 + 100.0
 RADIUS_TOL_KM = 1e-3
-_COLUMNS = ["ShipB.ElapsedSecs"] + [
-    f"ShipB.EarthMJ2000Eq.{c}" for c in ("X", "Y", "Z", "VX", "VY", "VZ")]
+def _columns(script):
+    # 2026-10-30 起 B 叫 SC_Human（對齊官方題目腳本）；之前產的腳本叫 ShipB，照樣要能驗。
+    ship = "ShipB" if re.search(r"(?m)^\s*Create Spacecraft ShipB\s*;", script) else "SC_Human"
+    return [f"{ship}.ElapsedSecs"] + [
+        f"{ship}.EarthMJ2000Eq.{c}" for c in ("X", "Y", "Z", "VX", "VY", "VZ")]
 
 
 def instrument_radius_report(script, report_path):
     """Add a subscriber and burn boundary samples without changing mission values."""
-    columns = " ".join(_COLUMNS)
+    cols = _columns(script)
+    columns = " ".join(cols)
     report = f"Report EarthGate {columns};"
     declarations = ("Create ReportFile EarthGate;\n"
                     f"EarthGate.Filename = '{Path(report_path).as_posix()}';\n"
@@ -25,7 +29,7 @@ def instrument_radius_report(script, report_path):
                     "EarthGate.WriteHeaders = false;\n"
                     "EarthGate.Precision = 16;\n"
                     "EarthGate.ZeroFill = Off;\n"
-                    f"EarthGate.Add = {{{', '.join(_COLUMNS)}}};\n")
+                    f"EarthGate.Add = {{{', '.join(cols)}}};\n")
     # Keep solver diagnostics beside the executed copy as well (GMAT's default
     # points into its installation directory, which may be read-only).
     for solver in re.findall(r"(?m)^\s*Create DifferentialCorrector\s+(\w+)\s*;", script):
