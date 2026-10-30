@@ -206,7 +206,7 @@ def fast_fitness_evaluator(
                     penalty_count += 1
         elif split_aware > 0.5:
             # SPLIT_LEADING 關（primer 重搜單開 SEARCH）：保留舊算法，逐位元不變。已知問題：只推進
-            # 時鐘、不傳播 r/v，搜尋與重播不同尺（docs/SPLIT_AWARE_SEARCH_FIX_20261029.md）。
+            # 時鐘、不傳播 r/v，搜尋與重播不同尺（docs/research/SPLIT_AWARE_SEARCH_FIX_20261029.md）。
             if dv_mag > max_dv:
                 n_seg = math.ceil(dv_mag / max_dv)
                 current_time += (n_seg - 1.0) * min_coast_time
@@ -583,7 +583,7 @@ class MissionOptimizer:
         # 前導棒等分只在實際會拆棒時生效；可拆上限對齊搜尋端的 hard_cap。
         self.SPLIT_LEADING = bool(strategy.get("SPLIT_LEADING", False)) and self.AUTO_SPLIT_LEGALIZE
         self.LEADING_SPLIT_LIMIT = self.SPLIT_AWARE_MAX_FACTOR * self.MAX_DV
-        # 終端棒拆後估計 (C4, 2026-09-24；見 docs/C4_TERMINAL_SPLIT_AWARE_PLAN.md)。
+        # 終端棒拆後估計 (C4, 2026-09-24；見 docs/research/C4_TERMINAL_SPLIT_AWARE_PLAN.md)。
         # 開啟時：(1) fast_fitness_evaluator 對超標但 ≤ K×cap 的終端棒不扣 10 分，改預付
         # 拆棒燃料；(2) 各棒數案例 / REVS 集成 / C2 挑贏家改比 score_split_est (拆後估計)。
         # 只在 AUTO_SPLIT_LEGALIZE 也開時生效——不會拆，就不能拿拆後分數當尺。
@@ -592,7 +592,7 @@ class MissionOptimizer:
                                      and self.AUTO_SPLIT_LEGALIZE)
         # 可拆上限倍數 K：終端棒 ≤ K × MAX_DV_SOFT 算「拆棒器拆得掉」。排位賽模式 (有總 Δv 上限)
         # 預設 = 拆棒器最大段數 SPLITTER_MAX_SEG (250 m/s 時 14 × 248 = 3,472 m/s；舊的固定 5 倍
-        # 只有 1,240 m/s，把拆得掉的路線當成不可拆，見 docs/RANKING_MC_20261019.md)。初賽模式維持
+        # 只有 1,240 m/s，把拆得掉的路線當成不可拆，見 docs/research/RANKING_MC_20261019.md)。初賽模式維持
         # 5 倍 (逐位元同舊行為)。config 有寫就照 config。
         self.RANKING_RULES = self.MAX_TOTAL_DV_MPS is not None
         self.SPLIT_AWARE_TERMINAL_MAX_FACTOR = max(1.0, float(strategy.get(

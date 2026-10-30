@@ -40,14 +40,14 @@ def calculate_score(
 DV_LIMIT_TOL_MPS = 1e-5
 # 機動間隔判定吸收浮點雜訊用 (時刻是 t0 + 各段滑行累加出來的，等於下限時可能差幾個 ulp)。
 INTERVAL_TOL_SEC = 1e-6
-# 失格層 (2026-10-19 v2，見 docs/RANKING_PENALTY_V2_20261019.md)。排位賽模式 (有設
+# 失格層 (2026-10-19 v2，見 docs/research/RANKING_PENALTY_V2_20261019.md)。排位賽模式 (有設
 # MAX_TOTAL_DV_MPS) 下，總 Δv 超標、或單棒超出拆棒器能處理的範圍的候選，搜尋分數不再是
 # 「官方分數 − 軟懲罰」，而是整層搬到 [−20, −10)：
 #     score = DQ_TIER_TOP − DQ_TIER_SPAN × v / (v + DQ_VIOLATION_SCALE_MPS)
 # v = 違規量 (m/s，總 Δv 超出量 + 單棒超出拆棒範圍的量)。合法層 (含還拆得掉的終端棒超標)
 # 走 calculate_score，地板是 0，所以**任何合法候選 > 任何失格候選**，跟 k_t/C_t/k_v/C_v
 # 怎麼設無關——舊版「−10 − 0.01×超出量」比陡的時間項便宜，DE 會選失格路線
-# (docs/RANKING_MC_20261019.md)。失格層裡只看 v、不看時間/燃料項 (Deb 可行性法則)：
+# (docs/research/RANKING_MC_20261019.md)。失格層裡只看 v、不看時間/燃料項 (Deb 可行性法則)：
 # v 越大分數越低 (嚴格單調)，DE 有梯度把族群推回可行區，不會為了時間分停在「超一點點」。
 DQ_TIER_TOP = -10.0
 DQ_TIER_SPAN = 10.0

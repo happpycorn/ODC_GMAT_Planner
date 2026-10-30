@@ -1,7 +1,7 @@
 # 初賽開發日誌（封存）
 
 > 這是歷史原文。文中的 `scratch_overnight/` 一次性腳本已由
-> [初賽研究封存索引](../prelim/RESEARCH_ARCHIVE.md) 記錄；可重跑工具在 `scripts/research/`，
+> [初賽研究封存索引](../archive/prelim/RESEARCH_ARCHIVE.md) 記錄；可重跑工具在 `scripts/research/`，
 > 產生資料在 `outputs/research/`。
 
 這是 STATUS.md 在 2026-09-11 瘦身時，從第 100 行以後搬過來的逐日開發日誌
@@ -1409,7 +1409,7 @@ sigmoid 飽和時也平坦、多棒解又常退化成跟少棒解同一個解。
 
 賽程也確定了：**9/5（六）13:00 報到、14:00–15:30 正式競賽（固定 90 分鐘）**，
 淡江新工學大樓 E213/E214，**共 57 隊、前 8 名晉級**。當天的作業手冊寫在
-[CONTEST_DAY.md](../prelim/CONTEST_DAY.md)。官方明文**允許使用生成式 AI**，但禁止用網路搜文獻／
+[CONTEST_DAY.md](../archive/prelim/CONTEST_DAY.md)。官方明文**允許使用生成式 AI**，但禁止用網路搜文獻／
 開源程式碼／找場外隊友——「事先寫好帶進場的自有程式」照字面讀沒問題，但那是我們的命門，
 **報到時要當面問清楚**。
 
@@ -2028,9 +2028,9 @@ log 已經 2100+ 行，新舊混在一起會讓決賽視圖分不清哪些還適
 
 **下一輪的進度記在 [`STATUS.md`](../../STATUS.md)，不要繼續往這份檔案後面加。**（2026-09-11 更新：原本另設的 `STATUS_FINAL.md` 已併回單一 living 的 `STATUS.md`。）初賽期間學到、對下一輪仍然適用的教訓（見上面「這個 session 的工作方式」那一節、以及散落各處的「新教訓」條目）繼續有效，發現不適用或要修正時去 `STATUS.md` 記新的一條，不要回頭改這裡——這份是初賽當下的真實記錄。
 
-初賽專用文件（作業手冊、當天站別卡）已封存到 `docs/prelim/`（見 [`docs/prelim/CONTEST_DAY.md`](../prelim/CONTEST_DAY.md)）。`SCENARIOS.md` 是測資/方法論目錄、不是初賽限定，決賽繼續在原地使用，見該檔開頭的說明。
+初賽專用文件（作業手冊、當天站別卡）已封存到 `docs/archive/prelim/`（見 [`docs/archive/prelim/CONTEST_DAY.md`](../archive/prelim/CONTEST_DAY.md)）。`SCENARIOS.md` 是測資/方法論目錄、不是初賽限定，決賽繼續在原地使用，見該檔開頭的說明。
 
-全專案盤點見 [`PROJECT_AUDIT_20260909.md`](../PROJECT_AUDIT_20260909.md)（決賽前的現況/待辦總覽）。
+全專案盤點見 [`PROJECT_AUDIT_20260909.md`](../archive/PROJECT_AUDIT_20260909.md)（決賽前的現況/待辦總覽）。
 
 ---
 

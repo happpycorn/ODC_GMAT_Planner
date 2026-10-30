@@ -1,6 +1,6 @@
 """排位賽 T_max：A 過近地點後，地心距離第一次增加到任務邊界的時刻。
 
-規則（docs/RANKING_ROUND_RULES_20261006.md）：T_max 是「A 過近地點後，地心距離**第一次增加到**
+規則（docs/ranking/RANKING_ROUND_RULES_20261006.md）：T_max 是「A 過近地點後，地心距離**第一次增加到**
 任務邊界的時刻」，邊界值開賽才公布。`MissionOptimizer` 對雙曲線 A 不猜公式，要求 config
 填 `rules.T_MAX_SEC`；這個模組把「A 的軌道根數 + 邊界距離」換成那個秒數。
 

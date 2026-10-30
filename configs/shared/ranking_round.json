@@ -1,5 +1,5 @@
 {
-  "_comment_scenario": "排位賽規則範本（rules/排位賽規則_20261006.pdf，摘要 docs/RANKING_ROUND_RULES_20261006.md）。真的規則數字只有 rules.MAX_DV_MPS=250（超過 250+1e-5 m/s 直接失格）、rules.MAX_TOTAL_DV_MPS=3000（總 Δv 超過失格）、MIN_MANEUVER_INTERVAL_SEC=100（違規每次扣 10 分）。",
+  "_comment_scenario": "排位賽規則範本（rules/排位賽規則_20261006.pdf，摘要 docs/ranking/RANKING_ROUND_RULES_20261006.md）。真的規則數字只有 rules.MAX_DV_MPS=250（超過 250+1e-5 m/s 直接失格）、rules.MAX_TOTAL_DV_MPS=3000（總 Δv 超過失格）、MIN_MANEUVER_INTERVAL_SEC=100（違規每次扣 10 分）。",
   "_comment_placeholders": "佔位值！orbit_A / orbit_B / T_MAX_SEC / k_t / C_t / k_v / C_v 全部照抄 configs/shared/hyperbolic_smoke.json 的雙曲線冒煙情境，不是官方數字——A 的軌道、任務邊界（T_max）和計分參數要開賽當下才公布，拿到後整組換掉（k_v/C_v 官方給 km/s 制，要換成 m/s）。",
   "_comment_burns": "這組佔位軌道最省單棒 1257 m/s，250 m/s 上限下至少要拆成 6 棒；DE 先找路線、靠 AUTO_SPLIT_LEGALIZE 拆棒。這麼多棒的拆棒收斂與執行時間還沒驗過（另案），MAX_BURNS 先沿用冒煙情境。",
   "_comment_split": "拆棒設定已是預設（stm、三起點、剔空棒、600 s 預算、3 行程），見 README。並行種子時每個行程要設不同的 optimization.SEED（null 會讓搜尋開多執行緒，三顆互搶核心）。",
@@ -29,7 +29,7 @@
     "k_v": 0.002,
     "C_v": 1500.0
   },
-  "_comment_oracle": "SPLIT_LEADING＋ORACLE_TWOBURN（臂 C）：四臂比較 4 題排位賽題 5/5 種子比現行高 0.10–0.22 分，smoke／contest 打平，見 docs/ORACLE_PHASE2_20261029.md。oracle 在背景跟 DE 並行，K=10、WALL_SEC=600 用預設。",
+  "_comment_oracle": "SPLIT_LEADING＋ORACLE_TWOBURN（臂 C）：四臂比較 4 題排位賽題 5/5 種子比現行高 0.10–0.22 分，smoke／contest 打平，見 docs/research/ORACLE_PHASE2_20261029.md。oracle 在背景跟 DE 並行，K=10、WALL_SEC=600 用預設。",
   "strategy": {
     "GRAVITY_DEGREE": 4,
     "MISS_TOLERANCE_KM": 5.0,

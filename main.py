@@ -723,7 +723,7 @@ def legalize_violating_winner(config, burns, times, mission_info, optimizer):
 
     這是「先給大致路線(允許違規)、再拆分」方法論的正式接線：DE 只管找路線、允許違規，
     真正把違規合法化交給確定性拆分器 + joint NLP（目標函數=真實 calculate_score）。驗證
-    見 docs/HAP67_SPLIT_PIPELINE_PLAN.md（contest.json：88.32 含 −10 → 98.31 零違規、
+    見 docs/research/HAP67_SPLIT_PIPELINE_PLAN.md（contest.json：88.32 含 −10 → 98.31 零違規、
     GMAT 定燒命中、+9.99 分）。
 
     預設開；strategy.AUTO_SPLIT_LEGALIZE=false 可關（違規解原樣交出去——排位賽起單棒超標是
@@ -1566,7 +1566,7 @@ def run_output_stage(config, burns, times, mission_info, optimizer, *, args, run
 
 def run_retarget_stage(config, burns, times, mission_info, optimizer, *, args, run_dir,
                        gmat_console_path, manifest, local_config):
-    """全攝動 B 平面重瞄準（2026-10-19，docs/PERTURBATION_GAP_20261019.md §4–5）。
+    """全攝動 B 平面重瞄準（2026-10-19，docs/research/PERTURBATION_GAP_20261019.md §4–5）。
 
     已保存的拆棒後方案 → GMAT 排位賽全攝動下 DC 改一棒（只消垂直於相對速度的兩個分量）→
     重新判定命中、Earth-safe、T_max、單棒/總 Δv 失格與機動間隔 → 通過才產生全攝動固定燃燒

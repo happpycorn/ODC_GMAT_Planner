@@ -14,7 +14,7 @@
 ## 官方資訊
 
 - **排位賽規則**：[排位賽規則_20261006.pdf](../../rules/排位賽規則_20261006.pdf)（英文版 [Rules_RankRound_e_20261006.pdf](../../rules/Rules_RankRound_e_20261006.pdf) 內容一致）。
-  條文摘要與對工具的影響看 [RANKING_ROUND_RULES_20261006](../RANKING_ROUND_RULES_20261006.md)，會改變當天流程的五件事看
+  條文摘要與對工具的影響看 [RANKING_ROUND_RULES_20261006](../ranking/RANKING_ROUND_RULES_20261006.md)，會改變當天流程的五件事看
   [CONTEST_DAY §一](../ranking/CONTEST_DAY.md#一跟初賽不同會改變流程的五件事官方規則)。
   規則放在 TASA 競賽頁「文件下載」區，主辦方沒另外通知，**有修訂會更新同一頁，賽前要再看一次**。
 - TASA 競賽頁列出晉級 9 隊：15、18、19、20、22、24、35、52、54。
@@ -30,9 +30,9 @@
 - 計分對沒攔到也給部分分數（差 50 km 仍有約 32 分），所以任何情況都要交出一份合法解。
 - **工具已對齊排位賽規則**（Mac 端 10/28 版寫的「現有工具不符新規則」與 P1/P2 已完成）：
   - 單棒 250 m/s、總 Δv 3 km/s 改判失格；搜尋端用失格層，找不到合法路線有專用結束碼 3。
-  - 250 m/s 下拆成 8 棒以上的合法解，拆棒加速 4–6 倍、多起點穩定化、600 s 牆鐘預算（[SPLITTER_SPEED](../SPLITTER_SPEED_20261020.md)）。
+  - 250 m/s 下拆成 8 棒以上的合法解，拆棒加速 4–6 倍、多起點穩定化、600 s 牆鐘預算（[SPLITTER_SPEED](../research/SPLITTER_SPEED_20261020.md)）。
   - T_max 由任務邊界算、計分參數單位驗算都有現場工具。
-  - 全攝動落差已量化（[PERTURBATION_GAP](../PERTURBATION_GAP_20261019.md)），`--retarget-full-perturbation` 在 GMAT 全攝動下做 B 平面重瞄準、產固定燃燒繳交腳本。
+  - 全攝動落差已量化（[PERTURBATION_GAP](../research/PERTURBATION_GAP_20261019.md)），`--retarget-full-perturbation` 在 GMAT 全攝動下做 B 平面重瞄準、產固定燃燒繳交腳本。
   - 10/20 用佔位題照 [CONTEST_DAY](../ranking/CONTEST_DAY.md) 步驟 1–8 演練過一次，機器時間約 14 分鐘。
 - **現在最大的風險是 60 分鐘**。CONTEST_DAY §二的時間表是照初賽 90 分鐘假設寫的：第一份能交的解預估 35–60 分鐘，
   其中求解（步驟 5）13–25 分、上限 40 分；其他步驟合計 21–40 分，而抄題、檢查、繳交（步驟 1、8、9）**從沒有人實際計時過**。
@@ -52,10 +52,10 @@
   每一步給截止時刻（例如求解最晚 11:20 收、11:30 開始繳交），到點就交手上最好的合法解。
 - 抄題、檢查、主辦機準備改成跟求解並行：主控跑步驟 5 時，隊友先在主辦機開題目 Script、預填步驟 8 的清單。
 - 定保底路線：主力 3 顆種子之外，另一台機器同時跑一顆低預算種子（例如 MAXITER 降到 1/3），10 分鐘內先拿到一份合法解。
-  低預算的代價見 [STATUS](../../STATUS.md) 待辦 B 的 budget_v1 表（最差掉 1.7 分），要在 P2 量它實際要多久。
+  低預算的代價見 [排位賽準備期紀錄](../log/DEVLOG_ranking.md) 待辦 B 的 budget_v1 表（最差掉 1.7 分），要在 P2 量它實際要多久。
 
 **P2 確定當天機器並實測（Corn 跑，10/29–10/31）**
-- 決定帶哪幾台；Mac 必須能離線單機跑完全程（同初賽 [prelim/CONTEST_DAY §10.4](../prelim/CONTEST_DAY.md)）。
+- 決定帶哪幾台；Mac 必須能離線單機跑完全程（同初賽 [prelim/CONTEST_DAY §10.4](../archive/prelim/CONTEST_DAY.md)）。
 - 在 Mac 上量 `ranking_round` 與 `hyper_far` 的 3 顆並行牆鐘，補進 CONTEST_DAY §二的表；Mac 跑不進時間盒就改成 2 顆並行或縮預算。
 - 量 P1 保底設定的牆鐘與分數。
 

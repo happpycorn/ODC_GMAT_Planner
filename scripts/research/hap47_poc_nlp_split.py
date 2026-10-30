@@ -275,7 +275,7 @@ def run_optimization():
         rel_improve = (score1 - score0) / max(score0, 1e-9)
         print(f"分數變化：{score0:.4f} -> {score1:.4f}（相對改善 {rel_improve*100:.3f}%）")
         if score1 > score0 + 1e-6:
-            print("✅ 找到分數改善；獨立 GMAT 驗證結果見 docs/HAP47_SPLIT_ALGORITHM_RESEARCH.md §7.1。")
+            print("✅ 找到分數改善；獨立 GMAT 驗證結果見 docs/research/HAP47_SPLIT_ALGORITHM_RESEARCH.md §7.1。")
         else:
             print("⚪ 這次局部搜尋沒有觀測到分數改善。")
 

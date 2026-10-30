@@ -1,6 +1,6 @@
 {
   "name": "ranking_mc_v2_penalty",
-  "_說明": "搜尋懲罰 v2（失格層，2026-10-19）的驗證：ranking_mc_v1 裡 5/5 交出 ~323,800 m/s 失格解的 hyperbolic_test_fuel，加上 rules.MAX_TOTAL_DV_MPS=3000 後，看搜尋會不會改找合法路線，或明確回報「找不到合法路線」。hyperbolic_smoke 當對照：v1 裡 5/5 合法（85.20–86.78），v2 不該變差。其他設定同 ranking_mc_v1（250 m/s、600×20）。結果見 docs/RANKING_PENALTY_V2_20261019.md。",
+  "_說明": "搜尋懲罰 v2（失格層，2026-10-19）的驗證：ranking_mc_v1 裡 5/5 交出 ~323,800 m/s 失格解的 hyperbolic_test_fuel，加上 rules.MAX_TOTAL_DV_MPS=3000 後，看搜尋會不會改找合法路線，或明確回報「找不到合法路線」。hyperbolic_smoke 當對照：v1 裡 5/5 合法（85.20–86.78），v2 不該變差。其他設定同 ranking_mc_v1（250 m/s、600×20）。結果見 docs/research/RANKING_PENALTY_V2_20261019.md。",
   "scenarios": [
     {
       "name": "hyperbolic_test_fuel",

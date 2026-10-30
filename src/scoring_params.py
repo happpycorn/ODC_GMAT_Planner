@@ -1,6 +1,6 @@
 """計分參數 k_t、C_t、k_v、C_v 的單位換算與驗算。
 
-為什麼要有這個（docs/prelim/CONTEST_DAY.md「單位陷阱」）：初賽官方給 kv = 1.1862 (km/s)^-1、
+為什麼要有這個（docs/archive/prelim/CONTEST_DAY.md「單位陷阱」）：初賽官方給 kv = 1.1862 (km/s)^-1、
 Cv = 2.955723 km/s，工具的 Δv 一律用 m/s，照抄會讓燃料項整個算錯。排位賽的參數比賽當下才
 公布，現場要在幾分鐘內換對。
 

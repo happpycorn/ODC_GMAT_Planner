@@ -1,6 +1,6 @@
 {
   "name": "splitspeed_par3_rec",
-  "_說明": "SPLITTER_SPEED（2026-10-20）：跟 splitspeed_par3 同樣 3 顆種子同時跑，拆棒改用建議設定（疊合差分、3 行程、多起點 [0,0.75,1]、剔空棒重最佳化 1 m/s、牆鐘預算 600 s）。見 docs/SPLITTER_SPEED_20261020.md。",
+  "_說明": "SPLITTER_SPEED（2026-10-20）：跟 splitspeed_par3 同樣 3 顆種子同時跑，拆棒改用建議設定（疊合差分、3 行程、多起點 [0,0.75,1]、剔空棒重最佳化 1 m/s、牆鐘預算 600 s）。見 docs/research/SPLITTER_SPEED_20261020.md。",
   "scenarios": [
     {
       "name": "hyper_far",

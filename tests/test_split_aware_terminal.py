@@ -1,6 +1,6 @@
 """C4 終端棒拆後估計的驗證（`uv run python tests/test_split_aware_terminal.py`）。
 
-見 docs/C4_TERMINAL_SPLIT_AWARE_PLAN.md。三塊：
+見 docs/research/C4_TERMINAL_SPLIT_AWARE_PLAN.md。三塊：
   1. 目標函數：同一個終端超標決策向量，旗標開/關的分數差 = 10 − 預付成本；超過 K×cap 仍扣；
      旗標關時跟舊的 16 格 scalars 逐位元相同。
   2. 挑贏家換尺：_pick_best_case / pick_best_across_revs 餵假資料（違規 88.32 vs 合法 89.25），

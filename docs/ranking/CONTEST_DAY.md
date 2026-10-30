@@ -1,15 +1,15 @@
 # 排位賽當天作業手冊（2026-11-09）
 
-**比賽當天照著做的流程。** 規則摘要看 [RANKING_ROUND_RULES_20261006](../RANKING_ROUND_RULES_20261006.md)，
-攝動落差看 [PERTURBATION_GAP_20261019](../PERTURBATION_GAP_20261019.md)，工具用法看[專案 README](../../README.md)。
-初賽的手冊 [prelim/CONTEST_DAY](../prelim/CONTEST_DAY.md) 裡的團隊分工（§十）、雙機並行（§10.5）和已知地雷（§七）
+**比賽當天照著做的流程。** 規則摘要看 [RANKING_ROUND_RULES_20261006](RANKING_ROUND_RULES_20261006.md)，
+攝動落差看 [PERTURBATION_GAP_20261019](../research/PERTURBATION_GAP_20261019.md)，工具用法看[專案 README](../../README.md)。
+初賽的手冊 [prelim/CONTEST_DAY](../archive/prelim/CONTEST_DAY.md) 裡的團隊分工（§十）、雙機並行（§10.5）和已知地雷（§七）
 大多還適用，這份只寫排位賽不一樣的地方和完整流程。
 
 沒有標「官方」的判斷都是我們自己的推論，現場以工作人員說的為準。開賽前要問的問題整理在
 [QUESTIONS_FOR_ORGANIZER](QUESTIONS_FOR_ORGANIZER.md)。
 
 > **2026-10-20 演練過一次**（`configs/shared/ranking_round.json` 的佔位題，步驟 1–8 全通過，實測時間填在 §二）。
-> 求解時間的依據：[RANKING_MC](../RANKING_MC_20261019.md)、[SPLITTER_SPEED](../SPLITTER_SPEED_20261020.md)。
+> 求解時間的依據：[RANKING_MC](../research/RANKING_MC_20261019.md)、[SPLITTER_SPEED](../research/SPLITTER_SPEED_20261020.md)。
 > `--retarget-full-perturbation` 已合併。
 >
 > **TODO（等官方）**：比賽時長、地點、繳交方式、太空船參數。
@@ -50,7 +50,7 @@
 | | **第一份能交的解合計** | **約 35–60 分** | 機器時間約 14 分 | 機器時間約 17 分 | 步驟 5 的不確定性最大 |
 
 **步驟 5 的時間由題目決定**：佔位題 12.6 分鐘；長飛掠（hyper_far，T_max 45 h、要拆 8 棒）3 顆並行 22 分鐘，
-其中搜尋最多 17 分、拆棒 2–7 分（[SPLITTER_SPEED](../SPLITTER_SPEED_20261020.md) §1）。拆棒有 600 s 預算當保險。
+其中搜尋最多 17 分、拆棒 2–7 分（[SPLITTER_SPEED](../research/SPLITTER_SPEED_20261020.md) §1）。拆棒有 600 s 預算當保險。
 
 **Mac 跑 hyper_far（2026-10-28，同 `sweeps/splitspeed_par3_rec.json` 設定，省電模式＋電池）超出時間盒**：
 搜尋約 23 分，拆棒兩顆都用滿 600 s 預算。最快的 seed 1 花 33.4 分（82.4327 分），seed 2 花 48.5 分。
@@ -59,7 +59,7 @@ seed 2 也觸發了重搜，多花約 14 分，拆後分數只差 0.0003。
 用 seed 1 做全攝動重瞄準 31 s（DC 4 次迭代，82.417 分），GMAT 驗證 7 s（miss 0.47 km、末棒 185.8 m/s），全部合法。
 電量 90% → 74%（49 分鐘），沒有降頻警告，負載峰值 28.6。
 → 當天設定待定：關掉 `PRIMER_GUIDED_RESEARCH` 或幫它設時間上限；第一顆合法種子跑完就先重瞄準當保底，不等全部；Mac 上試 2 顆並行。
-降級旋鈕見[初賽手冊](../prelim/CONTEST_DAY.md) §4.1：第一個退 `REVS_ENSEMBLE`，代數比族群重要，不要加大 POPSIZE。
+降級旋鈕見[初賽手冊](../archive/prelim/CONTEST_DAY.md) §4.1：第一個退 `REVS_ENSEMBLE`，代數比族群重要，不要加大 POPSIZE。
 
 **原則跟初賽一樣：先交得出東西，再求更好。** 步驟 5 第一輪跑完、做完 6–8，就先把那一份存好當保底，
 剩下的時間再跑第二台機器的分支或多 seed。
@@ -244,7 +244,7 @@ for s in 0 1 2; do python3 -c "import json;d=json.load(open('outputs/runs/rank-s
 ### 步驟 6：全攝動 B 平面重瞄準（2–5 分）
 
 為什麼要做：我們瞄 Δr ≈ 3.5 km，離 5 km 只剩 1.5 km；J2–J4 → 全攝動在 1.6 h 以內的任務就偏 0.5–1.3 km，
-22.6 h 的 hyper_far 偏 263 km（[PERTURBATION_GAP](../PERTURBATION_GAP_20261019.md) §2）。
+22.6 h 的 hyper_far 偏 263 km（[PERTURBATION_GAP](../research/PERTURBATION_GAP_20261019.md) §2）。
 B 平面重瞄準只要多花 0.04–4.6 m/s，所有試過的解都收斂。
 
 **做法要點（兩條路都一樣）：**
@@ -267,7 +267,7 @@ uv run python main.py --config configs/ranking.json --from-mission outputs/runs/
   （演練的第 2 棒只有 97 m/s）。
 - 太空船參數用的是我們的預設（850 kg、Cd 2.2、Cr 1.8、阻力面積 6 m²、SRP 面積 8 m²），官方公布後要換。
   在官方公布之前，長時間停在低軌的任務要另外評估命中率
-  （`scripts/research/perturbation_gap.py` 的 `--mc`，見 [PERTURBATION_GAP](../PERTURBATION_GAP_20261019.md)）。
+  （`scripts/research/perturbation_gap.py` 的 `--mc`，見 [PERTURBATION_GAP](../research/PERTURBATION_GAP_20261019.md)）。
 
 ### 步驟 7：GMAT 驗證（1–3 分）
 
@@ -298,7 +298,7 @@ uv run python main.py --config configs/ranking.json --verify-script outputs/runs
 ### 步驟 9：繳交（5–10 分）
 
 繳交格式官方還沒公布（[問題 12–14](QUESTIONS_FOR_ORGANIZER.md)）。初賽的做法是：在主辦機的 GMAT 開題目 Script、
-改 B 的設定與機動、至少模擬一次產生 Report，再把 Script + Report 上傳（[初賽手冊](../prelim/CONTEST_DAY.md) §10.2）。
+改 B 的設定與機動、至少模擬一次產生 Report，再把 Script + Report 上傳（[初賽手冊](../archive/prelim/CONTEST_DAY.md) §10.2）。
 如果排位賽一樣：
 
 1. 把 `output_submit.txt` 帶到主辦機（USB），在那台的 GMAT 跑一次，確認結果跟自己機器一致。

@@ -19,7 +19,7 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import sweep_params as sp
-from scripts.generate_c4_configs import build_configs
+from scripts.research.archive.generate_c4_configs import build_configs
 
 FAILS = []
 

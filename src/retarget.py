@@ -2,7 +2,7 @@
 
 Python 端用 J2–J4 搜尋拆棒，排位賽官方驗證開 EGM96 20×20、潮汐、阻力、日月、SRP、相對論。
 同一組脈衝放進全攝動，短任務偏 0.5–1.3 km，22.6 h 的 hyper_far 偏到 111 km
-（docs/PERTURBATION_GAP_20261019.md）。這裡在 GMAT 全攝動下用 DifferentialCorrector 改一棒，
+（docs/research/PERTURBATION_GAP_20261019.md）。這裡在 GMAT 全攝動下用 DifferentialCorrector 改一棒，
 只消掉垂直於相對速度的兩個分量（B 平面），再重播、重新判定合法性。
 
 流程（全部串行，同一時間只有一個 GMAT 行程）：

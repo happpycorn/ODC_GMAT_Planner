@@ -57,7 +57,7 @@ config 分四大塊 + 一塊選填，各自對應「誰決定這個數字」：`
 | `strategy.MISS_TOLERANCE_KM` | 規則只要求 Δr ≤ 這個值 (預設對齊規則的 5km)，可以彈性調小 (甚至設 0 退回精準瞄準)，讓最後一棒 Lambert 在容許範圍內找最省油的落點，而不是死盯著 A 的精確位置 |
 | `optimization.MAX_BURNS` | 要嘗試的燃燒次數列表，例如 `[1, 2, 3]` 會三種都跑，選分數最高的 |
 | `optimization.MAXITER` / `POPSIZE` | 搜尋精細度。`POPSIZE` 是「每個決策變數維度分配幾個個體」(族群大小 = 維度數 × POPSIZE)，不是總數，越大越準但越久 |
-| `optimization.EARLY_STOP_ENABLED`（選填，預設 `false`） | 啟用後才會使用 `MAX_EARLY_STOP` 與 `TOL` 提早停止搜尋；`TOL` 是分數單位。2026-09-29 消融發現多個情境明顯掉分，維持關閉較穩妥。見 [實驗結果](docs/EARLY_STOP_ABLATION_20260929.md) |
+| `optimization.EARLY_STOP_ENABLED`（選填，預設 `false`） | 啟用後才會使用 `MAX_EARLY_STOP` 與 `TOL` 提早停止搜尋；`TOL` 是分數單位。2026-09-29 消融發現多個情境明顯掉分，維持關閉較穩妥。見 [實驗結果](docs/research/EARLY_STOP_ABLATION_20260929.md) |
 | `local.gmat_console_path`（選填） | 這台機器上 `GmatConsole` 的路徑。不填就用 `--gmat-console` 參數，或 `main.py` 裡寫死的最後備援值（那是我這台機器的路徑，換一台機器大概率對不上）。優先順序：`--gmat-console` > 這個欄位 > 寫死的備援值。config.json 本來就被 `.gitignore` 排除，填在這裡不會跟著 git 到處跑，換電腦/換人開發各自維護自己的這一項就好，不用每次執行都手動打 `--gmat-console` |
 | `optimization.NUM_THREADS` | 每個燃燒次數案例要用幾條執行緒平行評估族群；設 `-1` 或 0 以下會自動用「可用核心數 ÷ 燃燒次數案例數」估一個合理值 |
 | `optimization.SEED` | 設一個整數可以讓同一組設定每次重現一模一樣的結果，方便比較「改了東西到底有沒有用」。**注意：設了 SEED 會自動退回單執行緒**（多執行緒下亂數搶用有 race condition，seed 保證不了重現性），犧牲速度換可重現性；不設 (`null`，預設) 就照樣用多執行緒換速度，兩者只能選一個 |
@@ -132,7 +132,7 @@ uv run main.py --from-mission outputs/runs/solve-a/mission.json --retarget-full-
 
 Python 只算 J2–J4，排位賽官方驗證開 EGM96 20×20、潮汐、NRLMSISE00 阻力、日月、SRP、相對論。
 同一組脈衝放進全攝動，短任務偏 0.5–1.3 km，22.6 h 的 hyper_far 偏到 111 km
-（[研究報告](docs/PERTURBATION_GAP_20261019.md)）。所以排位賽的流程是：
+（[研究報告](docs/research/PERTURBATION_GAP_20261019.md)）。所以排位賽的流程是：
 
 1. 照舊求解＋拆棒＋GMAT 驗證（`FORCE_MODEL` 保持預設 `contest_prelim`，GMAT 與 Python 模型對齊）。
 2. `--from-mission <mission.json> --retarget-full-perturbation`：在全攝動下用 GMAT DifferentialCorrector
@@ -234,23 +234,23 @@ uv run sweep_burns.py --config configs/x.json --burns 2-8
 
 ### 初賽當天（已封存）
 
-**[docs/prelim/CONTEST_DAY.md](docs/prelim/CONTEST_DAY.md)** —— 9/5 初賽當天照著做的作業手冊（時間地點、90 分鐘怎麼分配、指令、繳交前檢查清單、已知地雷）。初賽已結束，這份是歷史文件；決賽站別卡見 `docs/prelim/runbooks/`（同樣是初賽版，決賽開始前需要另開一份）。
+**[docs/archive/prelim/CONTEST_DAY.md](docs/archive/prelim/CONTEST_DAY.md)** —— 9/5 初賽當天照著做的作業手冊（時間地點、90 分鐘怎麼分配、指令、繳交前檢查清單、已知地雷）。初賽已結束，這份是歷史文件；決賽站別卡見 `docs/archive/prelim/runbooks/`（同樣是初賽版，決賽開始前需要另開一份）。
 
 ### `strategy` 裡幾個值得知道的開關
 
 | 欄位 | 預設 | 什麼時候調 |
 |---|---|---|
 | `SEARCH_COAST_RTOL` | `1e-12` | 一般 L-SHADE 搜尋時，前 N−1 棒後滑行傳播的相對容差，須為有限正數且 ≤ `1e-6`。可試 `1e-9` 加速搜尋；搜尋贏家會以 `1e-12` 重算再比較。種子精修、primer fast 的 deadline 比較、重播及驗證維持精確容差。 |
-| `LAMBERT_MAX_REVS` | `4` | 最後一棒 Lambert 要考慮的**最大圈數**。規則的 `T_max` 是 A 的四個週期，所以最多也就塞得下約 4 圈。對**單點評估**是嚴格更大的搜尋空間、不可能讓那一點變差（分支選擇是在固定的抵達時間下取最省的那條，時間分不變、燃料只會更好），成本 1.01 倍。但對**搜尋結果**不成立——L-SHADE 偶爾會收斂到更差的盆地（見 HAP-42），所以預設 `REVS_ENSEMBLE=true` 會同時排程 `REVS=0` 和 `REVS=4` 的燃燒案例、取兩者較好者，見 [排程驗證](docs/REVS_SCHEDULING_20260929.md)。設 `0` 可退回 2026-08-28 之前的行為（也讓 REVS_ENSEMBLE 自動退成單跑）。 |
+| `LAMBERT_MAX_REVS` | `4` | 最後一棒 Lambert 要考慮的**最大圈數**。規則的 `T_max` 是 A 的四個週期，所以最多也就塞得下約 4 圈。對**單點評估**是嚴格更大的搜尋空間、不可能讓那一點變差（分支選擇是在固定的抵達時間下取最省的那條，時間分不變、燃料只會更好），成本 1.01 倍。但對**搜尋結果**不成立——L-SHADE 偶爾會收斂到更差的盆地（見 HAP-42），所以預設 `REVS_ENSEMBLE=true` 會同時排程 `REVS=0` 和 `REVS=4` 的燃燒案例、取兩者較好者，見 [排程驗證](docs/research/REVS_SCHEDULING_20260929.md)。設 `0` 可退回 2026-08-28 之前的行為（也讓 REVS_ENSEMBLE 自動退成單跑）。 |
 | `MAX_DV_MARGIN_MPS` | `2.0` | 搜尋階段每棒 Δv 上限往內縮多少（安全邊界，見 METHODOLOGY 第 6 節）。最佳解有棒數頂到上限時調小可以白賺幾 m/s，**調完要確認違規次數還是 0**。 |
 | `TIEBREAK_POLISH` | `true` | 規則第 6 節優先序 1 的收尾微調，見下面〈平手判定〉。 |
-| `SPLIT_LEADING` | `false` | 拆棒階段先等分超標前導棒，再交給既有拆棒器；重播與挑贏家也視為可拆，可拆上限 = `SPLIT_AWARE_MAX_FACTOR`×單棒上限（預設 3 倍）。只在 `AUTO_SPLIT_LEGALIZE=true` 時生效。見 [docs/ORACLE_INTEGRATION_PLAN_20261029.md](docs/ORACLE_INTEGRATION_PLAN_20261029.md) §3.2。 |
+| `SPLIT_LEADING` | `false` | 拆棒階段先等分超標前導棒，再交給既有拆棒器；重播與挑贏家也視為可拆，可拆上限 = `SPLIT_AWARE_MAX_FACTOR`×單棒上限（預設 3 倍）。只在 `AUTO_SPLIT_LEGALIZE=true` 時生效。見 [docs/research/ORACLE_INTEGRATION_PLAN_20261029.md](docs/research/ORACLE_INTEGRATION_PLAN_20261029.md) §3.2。 |
 | `ORACLE_TWOBURN` | `false` | 兩棒 oracle 與 DE 同跑，前 K 名走重播／拆棒後參與比較；需要 `SPLIT_LEADING=true`。 |
 | `ORACLE_TWOBURN_K` | `10` | 去重後候選數（整數 ≥1）。 |
 | `ORACLE_TWOBURN_WALL_SEC` | `600` | 網格加候選拆棒的牆鐘上限（秒，>0）；到期只收已完成候選。 |
 | `ORACLE_TWOBURN_GRID_DIV` | `100` | 粗網格步長 = T_max / 此值（整數 ≥10）；單棒用 max(MIN_COAST/2, h/4)。 |
 | `ORACLE_TWOBURN_SEED_DE` | `false` | DE 前同步跑網格，按棒數把 oracle 種子放進兩趟 REVS 初始族群最前面；建議同開 `SPLIT_AWARE_SEARCH`，`SPLIT_AWARE_MAX_FACTOR` 可設 5（合法範圍 1–14）。兩個 oracle 開關同開只算一次網格。 |
-| `SPLIT_AWARE_TERMINAL` | `true` | 終端棒超標但拆得掉（≤ `SPLIT_AWARE_TERMINAL_MAX_FACTOR`×上限，預設 5）時，搜尋與挑贏家改用「拆後估計分數」、不扣 10 分，避免收斂到省油但晚到的合法家族。拆棒真的失敗會自動用 `false` 重跑一輪搜尋當退路（最差 = 關閉時的結果，但多花一輪搜尋時間）。只在 `AUTO_SPLIT_LEGALIZE=true` 時生效。見 [docs/C4_TERMINAL_SPLIT_AWARE_PLAN.md](docs/C4_TERMINAL_SPLIT_AWARE_PLAN.md)。 |
+| `SPLIT_AWARE_TERMINAL` | `true` | 終端棒超標但拆得掉（≤ `SPLIT_AWARE_TERMINAL_MAX_FACTOR`×上限，預設 5）時，搜尋與挑贏家改用「拆後估計分數」、不扣 10 分，避免收斂到省油但晚到的合法家族。拆棒真的失敗會自動用 `false` 重跑一輪搜尋當退路（最差 = 關閉時的結果，但多花一輪搜尋時間）。只在 `AUTO_SPLIT_LEGALIZE=true` 時生效。見 [docs/research/C4_TERMINAL_SPLIT_AWARE_PLAN.md](docs/research/C4_TERMINAL_SPLIT_AWARE_PLAN.md)。 |
 | `SPLIT_JACOBIAN` | `"stm"` | 拆棒 joint NLP 使用 STM Jacobian；設 `"fd"` 退回有限差分。 |
 | `SPLIT_WORKERS` | `3` | 拆棒行程數，最多使用 `os.cpu_count()` 個核心（至少 1）；設 `1` 退回單行程。 |
 | `SPLIT_MULTISTART` | `[0, 0.75, 1]` | 終端棒起點往前挪的倍數，預設三起點；設 `null` 或 `[]` 退回單起點。 |
@@ -327,7 +327,7 @@ uv run python tests/test_arc_safety.py
 
 `configs/shared/` 的共用情境跟著 Git 走；其餘本機 `configs/*.json` 不會。**所有長期使用的測試情境之參數、目的與實測難度記在 [SCENARIOS.md](docs/SCENARIOS.md)**，可用來重建尚未納入共用目錄的情境。
 
-需要批次比較參數或重跑 C4 實驗時，先看 [scripts/README.md](scripts/README.md) 的預覽、執行與彙整指令；C4 runner 以 Linux `/proc` 監看行程，需在 Linux 執行。實驗結果仍寫入本機 `outputs/`。
+需要批次比較參數或重跑 C4 實驗時，先看 [研究工具封存導覽](scripts/research/README.md#封存) 的預覽、執行與彙整指令；C4 runner 以 Linux `/proc` 監看行程，需在 Linux 執行。實驗結果仍寫入本機 `outputs/`。
 
 ---
 

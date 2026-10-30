@@ -179,7 +179,7 @@ def _validate_rules(rules_cfg, errors: list, orbit_a_cfg=None):
             errors.append(f"rules.MAX_TOTAL_DV_MPS 必須是 >0 的數字 (單位 m/s，排位賽為 3000) 或 null，"
                           f"但收到 {v!r}")
     # 排位賽格式 (單棒上限 ≤ 250 m/s) 一定有總 Δv 上限。漏抄這一行，搜尋就不知道總 Δv 會失格，
-    # 會選出總 Δv 超標的路線 (docs/RANKING_MC_20261019.md 的 hyperbolic_test_fuel：5/5 失格)；
+    # 會選出總 Δv 超標的路線 (docs/research/RANKING_MC_20261019.md 的 hyperbolic_test_fuel：5/5 失格)；
     # 失格層與 C4 可拆範圍也只在有總上限時才啟用。不要只靠人記得，直接擋。
     _cap = rules_cfg.get("MAX_DV_MPS")
     if _is_number(_cap) and 0 < _cap <= RANKING_MAX_DV_MPS and rules_cfg.get("MAX_TOTAL_DV_MPS") is None:
@@ -330,7 +330,7 @@ def _validate_strategy(strategy_cfg, errors: list):
         if k in strategy_cfg and (not _is_number(strategy_cfg[k]) or strategy_cfg[k] < 1.0):
             errors.append(f"strategy.{k} 必須是 >=1 的數字，但收到 {strategy_cfg[k]!r}")
 
-    # 拆棒旋鈕（SPLITTER_SPEED，2026-10-19；docs/SPLITTER_SPEED_20261020.md）
+    # 拆棒旋鈕（SPLITTER_SPEED，2026-10-19；docs/research/SPLITTER_SPEED_20261020.md）
     if strategy_cfg.get("SPLIT_JACOBIAN", SPLIT_DEFAULTS["SPLIT_JACOBIAN"]) not in ("fd", "stm"):
         errors.append("strategy.SPLIT_JACOBIAN 必須是 'fd' 或 'stm'，但收到 "
                       f"{strategy_cfg['SPLIT_JACOBIAN']!r}")

@@ -6,7 +6,7 @@ HAP-67 Stage 2：確定性拆棒後處理器。
 split_seed_candidates` 那樣被 `num_burns` 綁死 (那裡 `n_final = num_burns - 1`，是把「要拆
 幾棒」當成搜尋前就得猜的輸入；本模組把它改回它本來的身分——**拆棒的輸出**)。
 
-設計原則 (見 docs/HAP67_SPLIT_PIPELINE_PLAN.md)：
+設計原則 (見 docs/research/HAP67_SPLIT_PIPELINE_PLAN.md)：
 - **只負責 feasibility**：找到任何一組合法 (每段 ≤cap、每段弧 Earth-safe、命中鎖定的 A(T))
   的分解就回傳，好不好留給 Stage 3 (NLP 精修)。
 - **鎖住 A(T)**：抵達點與抵達時刻固定，每段都向前重解 Lambert 瞄準同一個 A(T)——所以這套
@@ -100,7 +100,7 @@ def _shoot_final(r, v_guess, target, tof, mu, j2, j3, j4, re,
     """終端段 shooting 修正：從 Lambert 的二體猜測 `v_guess` 出發，用 Newton（有限差分 Jacobian）
     修正燒後速度，讓 J2–J4 傳播 `tof` 秒後真的落在 `target`。回傳 (v, miss_km)。
 
-    C4 E4 發現（docs/C4_TERMINAL_SPLIT_AWARE_PLAN.md §6.2）：`hyper_far` 終端段 ~8.4 h，二體 Lambert
+    C4 E4 發現（docs/research/C4_TERMINAL_SPLIT_AWARE_PLAN.md §6.2）：`hyper_far` 終端段 ~8.4 h，二體 Lambert
     瞄準、J2–J4 傳播會偏 338～377 km，貪婪拆棒每個段數都被命中驗證拒掉。不拆的單棒解靠 GMAT DC
     修這個偏差，拆棒器這裡做同一件事。只在有攝動時呼叫——二體時 Lambert 本來就精確命中。
     每步做回溯線搜尋（miss 沒變小就步長減半），避免長弧的非線性讓 Newton 發散。
@@ -439,7 +439,7 @@ def _nlp_stm_jacobian(m, dm, k_t, C_t, k_v, C_v):
     return np.ascontiguousarray(np.vstack((dobj, -dm["dv_mags"], dm["arc_minr"], -dm["miss_km"])))
 
 
-# ── 快速有限差分（SPLITTER_SPEED，2026-10-19；數據見 docs/SPLITTER_SPEED_20261020.md）────────────
+# ── 快速有限差分（SPLITTER_SPEED，2026-10-19；數據見 docs/research/SPLITTER_SPEED_20261020.md）────────────
 # SLSQP 沒給 jac 時，目標函數與三組約束**各自**做一次 2-point 有限差分：同一個 x 附近同樣的
 # 4N+1 個擾動點，被 4 個函式各算一遍，而 joint_nlp_split 的 metrics 快取只存一筆，全部 miss——
 # 每次迭代要跑 4×(4N+1) 條完整軌跡。快速路徑把「目標 + 全部約束」疊成一個向量，用 scipy 同一支
@@ -527,7 +527,7 @@ def joint_nlp_split(x0, N, *, cap, min_coast, mu, j2, j3, j4, re, min_periapsis,
     (SLSQP 後仍不可行)。penalty=0 是因為 cap 約束保證合規；若 SLSQP 沒壓進 cap，feasible 會是
     False、由呼叫端丟掉。
 
-    maxiter 與約束餘裕（C3，2026-09-23；數據見 docs/C3_CONVEX_SPLITTER_PLAN.md §6）：
+    maxiter 與約束餘裕（C3，2026-09-23；數據見 docs/research/C3_CONVEX_SPLITTER_PLAN.md §6）：
     - maxiter 預設 1000：此題收斂要 236~823 次迭代，舊值 80 讓**每一次**都被截斷（status=9）。
     - SLSQP 對**略緊**的約束求解（`_NLP_*_MARGIN`），出來再用**真實**約束判 feasible。截斷/收斂
       點常貼著約束邊界、差 1e-3 量級（miss 3.501 vs 3.5、單棒 1498.01 vs 1498.00），用真實邊界

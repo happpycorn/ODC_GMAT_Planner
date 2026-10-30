@@ -1,6 +1,6 @@
 {
   "name": "ranking_mc_v1",
-  "_說明": "排位賽條件（單棒 250 m/s、總 Δv ≤ 3 km/s）的多種子蒙地卡羅：量現場計算時間與 8–12 棒拆棒的收斂穩定度。結果與結論見 docs/RANKING_MC_20261019.md。三個情境都是雙曲線 A，但軌道、T_MAX_SEC 和計分參數全部是自己編的佔位值，不是官方題目；排位賽的軌道、任務邊界（T_max）和 k_t/C_t/k_v/C_v 要開賽才公布。搜尋預算用預設 MAXITER=600、POPSIZE=20（情境檔寫 1000，這裡覆寫回預設，與 budget_v1 的 B1_pop20 同預算）；NUM_THREADS 與其他參數照各情境檔。現有程式仍把超標當扣分、也不檢查總 Δv，失格是事後從 penalty_count 與 Δv 判定。",
+  "_說明": "排位賽條件（單棒 250 m/s、總 Δv ≤ 3 km/s）的多種子蒙地卡羅：量現場計算時間與 8–12 棒拆棒的收斂穩定度。結果與結論見 docs/research/RANKING_MC_20261019.md。三個情境都是雙曲線 A，但軌道、T_MAX_SEC 和計分參數全部是自己編的佔位值，不是官方題目；排位賽的軌道、任務邊界（T_max）和 k_t/C_t/k_v/C_v 要開賽才公布。搜尋預算用預設 MAXITER=600、POPSIZE=20（情境檔寫 1000，這裡覆寫回預設，與 budget_v1 的 B1_pop20 同預算）；NUM_THREADS 與其他參數照各情境檔。現有程式仍把超標當扣分、也不檢查總 Δv，失格是事後從 penalty_count 與 Δv 判定。",
   "scenarios": [
     {
       "name": "hyper_far",

@@ -137,7 +137,7 @@ def full_perturbation_script(orbit_A, orbit_B, burns, times, env, *, gravity_deg
     「預定攔截時刻相對位置在 bplane 兩個單位向量上的投影 = 0」（垂直於相對速度的兩個分量）；
     沿相對速度的分量只會讓最近點早到或晚到幾秒，不花 Δv 去修。收斂後把該棒三分量和相對
     位置寫到 summary_path。不用「預定時刻位置對齊」：那在 hyper_far 會多花 272 m/s、
-    把最後一棒推到 361 m/s（docs/PERTURBATION_GAP_20261019.md §4）。
+    把最後一棒推到 361 m/s（docs/research/PERTURBATION_GAP_20261019.md §4）。
 
     每段 Propagate 都帶 ShipB 高度 stop_alt_km 的停止條件：攔截後 B 常一路鑽進大氣層，
     MSISE 密度會讓 RK89 卡在最小步長。所有路徑都必須是絕對路徑（GmatConsole 會切到 bin/）。
@@ -233,7 +233,7 @@ def script_generator(
     DryMass/Cd/Cr/areas physically meaningful. gravity_degree only applies to
     contest_prelim. Note the normal (DC) variant still aims at a fixed-time
     position; under ranking_full use main.py --retarget-full-perturbation
-    (B-plane DC) instead - see docs/PERTURBATION_GAP_20261019.md section 4.
+    (B-plane DC) instead - see docs/research/PERTURBATION_GAP_20261019.md section 4.
 
     gravity_degree: highest zonal (m=0) harmonic to include, matching Python's
     strategy.GRAVITY_DEGREE exactly (0=point mass, 2=J2, 3=J2+J3, 4=J2+J3+J4).

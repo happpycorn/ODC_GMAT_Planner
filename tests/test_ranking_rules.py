@@ -1,6 +1,6 @@
 """排位賽硬性限制的驗證（`uv run python tests/test_ranking_rules.py`）。
 
-規則見 docs/RANKING_ROUND_RULES_20261006.md：
+規則見 docs/ranking/RANKING_ROUND_RULES_20261006.md：
   * 單棒 Δv > MAX_DV_MPS + 1e-5 m/s → 失格（初賽是每次扣 10 分）
   * 總 Δv > MAX_TOTAL_DV_MPS → 失格（選填；沒填 = 沒有上限，初賽行為）
   * 機動間隔 < 100 s → 每次扣 10 分（不變，penalty_count 只剩這個）

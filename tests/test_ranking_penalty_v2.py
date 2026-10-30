@@ -1,7 +1,7 @@
 """排位賽搜尋懲罰 v2（失格層）的驗證（`uv run python tests/test_ranking_penalty_v2.py`）。
 
-起因見 docs/RANKING_MC_20261019.md：1cd196d 的總 Δv 軟懲罰「−10 − 0.01×超出量」比陡的時間項
-便宜，搜尋會選總 Δv 超標的路線。v2 的修法與結果見 docs/RANKING_PENALTY_V2_20261019.md。
+起因見 docs/research/RANKING_MC_20261019.md：1cd196d 的總 Δv 軟懲罰「−10 − 0.01×超出量」比陡的時間項
+便宜，搜尋會選總 Δv 超標的路線。v2 的修法與結果見 docs/research/RANKING_PENALTY_V2_20261019.md。
 
 分六塊：
   1. 數學保證：任何合法層分數（≥ 0）> 任何失格層分數（< −10）> 排位賽模式的搜尋失敗（−30），
