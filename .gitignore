@@ -19,3 +19,4 @@ outputs/*
 
 # Claude/夜跑產出的暫存目錄（規劃筆記、bundle zip 等），比照 outputs/ 可拋、不進版控
 Claude outputs/
+.DS_Store
