@@ -12,7 +12,7 @@ TASA／淡江大學「第一屆軌道設計競賽」的太空船攔截任務規�
   開 `SPLIT_LEADING` 與 `ORACLE_TWOBURN`；搜尋 `MAX_BURNS=[1,2]`、`MAXITER=1000`、`POPSIZE=20`、`SEED=null`。
   A/B 軌道、`T_MAX_SEC`、`k_t/C_t/k_v/C_v` 是佔位值，開賽時換成官方題目。
 - **當天流程**（10-30 重寫）：單一行程用滿核心求解 → 全攝動 B 平面重瞄準 → GMAT 重驗 → 失格清單 → 11:20 前存保底、11:25 開始繳交。
-  Mac 實測求解：排位賽設定 136–158 s（3 次同分 86.7847）、其他情境 82–215 s（[11-03 夜跑](docs/research/MAC_TIMING_20261103.md)，`--stop-after solve`）；10-30 量的是 2.5–5 分鐘、重瞄準加驗證 < 20 秒（[附錄 A](docs/ranking/CONTEST_DAY.md#附錄-a實測紀錄)）。以前的 3 顆固定種子並行已不用：oracle 開了之後各種子同分，並行只會互搶核心。
+  Mac 實測求解：排位賽設定 136–158 s（3 次同分 86.7847）、其他情境 82–215 s（[11-03 夜跑](docs/research/MAC_TIMING_20261103.md)，`--stop-after solve`）；不含 GMAT 驗證，跟 10-30 含驗證的 2.5–5 分鐘不能直接比、重瞄準加驗證 < 20 秒（[附錄 A](docs/ranking/CONTEST_DAY.md#附錄-a實測紀錄)）。以前的 3 顆固定種子並行已不用：oracle 開了之後各種子同分，並行只會互搶核心。
 - **程式結構**（10-30 全面重構，commit `209953c`，重構前 tag `pre-refactor`）：入口只剩 `odc.py`，程式在 `odc/`，
   設定分 `configs/shared/`（版控）與 `configs/local/`（本機）。重構前後 11 個案例逐位元相同、回歸 31/31（[驗收報告](docs/archive/refactor_20261030/REFACTOR_REPORT.md)）。
 - **文件**（10-30 重寫）：README、CONTEST_DAY、規則摘要的工具對應、METHODOLOGY 與其他現行文件的舊路徑已改成重構後的指令。
