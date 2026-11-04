@@ -1,6 +1,6 @@
 # 此模組承接既有命令列工具的參數解析與執行流程。
 # 主要入口為 main(argv=None)，沿用原工具的選項與計算。
-"""排位賽當天：官方 k_t、C_t、k_v、C_v（含單位）→ 工具單位（m/s），並驗算。
+"""排位賽當天：官方 k_t、C_t、k_v、C_v（含單位）與 C_r（km）→ 工具單位（m/s），並驗算。
 
 k_v、C_v 的單位**必須明講**（沒有預設值）：初賽官方給的是 km/s 制，照抄會錯。
 原理與檢查項目見 odc/config/scoring_params.py。
@@ -12,7 +12,7 @@ k_v、C_v 的單位**必須明講**（沒有預設值）：初賽官方給的是
     # 當天：官方數字 + 單位；有參考解就加 --ref-*
     uv run python odc.py scoring \\
         --kt 0.003982 --kt-unit 1/s --Ct 3763.526 --Ct-unit s \\
-        --kv 1.1862 --kv-unit "1/(km/s)" --Cv 2.955723 --Cv-unit km/s \\
+        --kv 1.1862 --kv-unit "1/(km/s)" --Cv 2.955723 --Cv-unit km/s --Cr 100 \\
         --ref-dv 2.241427 --ref-dv-unit km/s --ref-t 3211.737
 
     # 讀 config 的 T_MAX_SEC / MAX_TOTAL_DV_MPS 做範圍檢查，確認後寫回 rules
@@ -42,6 +42,7 @@ def parse_args(argv=None):
     ap.add_argument("--kv-unit", help="必填：1/(m/s) 或 1/(km/s)")
     ap.add_argument("--Cv", type=float)
     ap.add_argument("--Cv-unit", help="必填：m/s 或 km/s")
+    ap.add_argument("--Cr", type=float, help="距離項尺度 C_r，單位 km（規則寫明 km，不換算）")
     ap.add_argument("--ref-dv", type=float, help="官方參考解的總 Δv")
     ap.add_argument("--ref-dv-unit", default="m/s", help="m/s（預設）或 km/s")
     ap.add_argument("--ref-t", type=float, help="官方參考解的攔截時刻（從任務開始）")
@@ -65,6 +66,7 @@ def report(p: ToolParams, t_max=None, max_total=3000.0, ref=None, raw=None):
     print(f"  C_t = {p.C_t:.10g} s")
     print(f"  k_v = {p.k_v:.10g} 1/(m/s)")
     print(f"  C_v = {p.C_v:.10g} m/s")
+    print(f"  C_r = {p.C_r:.10g} km")
     print(f"  無單位乘積：k_t·C_t = {p.k_t * p.C_t:.4f}、k_v·C_v = {p.k_v * p.C_v:.4f}"
           "（初賽 14.99、3.506；換算不會改變它們）")
     print("\n  config 的 rules 要填：")
@@ -75,6 +77,9 @@ def report(p: ToolParams, t_max=None, max_total=3000.0, ref=None, raw=None):
     print("  燃料項：" + "  ".join(f"{d:.0f} m/s→{score_terms(p, 5, 0, d).fuel:5.2f}" for d in dvs))
     ts = [0.0, p.C_t] + ([t_max] if t_max else [])
     print("  時間項：" + "  ".join(f"{t:.0f} s→{score_terms(p, 5, t, 0).time:5.2f}" for t in ts))
+    drs = [5.0 + p.C_r * f for f in (0.25, 0.5, 1.0, 2.0)]
+    print("  距離項：" + "  ".join(f"{d:.0f} km→{score_terms(p, d, 0, 0).dist:5.2f}" for d in drs)
+          + "（≤5 km 恆為 50；沒攔到時 T_team 記 T_max，時間項也一起掉）")
     if t_max:
         print(f"  C_t / T_max = {p.C_t / t_max:.3f}（<0.30 主攻快解；>0.70 省油解可能有戲）")
     ts_slope = p.k_t * 25 / 4
@@ -109,7 +114,7 @@ def report(p: ToolParams, t_max=None, max_total=3000.0, ref=None, raw=None):
             print(f"    {name}項 {val:.4f}（最近的 0.5 倍數 {g5:.1f}，{mark}）")
         if raw is not None:
             print("\n  k_v、C_v 的四種單位解讀（k_t、C_t 已換算）：")
-            for h in unit_hypotheses(p.k_t, p.C_t, raw[0], raw[1], dmin, t_ref, dv_ref):
+            for h in unit_hypotheses(p.k_t, p.C_t, raw[0], raw[1], dmin, t_ref, dv_ref, C_r=p.C_r):
                 flag = "← 整數" if h.calibrated else ""
                 print(f"    {h.label:28s} {_fmt_terms(h.terms)} {flag}")
     return bool(warns)
@@ -139,7 +144,7 @@ def main(argv=None):
     if args.demo_prelim:
         return demo_prelim()
 
-    need = [n for n in ("kt", "Ct", "kv", "Cv") if getattr(args, n) is None]
+    need = [n for n in ("kt", "Ct", "kv", "Cv", "Cr") if getattr(args, n) is None]
     if need:
         print(f"缺 {need}（或用 --demo-prelim 看示範）", file=sys.stderr)
         return 2
@@ -163,7 +168,8 @@ def main(argv=None):
         max_total = rules.get("MAX_TOTAL_DV_MPS", max_total)
 
     try:
-        p = convert(args.kt, args.kt_unit, args.Ct, args.Ct_unit, args.kv, args.kv_unit, args.Cv, args.Cv_unit)
+        p = convert(args.kt, args.kt_unit, args.Ct, args.Ct_unit, args.kv, args.kv_unit, args.Cv, args.Cv_unit,
+                    C_r=args.Cr)
         ref = None
         if args.ref_dv is not None:
             ref = (args.ref_dmin_km, to_sec(args.ref_t, args.ref_t_unit), to_mps(args.ref_dv, args.ref_dv_unit))
@@ -174,7 +180,7 @@ def main(argv=None):
     print("=" * 72)
     print("計分參數換算")
     print(f"  官方：k_t={args.kt} {args.kt_unit}、C_t={args.Ct} {args.Ct_unit}、"
-          f"k_v={args.kv} {args.kv_unit}、C_v={args.Cv} {args.Cv_unit}")
+          f"k_v={args.kv} {args.kv_unit}、C_v={args.Cv} {args.Cv_unit}、C_r={args.Cr} km")
     print("=" * 72)
     if t_max is None:
         print("  （沒有 T_max：加 --config 或 --tmax 才會檢查 C_t / T_max）")
@@ -182,7 +188,7 @@ def main(argv=None):
 
     if args.write:
         rules = cfg.setdefault("rules", {})
-        old = {k: rules.get(k) for k in ("k_t", "C_t", "k_v", "C_v")}
+        old = {k: rules.get(k) for k in ("k_t", "C_t", "k_v", "C_v", "C_r")}
         rules.update(p.as_rules())
         with open(args.config, "w", encoding="utf-8") as fh:
             json.dump(cfg, fh, ensure_ascii=False, indent=2)

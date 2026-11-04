@@ -40,7 +40,8 @@ def test_conversion():
     check("初賽 k_v 1.1862 1/(km/s) → 0.0011862 1/(m/s)（沒有浮點尾巴）", p.k_v == 0.0011862)
     check("初賽 C_v 2.955723 km/s → 2955.723 m/s", p.C_v == 2955.723)
     check("k_t、C_t 照抄", p.k_t == 0.003982 and p.C_t == 3763.526)
-    check("跟 configs/shared/official_sample.json 的 rules 一致", p.as_rules() == {
+    check("跟 configs/shared/official_sample.json 的 rules 一致", {
+        k: v for k, v in p.as_rules().items() if k != "C_r"} == {
         k: json.load(open(os.path.join(ROOT, "configs", "shared", "official_sample.json"),
                           encoding="utf-8"))["rules"][k] for k in ("k_t", "C_t", "k_v", "C_v")})
     q = convert(0.06, "1/min", 1.5, "h", 1.0, "s/km", 2.0, "kmps")
@@ -67,6 +68,16 @@ def test_reference_check():
     check("跟 odc.scoring.scorer.calculate_score 相同", abs(t.total - calculate_score(
         REF[0], REF[1], REF[2], 0, p.k_t, p.C_t, p.k_v, p.C_v)) < 1e-9)
     check("換對：looks_calibrated", looks_calibrated(t))
+
+    # 2026-11-04 修訂版距離項 100/(1+exp(((Δr−5)/C_r)²))：≤5 km 恰 50，Δr−5 = C_r 時 100/(1+e)
+    q = ToolParams(p.k_t, p.C_t, p.k_v, p.C_v, C_r=20.0)
+    check("新距離項：Δr ≤ 5 km 恰為 50", score_terms(q, 0.0, 0, 0).dist == 50.0
+          and score_terms(q, 5.0, 0, 0).dist == 50.0)
+    check("新距離項：Δr = 5 + C_r 時 = 100/(1+e)",
+          abs(score_terms(q, 25.0, 0, 0).dist - 100.0 / (1.0 + 2.718281828459045)) < 1e-9)
+    check("新距離項：跟 calculate_score 相同（傳 C_r）", abs(score_terms(q, 31.0, *REF[1:]).total - calculate_score(
+        31.0, REF[1], REF[2], 0, q.k_t, q.C_t, q.k_v, q.C_v, 20.0)) < 1e-9)
+    check("新距離項：遠到 exp 溢位也不炸，趨近 0", score_terms(q, 1e6, 0, 0).dist < 1e-12)
 
     o = PRELIM_OFFICIAL
     wrong = ToolParams(o["k_t"], o["C_t"], o["k_v"], o["C_v"])
@@ -119,8 +130,14 @@ def test_cli():
 
     err = io.StringIO()
     with contextlib.redirect_stderr(err):
-        rc = cli.main(["--kt", "0.003982", "--Ct", "3763.526", "--kv", "1.1862", "--Cv", "2.955723"])
+        rc = cli.main(["--kt", "0.003982", "--Ct", "3763.526", "--kv", "1.1862", "--Cv", "2.955723", "--Cr", "100"])
     check("沒給 --kv-unit / --Cv-unit：回 2 並說明", rc == 2 and "km/s" in err.getvalue())
+
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        rc = cli.main(["--kt", "0.003982", "--Ct", "3763.526", "--kv", "1.1862", "--kv-unit", "1/(km/s)",
+                       "--Cv", "2.955723", "--Cv-unit", "km/s"])
+    check("沒給 --Cr：回 2 並說明", rc == 2 and "Cr" in err.getvalue())
 
     tmp = tempfile.mkdtemp()
     try:
@@ -130,11 +147,12 @@ def test_cli():
         with contextlib.redirect_stdout(out):
             rc = cli.main(["--config", path, "--kt", "0.003982", "--Ct", "3763.526",
                            "--kv", "1.1862", "--kv-unit", "1/(km/s)", "--Cv", "2.955723", "--Cv-unit", "km/s",
-                           "--ref-dv", "2.241427", "--ref-dv-unit", "km/s", "--ref-t", "3211.737", "--write"])
+                           "--Cr", "37.5", "--ref-dv", "2.241427", "--ref-dv-unit", "km/s", "--ref-t", "3211.737", "--write"])
         with open(path, encoding="utf-8") as fh:
             r = json.load(fh)["rules"]
         check("--write 回 0，寫入換算後的值",
-              rc == 0 and (r["k_t"], r["C_t"], r["k_v"], r["C_v"]) == (0.003982, 3763.526, 0.0011862, 2955.723))
+              rc == 0 and (r["k_t"], r["C_t"], r["k_v"], r["C_v"], r["C_r"])
+              == (0.003982, 3763.526, 0.0011862, 2955.723, 37.5))
         check("--write 保留 MAX_DV_MPS / MAX_TOTAL_DV_MPS / T_MAX_SEC",
               r["MAX_DV_MPS"] == 250.0 and r["MAX_TOTAL_DV_MPS"] == 3000.0 and r["T_MAX_SEC"] == 40000.0)
         check("參考解驗算印出 ✅ 整數", "落在整數 90 分" in out.getvalue())

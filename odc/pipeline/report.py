@@ -92,8 +92,10 @@ def print_score_breakdown(mission_info, optimizer):
     pen = int(mission_info["penalty_count"]) if "over_dv_count" in mission_info else 0
     k_t, C_t = optimizer.k_t, optimizer.C_t
     k_v, C_v = optimizer.k_v, optimizer.C_v
+    C_r = optimizer.C_r
 
-    score_dist = 50.0 * math.exp(-(max(dr, 5.0) - 5.0) / 100.0)
+    x_dist = (max(dr, 5.0) - 5.0) / C_r
+    score_dist = 100.0 / (1.0 + math.exp(min(x_dist * x_dist, 700.0)))
     score_time = 25.0 / (1.0 + math.exp(min(k_t * (T - C_t), 700.0)))
     score_dv = 25.0 / (1.0 + math.exp(min(k_v * (dv - C_v), 700.0)))
     penalty = pen * 10.0
@@ -110,7 +112,7 @@ def print_score_breakdown(mission_info, optimizer):
     val_per_mps = k_v * (25.0 - score_dv) * score_dv / 25.0         # 分 / (m/s)
 
     lines = [f"\n── 分數拆解與交換率 {'─' * 30}",
-             f"  距離   {score_dist:>6.2f} / 50   (Δr_min {dr*1000:,.0f} m；≤5,000 m 時地板滿分 50)",
+             f"  距離   {score_dist:>6.2f} / 50   (Δr_min {dr*1000:,.0f} m；≤5,000 m 時地板滿分 50；C_r {C_r:g} km)",
              f"  時間   {score_time:>6.2f} / 25   (T {T:,.0f} s vs C_t {C_t:,.0f} s；每早到 1 s ≈ +{val_per_sec:.4g} 分)",
              f"  燃料   {score_dv:>6.2f} / 25   (ΔV {dv:,.0f} m/s vs C_v {C_v:,.0f} m/s；每省 1 m/s ≈ +{val_per_mps:.4g} 分)",
              f"  違規   {-penalty:>6.2f}        ({pen} 次機動間隔違規 × -10)"]

@@ -133,8 +133,10 @@ uv run python odc.py tmax --config configs/local/ranking.json --boundary-alt-km 
 
 ```bash
 uv run python odc.py scoring --demo-prelim
-uv run python odc.py scoring --kt 0.003982 --kt-unit 1/s --Ct 6505.65 --Ct-unit s --kv 0.0011862 --kv-unit "1/(m/s)" --Cv 9064.3 --Cv-unit m/s
+uv run python odc.py scoring --kt 0.003982 --kt-unit 1/s --Ct 6505.65 --Ct-unit s --kv 0.0011862 --kv-unit "1/(m/s)" --Cv 9064.3 --Cv-unit m/s --Cr 100
 ```
+
+`--Cr`（距離項尺度，km）必填；`--write` 會連同 `C_r` 寫回 `rules`。
 
 ## outputs
 

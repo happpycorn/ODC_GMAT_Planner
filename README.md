@@ -81,9 +81,9 @@ uv run python odc.py solve configs/local/trial.json --no-gmat
 | `MIN_MANEUVER_INTERVAL_SEC` | 100 | 兩棒最小間隔，違規每次扣 10 分 |
 | `T_MAX_SEC` | 開賽算 | 任務時間上限（秒，從 epoch 起算）。A 是雙曲線時必填，用 `odc.py tmax` 由任務邊界算 |
 | `T_MAX_PERIOD_MULTIPLE` | 不用 | 初賽用：沒給 `T_MAX_SEC` 時 T_max = 倍數 × A 週期 |
-| `k_t`、`C_t`、`k_v`、`C_v` | 開賽公布 | 計分參數，工具用秒與 m/s；用 `odc.py scoring` 換單位並驗算 |
+| `k_t`、`C_t`、`k_v`、`C_v`、`C_r` | 開賽公布 | 計分參數，工具用秒、m/s、km；用 `odc.py scoring` 換單位並驗算 |
 
-計分：`50·exp(−(Δr_min−5)/100) + 25/(1+e^{k_t(T−C_t)}) + 25/(1+e^{k_v(ΔV−C_v)}) − 罰分`，Δr ≤ 5 km 距離項拿滿。
+計分（2026-11-04 修訂版）：`100/(1+exp(((Δr_min−5)/C_r)²)) + 25/(1+e^{k_t(T−C_t)}) + 25/(1+e^{k_v(ΔV−C_v)}) − 罰分`，Δr ≤ 5 km 距離項恰為 50。
 規則全文與初賽差異見 [RANKING_ROUND_RULES](docs/ranking/RANKING_ROUND_RULES_20261006.md)。
 
 ### optimization

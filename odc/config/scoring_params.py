@@ -6,7 +6,7 @@
 Cv = 2.955723 km/s，工具的 Δv 一律用 m/s，照抄會讓燃料項整個算錯。排位賽的參數比賽當下才
 公布，現場要在幾分鐘內換對。
 
-工具單位：k_t [1/s]、C_t [s]、k_v [1/(m/s)]、C_v [m/s]。
+工具單位：k_t [1/s]、C_t [s]、k_v [1/(m/s)]、C_v [m/s]、C_r [km]（規則本來就寫 km，不換算）。
 
 三種驗算：
   1. 參考解的分數：主辦單位初賽是照參考解校準參數的，參考解剛好 50 + 22.50 + 17.50 = 90.00。
@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+
+from odc.scoring.scorer import DEFAULT_C_R_KM
 
 # 各單位換成工具單位要乘的係數
 _KT_UNITS = {"1/s": 1.0, "1/min": 1.0 / 60.0, "1/h": 1.0 / 3600.0}
@@ -64,18 +66,20 @@ class ToolParams:
     C_t: float   # s
     k_v: float   # 1/(m/s)
     C_v: float   # m/s
+    C_r: float = DEFAULT_C_R_KM   # km（2026-11-04 修訂版距離項；比賽當下公布）
 
     def as_rules(self) -> dict:
-        return {"k_t": self.k_t, "C_t": self.C_t, "k_v": self.k_v, "C_v": self.C_v}
+        return {"k_t": self.k_t, "C_t": self.C_t, "k_v": self.k_v, "C_v": self.C_v, "C_r": self.C_r}
 
 
-def convert(k_t, k_t_unit, C_t, C_t_unit, k_v, k_v_unit, C_v, C_v_unit) -> ToolParams:
-    """官方參數 + 單位 → 工具單位。"""
+def convert(k_t, k_t_unit, C_t, C_t_unit, k_v, k_v_unit, C_v, C_v_unit, C_r=DEFAULT_C_R_KM) -> ToolParams:
+    """官方參數 + 單位 → 工具單位。C_r 規則寫明單位 km，直接沿用。"""
     return ToolParams(
         k_t=_clean(float(k_t) * _KT_UNITS[_norm_unit(k_t_unit, _KT_UNITS, "k_t")]),
         C_t=_clean(float(C_t) * _CT_UNITS[_norm_unit(C_t_unit, _CT_UNITS, "C_t")]),
         k_v=_clean(float(k_v) * _KV_UNITS[_norm_unit(k_v_unit, _KV_UNITS, "k_v")]),
         C_v=_clean(float(C_v) * _CV_UNITS[_norm_unit(C_v_unit, _CV_UNITS, "C_v")]),
+        C_r=float(C_r),
     )
 
 
@@ -111,8 +115,8 @@ class ScoreTerms:
 def score_terms(p: ToolParams, dmin_km: float, t_sec: float, dv_mps: float,
                 penalty_count: int = 0) -> ScoreTerms:
     """規則的計分公式拆成分項，跟 odc.scoring.scorer.calculate_score 相同。"""
-    dr = max(float(dmin_km), 5.0)
-    return ScoreTerms(dist=50.0 * math.exp(-(dr - 5.0) / 100.0),
+    x = (max(float(dmin_km), 5.0) - 5.0) / p.C_r
+    return ScoreTerms(dist=100.0 / (1.0 + math.exp(min(x * x, 700.0))),
                       time=_sigmoid25(p.k_t * (float(t_sec) - p.C_t)),
                       fuel=_sigmoid25(p.k_v * (float(dv_mps) - p.C_v)),
                       penalty=10.0 * int(penalty_count))
@@ -152,7 +156,7 @@ class Hypothesis:
 
 
 def unit_hypotheses(k_t, C_t, k_v_raw, C_v_raw, ref_dmin_km, ref_t_sec, ref_dv_mps,
-                    tol: float = 0.01) -> list[Hypothesis]:
+                    tol: float = 0.01, C_r: float = DEFAULT_C_R_KM) -> list[Hypothesis]:
     """k_v、C_v 的四種單位解讀各算一次參考解的分數（k_t/C_t 已換成 1/s、s）。
 
     用途：官方沒寫清楚單位、或懷疑抄錯時，看哪一種解讀讓參考解落在整數分。
@@ -161,7 +165,8 @@ def unit_hypotheses(k_t, C_t, k_v_raw, C_v_raw, ref_dmin_km, ref_t_sec, ref_dv_m
     for kv_u in _KV_UNITS:
         for cv_u in _CV_UNITS:
             p = ToolParams(k_t=float(k_t), C_t=float(C_t),
-                           k_v=float(k_v_raw) * _KV_UNITS[kv_u], C_v=float(C_v_raw) * _CV_UNITS[cv_u])
+                           k_v=float(k_v_raw) * _KV_UNITS[kv_u], C_v=float(C_v_raw) * _CV_UNITS[cv_u],
+                           C_r=C_r)
             t = score_terms(p, ref_dmin_km, ref_t_sec, ref_dv_mps)
             out.append(Hypothesis(f"k_v 當 {kv_u}、C_v 當 {cv_u}", p, t, looks_calibrated(t, tol)))
     return out

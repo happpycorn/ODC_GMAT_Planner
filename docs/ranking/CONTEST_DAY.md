@@ -74,10 +74,10 @@ uv run python odc.py tmax --config configs/local/ranking.json --boundary-km <邊
 
 ### 步驟 3：計分參數（2 分鐘）
 
-照官方單位填（`1/(km/s)` 或 `1/(m/s)`、`km/s` 或 `m/s`）：
+照官方單位填（`1/(km/s)` 或 `1/(m/s)`、`km/s` 或 `m/s`）；`C_r` 是距離項尺度，規則寫明單位 km：
 
 ```bash
-uv run python odc.py scoring --config configs/local/ranking.json --kt <k_t> --kt-unit 1/s --Ct <C_t> --Ct-unit s --kv <k_v> --kv-unit "<單位>" --Cv <C_v> --Cv-unit <單位>
+uv run python odc.py scoring --config configs/local/ranking.json --kt <k_t> --kt-unit 1/s --Ct <C_t> --Ct-unit s --kv <k_v> --kv-unit "<單位>" --Cv <C_v> --Cv-unit <單位> --Cr <C_r>
 ```
 
 - 有參考解：加 `--ref-dv <總Δv> --ref-dv-unit <單位> --ref-t <攔截時刻>`，選總分落在整數的那種單位。

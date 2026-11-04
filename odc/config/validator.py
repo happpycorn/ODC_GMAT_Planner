@@ -212,6 +212,8 @@ def _validate_rules(rules_cfg, errors: list, orbit_a_cfg=None):
     for f in ("k_t", "C_t", "k_v", "C_v"):
         if f in rules_cfg and not _is_number(rules_cfg[f]):
             errors.append(f"rules.{f} 必須是有限數字，但收到 {rules_cfg[f]!r}")
+    if "C_r" in rules_cfg and (not _is_number(rules_cfg["C_r"]) or rules_cfg["C_r"] <= 0):
+        errors.append(f"rules.C_r 必須是 >0 的數字 (單位 km)，但收到 {rules_cfg['C_r']!r}")
 
 
 _VALID_GRAVITY_DEGREES = (0, 2, 3, 4)

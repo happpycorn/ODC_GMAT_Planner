@@ -31,7 +31,7 @@ from odc.physics.core_math import (propagate_dop853, propagate_dop853_stm, fast_
                            check_constraints, fast_norm,
                            reaches_perigee, lambert_izzo, fixed_orbit_state,
                            initial_wait_min_radius)
-from odc.scoring.scorer import calculate_score
+from odc.scoring.scorer import DEFAULT_C_R_KM, calculate_score
 
 
 def presplit_leading(t0, leading_dvs, leading_coasts, terminal_coast, *, cap, min_coast):
@@ -431,7 +431,12 @@ def _nlp_stm_jacobian(m, dm, k_t, C_t, k_v, C_v):
     """Derivative of the unchanged scorer and _nlp_stack, including its clamps."""
     dobj = np.zeros_like(dm["T_team"])
     if m["miss_km"] > 5.0:
-        dobj += 0.5 * math.exp(-(m["miss_km"] - 5.0) / 100.0) * dm["miss_km"]
+        # 距離項 100/(1+e^{x²})，x=(miss−5)/C_r；C_r 用 calculate_score 的預設值，跟目標函數一致
+        C_r = DEFAULT_C_R_KM
+        x = (m["miss_km"] - 5.0) / C_r
+        if x * x < 700.0:
+            q = 1.0 / (1.0 + math.exp(x * x))
+            dobj += 100.0 * q * (1.0 - q) * (2.0 * x / C_r) * dm["miss_km"]
     for value, deriv, k, C in ((m["T_team"], dm["T_team"], k_t, C_t),
                                 (m["total_dv"]*1000.0, dm["total_dv"]*1000.0, k_v, C_v)):
         z = k * (value - C)

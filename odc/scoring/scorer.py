@@ -3,6 +3,10 @@
 import math
 from numba import njit
 
+# 距離項的 C_r [km] 比賽當下公布 (rules.C_r)；沒傳時用這個佔位值。
+DEFAULT_C_R_KM = 100.0
+
+
 @njit(fastmath=True, inline='always')
 def calculate_score(
     min_distance_km: float, 
@@ -12,7 +16,8 @@ def calculate_score(
     k_t: float, 
     C_t: float, 
     k_v: float, 
-    C_v: float
+    C_v: float,
+    C_r: float = DEFAULT_C_R_KM
 ) -> float:
     """
     純數值計分函式 (JIT 加速)
@@ -23,9 +28,14 @@ def calculate_score(
     MAX_TOTAL_DV_MPS 都是**失格**，不是扣分——那由 assess_legality 判定，失格解沒有
     官方分數。搜尋/挑候選時呼叫端可以把單棒超標次數一起塞進來當「軟懲罰」(讓 DE 還能
     探索超標、之後交給拆棒器的路線)，但那個數字不是交件分數。
+
+    距離項 (2026-11-04 修訂版規則式 5)：100 / (1 + exp(((Δr_min − 5) / C_r)²))，C_r [km] 比賽
+    當下公布。Δr_min ≤ 5 時恰為 50，跟舊版 50·exp(−(Δr−5)/100) 一樣；只有沒攔到時不同。
+    搜尋與拆棒器的候選都受「命中 A」約束，距離項恆為 50，所以那些呼叫端用預設 C_r 即可。
     """
     dr = max(min_distance_km, 5.0)
-    score_dist = 50.0 * math.exp(-(dr - 5.0) / 100.0)
+    x = (dr - 5.0) / C_r
+    score_dist = 100.0 / (1.0 + math.exp(min(x * x, 700.0)))
 
     exp_time = math.exp(min(k_t * (total_time_sec - C_t), 700.0)) 
     score_time = 25.0 / (1.0 + exp_time)

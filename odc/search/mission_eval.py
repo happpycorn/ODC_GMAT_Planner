@@ -88,7 +88,7 @@ class MissionEvalMixin:
         sc = calculate_score(
             min_distance_km=miss_km, total_time_sec=t_team,
             total_dv_mps=total_dv_mps, penalty_count=n_soft,
-            k_t=self.k_t, C_t=self.C_t, k_v=self.k_v, C_v=self.C_v)
+            k_t=self.k_t, C_t=self.C_t, k_v=self.k_v, C_v=self.C_v, C_r=self.C_r)
         if self.RANKING_RULES:
             sc = ranked_search_score(sc, total_dv_mps, self.MAX_TOTAL_DV_MPS, single_violation_mps)
         return float(sc)
@@ -99,7 +99,7 @@ class MissionEvalMixin:
         official = None if leg["disqualified"] else float(calculate_score(
             min_distance_km=miss_km, total_time_sec=t_team,
             total_dv_mps=leg["total_dv_mps"], penalty_count=leg["penalty_count"],
-            k_t=self.k_t, C_t=self.C_t, k_v=self.k_v, C_v=self.C_v))
+            k_t=self.k_t, C_t=self.C_t, k_v=self.k_v, C_v=self.C_v, C_r=self.C_r))
         return {
             "penalty_count": int(leg["penalty_count"]),
             "over_dv_count": int(leg["over_dv_count"]),

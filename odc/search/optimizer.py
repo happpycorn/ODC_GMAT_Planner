@@ -19,7 +19,7 @@ from scipy.optimize import minimize
 from mealpy import FloatVar
 from mealpy.evolutionary_based.SHADE import L_SHADE
 from odc.physics.propagator import get_r0_v0
-from odc.scoring.scorer import (calculate_score, ranked_search_score, assess_legality,
+from odc.scoring.scorer import (DEFAULT_C_R_KM, calculate_score, ranked_search_score, assess_legality,
                         SEARCH_FAIL_SCORE_RANKED, DV_LIMIT_TOL_MPS)
 from odc.physics.core_math import (propagate_dop853, check_constraints, fast_norm,
                            to_vnb_frame, reaches_perigee, lambert_izzo,
@@ -57,6 +57,7 @@ class MissionOptimizer(SeedCandidatesMixin, MissionEvalMixin):
         self.C_t = rules.get("C_t", 11000.0)
         self.k_v = rules.get("k_v", 0.005)
         self.C_v = rules.get("C_v", 1200.0)
+        self.C_r = rules.get("C_r", DEFAULT_C_R_KM)
 
         # 物理常數與限制
         self.MU = 398600.4418          # 地球標準重力參數
