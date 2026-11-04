@@ -6,6 +6,7 @@ TASA／淡江大學「第一屆軌道設計競賽」用的任務規劃工具。�
 | 想做什麼 | 看哪裡 |
 |---|---|
 | **比賽當天照著做** | [docs/ranking/CONTEST_DAY.md](docs/ranking/CONTEST_DAY.md) |
+| 賽前一晚檢查 | [docs/ranking/PRE_CONTEST.md](docs/ranking/PRE_CONTEST.md) |
 | 目前狀態、未完成的事 | [STATUS.md](STATUS.md) |
 | 每個子命令的選項與範例 | [docs/CLI.md](docs/CLI.md) |
 | 程式在哪個檔案、呼叫順序 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |

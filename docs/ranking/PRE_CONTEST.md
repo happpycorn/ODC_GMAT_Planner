@@ -1,0 +1,37 @@
+# 排位賽賽前準備
+
+當天流程在 [CONTEST_DAY](CONTEST_DAY.md)。
+
+## 盡快
+
+- [ ] 寄出 [QUESTIONS_FOR_ORGANIZER](QUESTIONS_FOR_ORGANIZER.md)，回覆記在該檔最後一節。
+
+## 賽前一晚
+
+- [ ] `git pull`、`uv sync`，`git status` 乾淨、在 `Master`。
+- [ ] `uv run python odc.py test --quick -q`
+- [ ] **拔網路**，用名稱 `rehearsal` 照 CONTEST_DAY 從步驟 1 跑到步驟 7（順便讓 numba 快取變熱）：
+  ```bash
+  uv run python odc.py new-config rehearsal --gmat-console "/Users/corn/Documents/GMAT R2026a/bin/GmatConsole"
+  ```
+- [ ] `configs/local/ranking.json` **還不存在**（`new-config` 不會覆蓋）。
+- [ ] GMAT 有 `data/gravity/earth/EGM96.cof` 與 CSSI 太空天氣檔。
+- [ ] 看 TASA 頁有沒有規則修訂；主辦有回覆就把太空船參數、曆元填進範本。
+- [ ] 主辦沒回覆的題目抄在紙上，開賽時由隊友 B 問工作人員。
+- [ ] 筆電充飽、充電器、延長線、兩支 USB、證件。
+- [ ] Mac 關自動睡眠、自動更新。
+
+## 實測紀錄
+
+M4 MacBook Air、插電、快取已熱、排位賽範本設定（2026-10-30；含步驟 5 的 GMAT 驗證）：
+
+| 題目 | 求解 | 重瞄準 | 驗證 | 結果 |
+|---|---|---|---|---|
+| 佔位題 | 149 s | 7 s | 3 s | 86.781 |
+| hyper_far | 293 s | 13 s | 4 s | 82.638 |
+| e1_r8（觸發 primer 重搜） | 220 s | — | — | 76.534 |
+| hyper_far＋保底設定 | 270 s | — | — | 82.645 |
+
+11-03 只計求解（`--stop-after solve`）：佔位題 136–158 s、3 次同分，見 [MAC_TIMING_20261103](../research/MAC_TIMING_20261103.md)。
+
+人工步驟（抄題、核對、繳交）還沒計時，彩排後填這裡。

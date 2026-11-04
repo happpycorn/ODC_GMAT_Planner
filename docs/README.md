@@ -6,7 +6,8 @@
 
 | 文件 | 用途 |
 |---|---|
-| [ranking/CONTEST_DAY](ranking/CONTEST_DAY.md) | 排位賽 60 分鐘作業手冊：時間盒、三人分工、逐步指令、保底與失格檢查清單 |
+| [ranking/CONTEST_DAY](ranking/CONTEST_DAY.md) | 排位賽 60 分鐘作業手冊（比賽當下用） |
+| [ranking/PRE_CONTEST](ranking/PRE_CONTEST.md) | 排位賽賽前一晚的檢查清單與實測時間 |
 | [ranking/RANKING_ROUND_RULES_20261006](ranking/RANKING_ROUND_RULES_20261006.md) | 排位賽規則跟初賽的差異，以及工具怎麼對應 |
 | [ranking/QUESTIONS_FOR_ORGANIZER](ranking/QUESTIONS_FOR_ORGANIZER.md) | 給主辦單位的問題草稿（尚未寄出）：太空船參數、曆元、驗證設定、T_max、繳交格式 |
 | [final/FINAL_STRATEGY](final/FINAL_STRATEGY.md) | 主攻排位賽前二的策略、賽前待辦與時程 |
