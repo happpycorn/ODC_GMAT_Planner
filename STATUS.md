@@ -3,7 +3,7 @@
 最後更新：2026-11-04
 
 TASA／淡江大學「第一屆軌道設計競賽」的太空船攔截任務規劃工具；初賽第二名。下一場是 **2026-11-09 決賽的排位賽（10:45–11:45，60 分鐘）**，
-目標前二進金牌賽（[策略](docs/final/FINAL_STRATEGY.md)）。當天照 [CONTEST_DAY](docs/ranking/CONTEST_DAY.md) 做，賽前照 [PRE_CONTEST](docs/ranking/PRE_CONTEST.md)。
+目標前二進金牌賽（[策略](docs/final/FINAL_STRATEGY.md)）。全天流程看 [DAY_OVERVIEW](docs/final/DAY_OVERVIEW.md)，排位賽當天照 [CONTEST_DAY](docs/ranking/CONTEST_DAY.md) 做，賽前照 [PRE_CONTEST](docs/ranking/PRE_CONTEST.md)。
 
 ## 目前狀態
 
@@ -47,6 +47,7 @@ TASA／淡江大學「第一屆軌道設計競賽」的太空船攔截任務規�
 
 - 開發機是 Mac；GMAT R2026a 在 `/Users/corn/Documents/GMAT R2026a/bin/GmatConsole`，用 `odc.py new-config <名稱> --gmat-console <路徑>` 寫進本機設定。
 - `configs/local/` 與 `outputs/` 被 gitignore。共用情境在 `configs/shared/`；本機設定遺失時照 [SCENARIOS.md](docs/SCENARIOS.md) 重建。
+  11-04 清場：兩個 repo 的舊產物與舊本機設定搬到 `~/Documents/Program/ODC_archive_pre1109/`（只搬不刪，說明在該資料夾 README）。
 - 另一台開發機 Corn（Ryzen 7 5800X、WSL2）負責長批次；兩邊透過 `Master` 同步，在 Mac 動手前先 `git pull`。WSL 上的 GMAT 修補記在 DEVLOG_prelim 末段。
 
 ## 文件入口

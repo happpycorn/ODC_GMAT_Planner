@@ -6,6 +6,7 @@
 
 | 文件 | 用途 |
 |---|---|
+| [final/DAY_OVERVIEW](final/DAY_OVERVIEW.md) | 11/09 全天總覽：兩場各用哪個資料夾與手冊、USB 結構、午休交接（印出來帶去） |
 | [ranking/CONTEST_DAY](ranking/CONTEST_DAY.md) | 排位賽 60 分鐘作業手冊（比賽當下用） |
 | [ranking/PRE_CONTEST](ranking/PRE_CONTEST.md) | 排位賽賽前一晚的檢查清單與實測時間 |
 | [ranking/RANKING_ROUND_RULES_20261006](ranking/RANKING_ROUND_RULES_20261006.md) | 排位賽規則跟初賽的差異，以及工具怎麼對應 |
@@ -52,6 +53,7 @@
 | [SPLITTER_SPEED_20261020](research/SPLITTER_SPEED_20261020.md) | 拆棒器加速與穩定化：3 顆種子並行 22 分鐘、疊合差分（逐位元不變）、多起點拆棒；現場設定已寫進 ranking_round.json |
 | [MARGIN_SENSITIVITY_20261030](research/MARGIN_SENSITIVITY_20261030.md) | 單棒餘裕壓到 0.5 m/s 只多 0.0004 分、0.05 m/s 會讓重瞄準被拒；曆元或太空船參數不對時 d_min 偏 0.5–161 km，瞄準距離不要放寬 |
 | [MAC_TIMING_20261103](research/MAC_TIMING_20261103.md) | 重構後 Mac 單行程求解計時：排位賽 136–158 s、可重現；全情境 82–215 s |
+| [STM_VALIDATION_20261028](research/STM_VALIDATION_20261028.md) | 拆棒 Jacobian 改用 STM 的正確性與速度驗證（7.3 倍、分數差 6.5e-7）；現為預設 |
 | [SPLIT_AWARE_SEARCH_FIX_20261029](research/SPLIT_AWARE_SEARCH_FIX_20261029.md) | SEARCH 與 LEADING 同開時修正搜尋／重播不同尺；LEADING 關時保留原行為與已知問題 |
 
 ## 封存
@@ -65,4 +67,4 @@
 | [log/DEVLOG_prelim](log/DEVLOG_prelim.md) | 初賽逐日開發日誌 |
 | [log/DEVLOG_ranking](log/DEVLOG_ranking.md) | 2026-10-30 從 STATUS 移出的排位賽準備期紀錄 |
 
-[archive/](archive/) 保存過期快照與已結束的初賽資料；[log/](log/) 保存開發紀錄。本機實驗產物在 `outputs/research/`。
+[archive/](archive/) 保存過期快照與已結束的初賽資料；[log/](log/) 保存開發紀錄。本機實驗產物在 `outputs/`；11-04 以前的舊產物封存在 `~/Documents/Program/ODC_archive_pre1109/`（不進 git）。

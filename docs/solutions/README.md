@@ -28,3 +28,8 @@
 - [`INVALID_99.996_hits_earth.md`](INVALID_99.996_hits_earth.md) — Score 99.996 的兩棒解
   **會撞地球**：`_replay_mission` 與 GMAT `InterceptSuccess` 都抓不到，只有
   `fast_fitness_evaluator` 抓得到——手搓解務必用它再驗一次
+
+## 排位賽
+
+- [`ranking_placeholder_86.78/`](ranking_placeholder_86.78/README.md) — 排位賽範本設定（佔位題）跑完求解＋全攝動重瞄準的已知答案，
+  賽前彩排對答案用；含重瞄準後的繳交腳本。2026-11-04 從 `outputs/runs/rehearsal-rr*` 封存。
