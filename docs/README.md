@@ -50,6 +50,7 @@
 | [REVS_SCHEDULING_20260929](research/REVS_SCHEDULING_20260929.md) | REVS 案例共用行程池的驗證 |
 | [SPLITTER_SPEED_20261020](research/SPLITTER_SPEED_20261020.md) | 拆棒器加速與穩定化：3 顆種子並行 22 分鐘、疊合差分（逐位元不變）、多起點拆棒；現場設定已寫進 ranking_round.json |
 | [MARGIN_SENSITIVITY_20261030](research/MARGIN_SENSITIVITY_20261030.md) | 單棒餘裕壓到 0.5 m/s 只多 0.0004 分、0.05 m/s 會讓重瞄準被拒；曆元或太空船參數不對時 d_min 偏 0.5–161 km，瞄準距離不要放寬 |
+| [MAC_TIMING_20261103](research/MAC_TIMING_20261103.md) | 重構後 Mac 單行程求解計時：排位賽 136–158 s、可重現；全情境 82–215 s |
 | [SPLIT_AWARE_SEARCH_FIX_20261029](research/SPLIT_AWARE_SEARCH_FIX_20261029.md) | SEARCH 與 LEADING 同開時修正搜尋／重播不同尺；LEADING 關時保留原行為與已知問題 |
 
 ## 封存
@@ -57,11 +58,7 @@
 | 文件 | 用途 |
 |---|---|
 | [archive/refactor_20261030/REFACTOR_REPORT](archive/refactor_20261030/REFACTOR_REPORT.md) | 10 月 30 日全面重構的分階段驗收證據；patch 對照在同目錄 REFACTOR_PATCH_TARGETS |
-| [archive/PROJECT_AUDIT_20260909](archive/PROJECT_AUDIT_20260909.md) | 9 月 9 日盤點快照；其中部分清理已完成 |
-| [archive/HANDOFF_20260928](archive/HANDOFF_20260928.md) | 9 月 28 日交接快照；任務 1–3 已在 9 月 29 日完成 |
-| [archive/FLOW_EFFICIENCY_AUDIT_20260923](archive/FLOW_EFFICIENCY_AUDIT_20260923.md) | 流程成本審計；其中部分提案已完成 |
-| [archive/NEXT_ROUND_BACKLOG](archive/NEXT_ROUND_BACKLOG.md) | 下一輪題型、依賴與待官方發題後的檢查項目 |
-| [archive/prelim/CONTEST_DAY](archive/prelim/CONTEST_DAY.md) | 初賽當天的作業手冊與站別卡入口 |
+| [archive/prelim/CONTEST_DAY](archive/prelim/CONTEST_DAY.md) | 初賽當天的作業手冊（站別卡已刪，見 git 歷史） |
 | [archive/prelim/RESEARCH_ARCHIVE](archive/prelim/RESEARCH_ARCHIVE.md) | 初賽一次性腳本的結論位置與 Git 歷史取回方式 |
 | [archive/prelim/PORKCHOP](archive/prelim/PORKCHOP.md) | 單棒窮舉與真傳播器重播的結果 |
 | [log/DEVLOG_prelim](log/DEVLOG_prelim.md) | 初賽逐日開發日誌 |

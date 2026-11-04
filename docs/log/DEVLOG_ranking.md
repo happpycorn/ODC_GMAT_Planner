@@ -18,7 +18,7 @@
 - **資料與文件**：常用情境在版控的 `configs/shared/`；七份 sweep 規格與 C4 實驗規格可由這些情境重建。`outputs/` 保留本機原始成果，可用 `scripts/output_inventory.py index` 產生索引；文件入口見 [docs/README.md](../README.md)。
 - **排位賽規則（2026-10-19 收到）**：單棒上限改成 250 m/s 且超標失格、總 Δv ≤ 3 km/s、驗證會開完整攝動，計分參數與 T_max 開賽當下才公布。差異與要改的地方見 [RANKING_ROUND_RULES_20261006](../ranking/RANKING_ROUND_RULES_20261006.md)。
 - **全攝動重瞄準（2026-10-19）**：`--from-mission <mission.json> --retarget-full-perturbation` 在 GMAT 官方攝動模型下 B 平面重瞄準一棒、重新判定失格條件，通過才產全攝動繳交腳本；`strategy.FORCE_MODEL`／`GMAT_SPACECRAFT`／`GMAT_EPOCH` 控制 GMAT 端模型與太空船參數，預設輸出逐位元不變。見 [README](../../README.md#排位賽全攝動-b-平面重瞄準)。
-- **下一步**：待官方公布下一輪軌道與計分參數後，以真題重新檢查預算、雙曲線拆棒與安全判定；已知研究項目包括攝動開啟時的 Earth-safe 數值取樣，以及 C4 對中間棒的拆後估分。詳細紀錄在本頁下方與 [NEXT_ROUND_BACKLOG](../archive/NEXT_ROUND_BACKLOG.md)。
+- **下一步**：待官方公布下一輪軌道與計分參數後，以真題重新檢查預算、雙曲線拆棒與安全判定；已知研究項目包括攝動開啟時的 Earth-safe 數值取樣，以及 C4 對中間棒的拆後估分。詳細紀錄在本頁下方與 NEXT_ROUND_BACKLOG（已刪除，見 git 歷史）。
 
 ## 分段管線第一版（2026-09-23）
 
@@ -122,7 +122,7 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
   （新增 `threadpoolctl` 依賴）。**任何 before/after 對照都靠這個才可信**（見 memory
   odc-blas-nondeterminism）。
 
-**開始下一輪前要處理的風險**（出自 [PROJECT_AUDIT_20260909.md](../archive/PROJECT_AUDIT_20260909.md)）：
+**開始下一輪前要處理的風險**（出自 PROJECT_AUDIT_20260909.md（已刪除，見 git 歷史））：
 - 🟠 **P2 Earth-safe 判定是點質量解析式**（`reaches_perigee`/`check_constraints`）。下一輪若開攝動，
   長弧近地點會漂、解析判定不再精確——而它是失格線。→ HAP-20（攝動開時切數值密集取樣）。
 - ✅ **P3 雙曲線 A 端到端已重驗（2026-09-12）**。這條審計當時寫「從未跑過」時已經過時——
@@ -136,7 +136,7 @@ Earth-safe 的五棒解）。第一名 Team15 以 98.3162 奪冠；兩隊因撞�
   直接報錯、不再拖到 poliastro 算位置才炸。回歸 `tests/test_hyperbolic_smoke.py`。
 - ⚠️ **計分參數與 A/B 六根數要等官方發題**（`k_t/C_t/k_v/C_v`）。
 
-**工作紀錄與待辦（更新至 2026-09-29）**——已完成項保留驗證資料；[HANDOFF_20260928.md](../archive/HANDOFF_20260928.md) 是 9 月 28 日交接快照，任務 1–3 已完成。未決項見本節末尾與 [NEXT_ROUND_BACKLOG](../archive/NEXT_ROUND_BACKLOG.md)：
+**工作紀錄與待辦（更新至 2026-09-29）**——已完成項保留驗證資料；HANDOFF_20260928.md（已刪除，見 git 歷史） 是 9 月 28 日交接快照，任務 1–3 已完成。未決項見本節末尾與 NEXT_ROUND_BACKLOG（已刪除，見 git 歷史）：
 - ✅ **提早停止已修、預設關閉（2026-09-29）。** `optimization.EARLY_STOP_ENABLED=true` 才把 `MAX_EARLY_STOP`/`TOL`
   傳給 mealpy 的 `solve()`；省 CPU 但多個情境掉分，維持預設 `false`。40 筆快情境＋3 筆 weird_test 的
   [消融結果](../research/EARLY_STOP_ABLATION_20260929.md) 顯示最差分別掉 1.7269／1.9547 分。
@@ -212,7 +212,7 @@ C. C4 後續：中間棒超標也納入拆後估計；預付拆棒成本依幾�
      回歸全過。對照用 `docs/solutions/checkpoints/` 的兩個拆棒前存檔 + `--from-winner`。
 1. ~~拆後分數進路線選擇~~ → **已解（2026-09-23 晚）**：98.319 其實是拆棒器沒處理「貼 cap 的前導棒」，
    `_slot_after_capped` 補空位後**預設管線從頭跑就是 98.3188**（GMAT ✅）。多候選各拆暫不需要，雙曲線真題再評估。
-2. **✅ 測試 quick/full 分層完成（2026-09-29）**（[FLOW_EFFICIENCY_AUDIT](../archive/FLOW_EFFICIENCY_AUDIT_20260923.md) P1）：`run_regression.py --quick`
+2. **✅ 測試 quick/full 分層完成（2026-09-29）**（FLOW_EFFICIENCY_AUDIT（已刪除，見 git 歷史） P1）：`run_regression.py --quick`
    排除三支 slow；雙曲線拆成結構煙霧／e2e 兩支，保留全部檢查。
    驗收：quick 10/10（58.4s）、full 13/13（387.8s）；拆分前後 189 checks，雙曲線 19 checks 輸出一致。
 3. **✅ REVS 集成與種子雙重精修消融完成（2026-09-28，`sweeps/ablation_v1.json`，4 快情境 × 6 組 × 5 SEED = 120 次全 ok）**。

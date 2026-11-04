@@ -1,6 +1,6 @@
 # C1 — Primer Vector 導引：文獻探討與設計
 
-**建立：2026-09-22。** backlog 主題 C（`docs/archive/NEXT_ROUND_BACKLOG.md`）的前置研究。定位跟 backlog 一致：
+**建立：2026-09-22。** backlog 主題 C（`NEXT_ROUND_BACKLOG.md`，已刪除，見 git 歷史）的前置研究。定位跟 backlog 一致：
 **primer vector 不是 solver，是羅盤**——只回答「這條解缺不缺棒、該不該有更大節點、該加在哪」，
 即目前用猜的問題（SPLIT_AWARE 該不該開、B1 的上界該放多寬、拆棒節點放哪）。
 

@@ -2030,7 +2030,7 @@ log 已經 2100+ 行，新舊混在一起會讓決賽視圖分不清哪些還適
 
 初賽專用文件（作業手冊、當天站別卡）已封存到 `docs/archive/prelim/`（見 [`docs/archive/prelim/CONTEST_DAY.md`](../archive/prelim/CONTEST_DAY.md)）。`SCENARIOS.md` 是測資/方法論目錄、不是初賽限定，決賽繼續在原地使用，見該檔開頭的說明。
 
-全專案盤點見 [`PROJECT_AUDIT_20260909.md`](../archive/PROJECT_AUDIT_20260909.md)（決賽前的現況/待辦總覽）。
+全專案盤點見 PROJECT_AUDIT_20260909.md（已刪除，見 git 歷史）（決賽前的現況/待辦總覽）。
 
 ---
 
