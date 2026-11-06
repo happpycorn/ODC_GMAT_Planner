@@ -6,6 +6,7 @@
 
 | 文件 | 用途 |
 |---|---|
+| [SETUP](SETUP.md) | 新電腦從 clone 到開 GUI：`setup.sh` 一次裝好排位賽、金／銅牌賽（`medal/`）兩個工具 |
 | [final/DAY_OVERVIEW](final/DAY_OVERVIEW.md) | 11/09 全天總覽：兩場各用哪個資料夾與手冊、USB 結構、午休交接（印出來帶去） |
 | [ranking/CONTEST_DAY](ranking/CONTEST_DAY.md) | 排位賽 60 分鐘作業手冊（比賽當下用） |
 | [ranking/PRE_CONTEST](ranking/PRE_CONTEST.md) | 排位賽賽前一晚的檢查清單與實測時間 |

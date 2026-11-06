@@ -5,6 +5,8 @@ TASA／淡江大學「第一屆軌道設計競賽」用的任務規劃工具。�
 
 | 想做什麼 | 看哪裡 |
 |---|---|
+| **新電腦安裝（兩個工具＋GUI）** | [docs/SETUP.md](docs/SETUP.md)：`./setup.sh` 一次裝好 |
+| 決賽全天總覽 | [docs/final/DAY_OVERVIEW.md](docs/final/DAY_OVERVIEW.md) |
 | **比賽當天照著做** | [docs/ranking/CONTEST_DAY.md](docs/ranking/CONTEST_DAY.md) |
 | 賽前一晚檢查 | [docs/ranking/PRE_CONTEST.md](docs/ranking/PRE_CONTEST.md) |
 | 目前狀態、未完成的事 | [STATUS.md](STATUS.md) |
@@ -12,10 +14,14 @@ TASA／淡江大學「第一屆軌道設計競賽」用的任務規劃工具。�
 | 程式在哪個檔案、呼叫順序 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | 物理模型、搜尋、計分的原理 | [docs/METHODOLOGY.md](docs/METHODOLOGY.md) |
 | 所有文件的導覽 | [docs/README.md](docs/README.md) |
+| 金／銅牌賽工具 | [medal/](medal/README.md)（原 ODC_GMAT_DRL，獨立的 uv 專案） |
+| 決賽 GUI | [gui/](gui/README.md) |
 
 ---
 
 ## 安裝
+
+新電腦直接跑 `./setup.sh`（Windows：`setup.ps1`），兩個工具、GMAT 路徑、體檢一次做完，見 [SETUP](docs/SETUP.md)。下面是只裝排位賽工具的手動步驟。
 
 需要 Python 3.12 以上，由 `uv` 自動下載，不用自己裝。
 
@@ -209,7 +215,9 @@ uv run python odc.py test --quick -q
 
 ## 部署到新電腦
 
-1. 裝 `uv`、`git clone https://github.com/happpycorn/ODC_GMAT_Planner.git`、`uv sync`（第一次要網路，約 1 GB）。
+照 [SETUP](docs/SETUP.md) 跑 `setup.sh` 最快。手動的話：
+
+1. 裝 `uv`、`git clone https://github.com/happpycorn/ODC_GMAT_Planner.git`、`uv sync`（第一次要網路，約 1 GB）；金牌賽工具另外在 `medal/` 裡 `uv sync`。
 2. 另裝 GMAT，用 `new-config ... --gmat-console <路徑>` 或 `--gmat-console` 參數指過去。
 3. `configs/local/` 不會跟著 clone，需要的設定另外複製，或照 [SCENARIOS.md](docs/SCENARIOS.md) 重建。
 4. 先跑 `odc.py test --quick -q` 和上面的快速試跑，再試 GMAT。
