@@ -8,7 +8,7 @@
 #   ./setup.sh --full-check       # 金牌賽跑完整 pytest（預設只跑快速子集）
 #
 # 兩邊是各自獨立的 uv 專案（各自的 uv.lock、.venv），版本照 lock 檔裝、不升級。
-# 第一次要網路（約 2 GB）。說明在 docs/SETUP.md。
+# 第一次要網路（Mac 約 2 GB；Linux 的 torch 帶 CUDA，約 6 GB）。說明在 docs/SETUP.md。
 set -u
 cd "$(dirname "$0")" || exit 1
 ROOT="$(pwd)"
@@ -140,6 +140,7 @@ EOF
   then GUI_OK=1; break; fi
 done
 kill $GUI_PID 2>/dev/null; wait $GUI_PID 2>/dev/null
-if [ $GUI_OK -eq 1 ]; then ok "GUI 啟動（http://127.0.0.1:8765，雙擊 gui/start.command 開）"; else bad "GUI 啟動失敗（手動跑 uv run python gui/app.py 看錯誤）"; fi
+if [ "$(uname)" = Darwin ]; then HOW="雙擊 gui/start.command 開"; else HOW="跑 uv run python gui/app.py，再用瀏覽器開網址"; fi
+if [ $GUI_OK -eq 1 ]; then ok "GUI 啟動（$HOW：http://127.0.0.1:8765）"; else bad "GUI 啟動失敗（手動跑 uv run python gui/app.py 看錯誤）"; fi
 
 summary
