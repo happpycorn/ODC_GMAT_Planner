@@ -1,0 +1,1299 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ODC 決賽控制台</title>
+<style>
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --surface-2: #f7f8fa; --line: #e3e6eb; --line-strong: #cfd4dc;
+  --ink: #1b1f27; --ink-2: #4a5160; --ink-3: #7a8293;
+  --accent: #2f5bea; --accent-ink: #ffffff; --accent-soft: #e8eefe;
+  --ok: #1a7f45; --ok-soft: #e6f4ec; --warn: #9a6200; --warn-soft: #fdf3dc; --bad: #c0362c; --bad-soft: #fceae8;
+  --code-bg: #14181f; --code-ink: #d7deea;
+  --r-sm: 6px; --r-md: 10px;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, .05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111318; --surface: #1a1d24; --surface-2: #20242c; --line: #2a2f39; --line-strong: #3a404c;
+    --ink: #e8eaef; --ink-2: #b4bac6; --ink-3: #848c9b;
+    --accent: #6c8dff; --accent-ink: #0d1220; --accent-soft: #1f2a4a;
+    --ok: #4fc685; --ok-soft: #15291f; --warn: #e8b44c; --warn-soft: #2e2511; --bad: #ff7b70; --bad-soft: #351816;
+    --code-bg: #0c0e12; --code-ink: #d7deea; --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.6 -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", sans-serif; }
+code, .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; }
+code { background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+h1, h2, h3 { margin: 0; line-height: 1.3; }
+p { margin: 0; }
+ol, ul { margin: var(--s2) 0 0; padding-left: 20px; }
+li + li { margin-top: 2px; }
+a { color: var(--accent); }
+
+/* ---------- 頂列 ---------- */
+.app-bar { position: sticky; top: 0; z-index: 10; height: 56px; padding: 0 var(--s5); display: flex; align-items: center; gap: var(--s5);
+  background: var(--surface); border-bottom: 1px solid var(--line); }
+.brand { font-weight: 650; font-size: 15px; white-space: nowrap; }
+.seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; }
+.seg button { border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 13px; padding: 5px 14px; border-radius: 6px; cursor: pointer; }
+.seg button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+#running { display: none; align-items: center; gap: 6px; font-size: 12px; color: var(--warn); background: var(--warn-soft); padding: 3px 10px; border-radius: 99px; max-width: 360px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#running.on { display: inline-flex; }
+.clock { margin-left: auto; text-align: right; line-height: 1.25; }
+.clock .now { font-size: 18px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.clock .next { font-size: 12px; color: var(--ink-3); }
+
+/* ---------- 版面 ---------- */
+.layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--s6); max-width: 1180px; margin: 0 auto; padding: var(--s5); }
+.nav { position: sticky; top: 80px; align-self: start; display: flex; flex-direction: column; gap: 2px; }
+.nav-sec { font-size: 11px; letter-spacing: .06em; color: var(--ink-3); margin: var(--s3) 10px var(--s1); }
+.nav-sec:first-child { margin-top: 0; }
+.nav button { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 13.5px;
+  text-align: left; padding: 6px 10px; border-radius: var(--r-sm); cursor: pointer; }
+.nav button:hover { background: var(--surface-2); color: var(--ink); }
+.nav button.on { background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+.ix { flex: none; width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 11.5px; font-weight: 600;
+  border: 1.5px solid var(--line-strong); color: var(--ink-3); background: var(--surface); font-variant-numeric: tabular-nums; }
+.nav button.on .ix:not(.ok):not(.bad):not(.warn):not(.run) { border-color: var(--accent); color: var(--accent); }
+.ix.ok { background: var(--ok); border-color: var(--ok); color: #fff; }
+.ix.bad { background: var(--bad); border-color: var(--bad); color: #fff; }
+.ix.warn { background: var(--warn); border-color: var(--warn); color: #fff; }
+.ix.run { border-color: var(--warn); border-top-color: transparent; animation: spin 1s linear infinite; color: transparent; }
+@keyframes spin { to { transform: rotate(360deg); } }
+main section { display: none; }
+main section.on { display: block; }
+
+/* ---------- 每一步的標題 ---------- */
+.page-head { display: flex; align-items: flex-start; gap: var(--s4); margin-bottom: var(--s5); }
+.page-head .eyebrow { font-size: 12px; color: var(--ink-3); margin-bottom: 2px; }
+.page-head h1 { font-size: 22px; font-weight: 650; }
+.page-head .lead { color: var(--ink-2); margin-top: 6px; max-width: 680px; }
+.page-head .est { margin-left: auto; flex: none; font-size: 12px; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); padding: 3px 10px; border-radius: 99px; }
+
+/* ---------- 卡片 ---------- */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--s5); margin-bottom: var(--s4); box-shadow: var(--shadow); }
+.card-title { font-size: 15px; font-weight: 650; }
+.card-desc { color: var(--ink-2); margin-top: 4px; }
+.card-title + .fields, .card-desc + .fields, .card-title + .stack, .card-desc + .stack { margin-top: var(--s4); }
+.divider { border: 0; border-top: 1px solid var(--line); margin: var(--s5) 0; }
+.sub { font-size: 13px; font-weight: 650; color: var(--ink-2); margin: var(--s5) 0 var(--s3); }
+.stack > * + * { margin-top: var(--s3); }
+details.more { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); margin-bottom: var(--s4); }
+details.more > summary { cursor: pointer; padding: var(--s3) var(--s5); font-weight: 600; color: var(--ink-2); list-style: none; display: flex; align-items: center; gap: 8px; }
+details.more > summary::before { content: "›"; display: inline-block; width: 10px; transition: transform .15s; color: var(--ink-3); font-size: 16px; }
+details.more[open] > summary::before { transform: rotate(90deg); }
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > .body { padding: 0 var(--s5) var(--s5); }
+
+/* ---------- 表單 ---------- */
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: var(--s3) var(--s4); }
+.fields.wide { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field > span { font-size: 12.5px; color: var(--ink-2); }
+.field > span em { font-style: normal; color: var(--ink-3); }
+input, select { font: inherit; font-size: 13.5px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+  height: 34px; padding: 0 10px; min-width: 0; width: 100%; font-variant-numeric: tabular-nums; }
+input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+input.mismatch { border-color: var(--bad); background: var(--bad-soft); }
+input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); }
+.group { display: flex; }
+.group input { border-radius: var(--r-sm) 0 0 var(--r-sm); }
+.group select { width: auto; flex: none; border-left: 0; border-radius: 0 var(--r-sm) var(--r-sm) 0; background: var(--surface-2); }
+.check { display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--ink-2); }
+.orbit { display: grid; grid-template-columns: 34px repeat(6, minmax(0, 1fr)); gap: var(--s2); align-items: center; }
+.orbit .h { font-size: 12px; color: var(--ink-3); text-align: center; }
+.orbit .o { font-weight: 650; text-align: center; }
+.inline { display: flex; align-items: flex-end; gap: var(--s3); flex-wrap: wrap; }
+.inline .field { width: 220px; }
+
+/* ---------- 按鈕 ---------- */
+.actions { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; margin-top: var(--s5); }
+.btn { font: inherit; font-size: 13.5px; font-weight: 550; height: 34px; padding: 0 14px; border-radius: var(--r-sm); cursor: pointer;
+  border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.btn:hover { background: var(--surface-2); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn-primary:hover { background: var(--accent); filter: brightness(1.07); }
+.btn-danger { color: var(--bad); }
+.btn-sm { height: 28px; padding: 0 10px; font-size: 12.5px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.hint { font-size: 12.5px; color: var(--ink-3); }
+
+/* ---------- 提示 ---------- */
+.note { border-left: 3px solid var(--line-strong); background: var(--surface-2); border-radius: 0 var(--r-sm) var(--r-sm) 0; padding: 10px 14px; margin-top: var(--s3); color: var(--ink); }
+.note.ok { border-color: var(--ok); background: var(--ok-soft); }
+.note.warn { border-color: var(--warn); background: var(--warn-soft); }
+.note.bad { border-color: var(--bad); background: var(--bad-soft); }
+.note.info { border-color: var(--accent); background: var(--accent-soft); }
+.note .btn { margin-left: var(--s2); vertical-align: middle; }
+.note.row { display: flex; align-items: center; gap: var(--s3); }
+.note.row .btn { margin-left: auto; }
+
+/* ---------- 狀態圖示、清單、數字 ---------- */
+.st { flex: none; width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; }
+.st.ok { background: var(--ok); } .st.bad { background: var(--bad); } .st.warn { background: var(--warn); }
+.st.na { background: transparent; border: 1.5px solid var(--line-strong); color: var(--ink-3); }
+.checks { border-top: 1px solid var(--line); margin-top: var(--s4); }
+.check-row { display: flex; gap: var(--s3); padding: 10px 0; border-bottom: 1px solid var(--line); }
+.check-row .t { font-weight: 550; }
+.check-row .d { font-size: 12.5px; color: var(--ink-3); margin-top: 1px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--s3); margin-top: var(--s4); }
+.stat { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 12px; }
+.stat span { display: block; font-size: 12px; color: var(--ink-3); }
+.stat b { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.stat.hero b { font-size: 26px; }
+table.t { border-collapse: collapse; width: 100%; font-size: 13px; }
+table.t th, table.t td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+table.t th { color: var(--ink-3); font-weight: 500; font-size: 12px; }
+table.t tr:last-child td { border-bottom: 0; }
+table.kv th { width: 130px; color: var(--ink-2); font-size: 13px; }
+.tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink-2); }
+.tag.ok { background: var(--ok-soft); border-color: transparent; color: var(--ok); }
+.tag.bad { background: var(--bad-soft); border-color: transparent; color: var(--bad); }
+.tag.warn { background: var(--warn-soft); border-color: transparent; color: var(--warn); }
+.empty { color: var(--ink-3); padding: var(--s3) 0; }
+
+/* ---------- 工作輸出 ---------- */
+.job { margin-top: var(--s4); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; background: var(--surface); }
+.job-head { display: flex; align-items: center; gap: var(--s3); padding: 8px 12px; background: var(--surface-2); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.job-head .title { font-weight: 600; }
+.job-head .time { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.job-head .sp { margin-left: auto; }
+.job-cmd { padding: 6px 12px; font-size: 11.5px; color: var(--ink-3); border-bottom: 1px solid var(--line); word-break: break-all; }
+pre.out { margin: 0; background: var(--code-bg); color: var(--code-ink); font: 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace; padding: 12px 14px;
+  max-height: 300px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+.job.collapsed pre.out { display: none; }
+
+/* ---------- 金牌賽專用 ---------- */
+.drop { display: block; border: 1.5px dashed var(--line-strong); border-radius: var(--r-md); padding: var(--s5); text-align: center; color: var(--ink-2); cursor: pointer; background: var(--surface-2); }
+.drop:hover, .drop.over { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.drop input { display: none; }
+.drop b { color: var(--accent); }
+.filelist { border: 1px solid var(--line); border-radius: var(--r-sm); margin-top: var(--s3); max-height: 230px; overflow: auto; }
+.filelist .f { display: flex; align-items: center; gap: var(--s3); padding: 6px 12px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.filelist .f:last-child { border-bottom: 0; }
+.filelist .f .sz { color: var(--ink-3); font-size: 12px; margin-left: auto; font-variant-numeric: tabular-nums; }
+.submit-line { margin-top: var(--s3); font: 650 26px/1.3 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .3px; padding: var(--s4) var(--s5);
+  background: var(--surface-2); border: 1px solid var(--line-strong); border-radius: var(--r-md); word-break: break-all; }
+.timer-row { display: flex; align-items: center; gap: var(--s4); flex-wrap: wrap; }
+.timer { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 110px; }
+.phases { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-top: var(--s4); }
+.phases div { padding: 6px 8px; border-radius: var(--r-sm); background: var(--surface-2); border: 1px solid var(--line); font-size: 12px; color: var(--ink-2); }
+.phases div b { display: block; font-size: 11px; color: var(--ink-3); font-weight: 500; }
+.phases div.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.phases div.on b { color: var(--accent-ink); opacity: .8; }
+.dv-row { display: grid; grid-template-columns: 110px repeat(3, minmax(0, 1fr)); gap: var(--s3); align-items: end; }
+.dv-row + .dv-row { margin-top: var(--s3); }
+.dv-row .lbl { font-weight: 600; font-size: 13px; padding-bottom: 8px; }
+
+#toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--bad); color: #fff; padding: 10px 16px; border-radius: var(--r-md);
+  display: none; max-width: 90vw; z-index: 20; white-space: pre-wrap; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
+#toast.ok { background: var(--ok); }
+
+@media (max-width: 880px) {
+  .app-bar { padding: 0 var(--s4); gap: var(--s3); height: auto; min-height: 56px; flex-wrap: wrap; padding-block: 8px; }
+  .layout { grid-template-columns: 1fr; padding: var(--s4); gap: var(--s4); }
+  .nav { position: static; flex-direction: row; flex-wrap: wrap; }
+  .nav-sec { display: none; }
+  .nav button { width: auto; }
+  .orbit { grid-template-columns: 26px repeat(3, minmax(0, 1fr)); }
+  .phases { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+<header class="app-bar">
+  <div class="brand">ODC 決賽控制台</div>
+  <div class="seg" id="tabs">
+    <button data-tab="rank" class="on">排位賽</button>
+    <button data-tab="medal">金／銅牌賽</button>
+    <button data-tab="jobs">所有工作</button>
+  </div>
+  <span id="running"></span>
+  <div class="clock"><div class="now"></div><div class="next"></div></div>
+</header>
+
+<!-- ================================================================ 排位賽 -->
+<div class="layout" id="tab-rank">
+  <nav class="nav" id="rank-nav"></nav>
+  <main id="rank-main">
+
+    <section data-step="r0">
+      <div class="page-head"><div>
+        <div class="eyebrow">排位賽</div><h1>總覽</h1>
+        <p class="lead">照左邊的步驟由上往下做。每個按鈕背後都是手冊上的指令，指令全文印在輸出框上方。</p>
+      </div></div>
+      <div id="r0-next"></div>
+      <div class="card">
+        <div class="card-title">執行結果</div>
+        <div id="r0-runs"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">設定檔</div>
+        <p class="card-desc">比賽當天用 <code>ranking</code>，彩排用 <code>rehearsal</code>。</p>
+        <div class="inline" style="margin-top:12px">
+          <label class="field"><span>設定檔名稱</span><input id="cfg-name" value="ranking"></label>
+          <button class="btn" id="cfg-switch">切換</button>
+        </div>
+        <div id="r0-gmat"></div>
+      </div>
+      <details class="more"><summary>三條原則與分工</summary><div class="body">
+        <ol>
+          <li><b>先交得出東西。</b>第一份通過步驟 7 的解立刻存 USB，之後只有更好的解才換。</li>
+          <li><b>到點就收。</b>截止時間到了就交手上最好的合法解。</li>
+          <li><b>失格的解不交。</b>沒攔到還有分數，失格是 0 分。</li>
+        </ol>
+        <table class="t kv" style="margin-top:16px">
+          <tr><th>主控（Mac）</th><td>操作這個畫面、決定交哪份</td></tr>
+          <tr><th>隊友 A（核對）</th><td>獨立抄一份根數，在步驟 1 的核對欄再打一次；步驟 7 唸清單</td></tr>
+          <tr><th>隊友 B（主辦機）</th><td>弄清楚主辦機怎麼開 Script、跑、上傳；先看懂題目 Script 要改哪裡</td></tr>
+        </table>
+      </div></details>
+    </section>
+
+    <section data-step="r1">
+      <div class="page-head"><div>
+        <div class="eyebrow">排位賽 · 步驟 1</div><h1>抄題目</h1>
+        <p class="lead">把 A、B 兩條軌道的六根數抄進設定檔。抄錯後面全白算，所以兩個人各抄一次再對。</p>
+      </div><span class="est">5 分鐘</span></div>
+      <div id="r1-create"></div>
+      <div data-job="rank.new-config"></div>
+      <div class="card">
+        <div class="card-title">軌道根數</div>
+        <p class="card-desc">SMA 單位 km，角度單位度。雙曲線的 SMA 是負的、ECC &gt; 1。TA 的正負號別抄錯。</p>
+        <div class="orbit" id="r1-grid" style="margin-top:16px"></div>
+        <div class="sub">隊友 A 核對</div>
+        <label class="check"><input type="checkbox" id="r1-verify-on"> 打開核對欄：隊友 A 不看上面，自己再打一次，不一樣的格子會變紅</label>
+        <div class="orbit" id="r1-grid2" style="display:none; margin-top:12px"></div>
+        <div id="r1-match"></div>
+        <div class="sub">曆元與太空船參數 <span class="hint">（題目有給才填，沒給留空）</span></div>
+        <div class="fields wide">
+          <label class="field"><span>GMAT_EPOCH</span><input id="r1-epoch" placeholder="例如 09 Nov 2026 03:00:00.000"></label>
+          <label class="field"><span>DateFormat <em>照 Script 寫</em></span><input id="r1-epochfmt" placeholder="UTCGregorian"></label>
+        </div>
+        <div class="fields" id="r1-sc" style="margin-top:12px"></div>
+        <div class="actions"><button class="btn btn-primary" id="r1-save">存進設定檔</button></div>
+        <div id="r1-msg"></div>
+      </div>
+      <details class="more"><summary>題目給的是狀態向量時</summary><div class="body">用 GMAT 開題目 Script，讀出六根數再抄進來。</div></details>
+    </section>
+
+    <section data-step="r2">
+      <div class="page-head"><div>
+        <div class="eyebrow">排位賽 · 步驟 2</div><h1>T_max</h1>
+        <p class="lead">最晚可以攔截的時刻，從 epoch 起算，不是從近地點算。超過就沒分數。</p>
+      </div><span class="est">1 分鐘</span></div>
+      <div id="r2-cur"></div>
+      <div class="card">
+        <div class="card-title">官方直接給秒數</div>
+        <div class="inline" style="margin-top:12px">
+          <label class="field"><span>T_MAX_SEC（秒）</span><input id="r2-sec" inputmode="decimal"></label>
+          <button class="btn btn-primary" id="r2-write-sec">寫入</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">官方給的是任務邊界</div>
+        <p class="card-desc">先試算，確認下面三件事都對了再寫入。</p>
+        <div class="fields" style="margin-top:16px">
+          <label class="field"><span>邊界是什麼</span>
+            <select id="r2-mode"><option value="center">地心距離（km）</option><option value="alt">高度（km）</option></select></label>
+          <label class="field"><span>邊界數值（km）</span><input id="r2-b" inputmode="decimal"></label>
+        </div>
+        <ol class="hint" style="margin-top:12px">
+          <li>點質量數值解與解析解差 &lt; 1 ms（不是的話就是根數抄錯）</li>
+          <li>J2–J4 與解析解只差幾秒</li>
+          <li>「註」說的 A 位置跟題目描述一致</li>
+        </ol>
+        <div class="actions"><button class="btn" id="r2-try">試算</button><button class="btn btn-primary" id="r2-write">三件事都對，寫入</button></div>
+        <div data-job="rank.tmax"></div>
+      </div>
+      <details class="more"><summary>工具擋下時</summary><div class="body">
+        <table class="t">
+          <tr><th>訊息</th><th>怎麼辦</th></tr>
+          <tr><td>A 的距離永遠不會小於近地點</td><td>多半把高度當地心距離，邊界改選「高度」</td></tr>
+          <tr><td>雙曲線不會再回來</td><td>檢查 TA 正負號</td></tr>
+          <tr><td>|TA| 必須 &lt; …</td><td>TA 或 ECC 抄錯</td></tr>
+          <tr><td>A 永遠在邊界內、圓軌道、拋物線</td><td>問工作人員</td></tr>
+        </table>
+      </div></details>
+    </section>
+
+    <section data-step="r3">
+      <div class="page-head"><div>
+        <div class="eyebrow">排位賽 · 步驟 3</div><h1>計分參數</h1>
+        <p class="lead">照官方寫的單位填，工具會自己換算。單位錯了分數就全錯（初賽踩過：k_v、C_v 照抄 km/s 制）。</p>
+      </div><span class="est">2 分鐘</span></div>
+      <div id="r3-cur"></div>
+      <div class="card">
+        <div class="card-title">官方計分參數</div>
+        <div class="fields wide" style="margin-top:16px">
+          <label class="field"><span>k_t</span><span class="group"><input id="r3-kt" inputmode="decimal"><select id="r3-ktu"><option>1/s</option><option>1/min</option><option>1/h</option></select></span></label>
+          <label class="field"><span>C_t</span><span class="group"><input id="r3-Ct" inputmode="decimal"><select id="r3-Ctu"><option>s</option><option>min</option><option>h</option></select></span></label>
+          <label class="field"><span>k_v <em>單位一定要選</em></span><span class="group"><input id="r3-kv" inputmode="decimal"><select id="r3-kvu"><option value="">單位</option><option>1/(m/s)</option><option>1/(km/s)</option></select></span></label>
+          <label class="field"><span>C_v <em>單位一定要選</em></span><span class="group"><input id="r3-Cv" inputmode="decimal"><select id="r3-Cvu"><option value="">單位</option><option>m/s</option><option>km/s</option></select></span></label>
+          <label class="field"><span>C_r <em>km</em></span><input id="r3-Cr" inputmode="decimal"></label>
+        </div>
+        <div class="sub">官方參考解 <span class="hint">（有給才填）</span></div>
+        <div class="fields wide">
+          <label class="field"><span>參考解總 Δv</span><span class="group"><input id="r3-rdv" inputmode="decimal"><select id="r3-rdvu"><option>m/s</option><option>km/s</option></select></span></label>
+          <label class="field"><span>參考解攔截時刻 <em>秒</em></span><input id="r3-rt" inputmode="decimal"></label>
+        </div>
+        <p class="hint" style="margin-top:12px">有參考解：選讓總分落在整數的那種單位。沒參考解：m/s 制的 C_v 應該是幾百到幾千，C_v &lt; 50 多半還是 km/s。</p>
+        <div class="actions"><button class="btn" id="r3-try">試算</button><button class="btn btn-primary" id="r3-write">沒警告，寫入</button></div>
+        <div data-job="rank.scoring"></div>
+      </div>
+    </section>
+
+    <section data-step="r4">
+      <div class="page-head"><div>
+        <div class="eyebrow">排位賽 · 步驟 4</div><h1>體檢</h1>
+        <p class="lead">開跑前看一眼題目合不合理，抓抄錯。</p>
+      </div><span class="est">1 分鐘</span></div>
+      <div class="card">
+        <div class="card-title">check</div>
+        <p class="card-desc">近地點、平面夾角、T_max、C_t/T_max 合理就好。「參考解 90 分」那行忽略。</p>
+        <div class="actions"><button class="btn btn-primary" id="r4-check">跑 check</button></div>
+        <div data-job="rank.check"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">feasibility</div>
+        <p class="card-desc">能量下限接近 3,000 m/s 時可能沒有合法解。</p>
+        <div class="actions"><button class="btn btn-primary" id="r4-feas">跑 feasibility</button></div>
+        <div data-job="rank.feasibility"></div>
+      </div>
+    </section>
+
+    <section data-step="r5">
+      <div class="page-head"><div>
+        <div class="eyebrow">排位賽 · 步驟 5</div><h1>求解</h1>
+        <p class="lead">搜尋攔截路線。只跑一個，它會用滿全部核心。印出「MAX_BURNS 裡的 [1, 2] … 必然違規」是正常的。</p>
+      </div><span class="est">3–5 分鐘</span></div>
+      <div class="card">
+        <div class="inline">
+          <label class="field"><span>執行目錄 <em>outputs/runs/ 底下，不能重複</em></span><input id="r5-run"></label>
+          <button class="btn btn-primary" id="r5-go">開始求解</button>
+        </div>
+        <div id="r5-sum"></div>
+        <div data-job="rank.solve"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">run.log 最後幾行</div>
+        <p class="card-desc">求解中每 2 秒更新。卡很久時看這裡在做什麼。</p>
+        <pre class="out" id="r5-log" style="margin-top:12px; border-radius:6px">（還沒開始）</pre>
+      </div>
+      <div class="note warn">這步產生的 output_submit.txt 在全攝動下會偏，<b>只有步驟 6 失敗時才交它</b>。</div>
+    </section>
+
+    <section data-step="r6">
+      <div class="page-head"><div>
+        <div class="eyebrow">排位賽 · 步驟 6</div><h1>重瞄準＋重驗</h1>
+        <p class="lead">求解用的是簡化力學。這步改用官方的全攝動模型重新瞄準最後一棒，再交給 GMAT 獨立跑一次，確認真的打得到。</p>
+      </div><span class="est">1 分鐘</span></div>
+      <div class="card">
+        <div class="card-title">1. 全攝動重瞄準</div>
+        <div class="fields wide" style="margin-top:16px">
+          <label class="field"><span>要重瞄準的求解</span><select id="r6-run"></select></label>
+          <label class="field"><span>換一棒重瞄準 <em>留空＝預設，0 起算</em></span><input id="r6-burn" inputmode="numeric"></label>
+        </div>
+        <div class="actions"><button class="btn btn-primary" id="r6-rt">重瞄準</button></div>
+        <div id="r6-rtres"></div>
+        <div data-job="rank.retarget"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">2. GMAT 重驗</div>
+        <div class="fields wide" style="margin-top:16px">
+          <label class="field"><span>要重驗的重瞄準</span><select id="r6-rtsel"></select></label>
+        </div>
+        <div class="actions"><button class="btn btn-primary" id="r6-verify">GMAT 重驗</button></div>
+        <div id="r6-vres"></div>
+        <div data-job="rank.verify"></div>
+      </div>
+      <details class="more"><summary>重瞄準不通過時</summary><div class="body">填一個餘裕大的棒號，再按一次重瞄準。還是不過就交步驟 5 的 output_submit.txt。</div></details>
+    </section>
+
+    <section data-step="r7">
+      <div class="page-head"><div>
+        <div class="eyebrow">排位賽 · 步驟 7</div><h1>失格清單＋存 USB</h1>
+        <p class="lead">交出去之前的最後一關。能自動判斷的都已經判好了，隊友 A 唸、主控對，全部通過才能存 USB。</p>
+      </div><span class="est">3 分鐘</span></div>
+      <div class="card">
+        <div class="inline">
+          <label class="field" style="width:320px"><span>要檢查的重瞄準</span><select id="r7-rt"></select></label>
+          <button class="btn" id="r7-load">重新檢查</button>
+        </div>
+        <div id="r7-list"></div>
+        <label class="check-row" style="cursor:pointer; border-bottom:0">
+          <input type="checkbox" id="r7-human" style="margin-top:2px">
+          <div><div class="t">已逐字元核對官方數字</div><div class="d">主控與隊友 A 對過：設定檔裡的根數、T_MAX_SEC、k_t/C_t/k_v/C_v/C_r 就是今天官方給的</div></div>
+        </label>
+      </div>
+      <div class="card">
+        <div class="card-title">存到 USB</div>
+        <p class="card-desc">檔名會自動帶分數，例如 <code>rank1_86.78_output_submit.txt</code>，GMAT 報告一起存。</p>
+        <div class="fields" style="margin-top:16px">
+          <label class="field"><span>隨身碟</span><select id="r7-vol"></select></label>
+          <label class="field"><span>檔名前綴</span><input id="r7-tag"></label>
+        </div>
+        <div class="actions"><button class="btn btn-primary" id="r7-save">存成繳交件</button><button class="btn" id="r7-volref">重新整理隨身碟</button></div>
+        <div id="r7-saved"></div>
+      </div>
+    </section>
+
+    <section data-step="r8">
+      <div class="page-head"><div>
+        <div class="eyebrow">排位賽 · 步驟 8</div><h1>繳交</h1>
+        <p class="lead">11:25 開始。三個人都要會這步；主控卡住時，隊友直接交 USB 上最新那份。</p>
+      </div></div>
+      <div class="card">
+        <div class="card-title">能交整份自製 Script</div>
+        <ol>
+          <li>主辦機的 GMAT 開 USB 上的 <code>…_output_submit.txt</code>，跑一次。</li>
+          <li>Report 的命中距離要跟步驟 7 的 GMAT Δr 一致；不一致就問工作人員的力學設定。</li>
+          <li>Script＋Report 照官方檔名上傳，確認成功。</li>
+        </ol>
+      </div>
+      <div class="card">
+        <div class="card-title">只能改題目 Script</div>
+        <p class="card-desc">把 output_submit.txt 裡 <code>SC_Human</code> 的初始狀態、每棒 <code>ImpulsiveBurn</code>（BurnB0、BurnB1…）的 VNB 分量和滑行時間，抄進題目 Script。腳本必須全 ASCII，手改時不要加中文。</p>
+      </div>
+    </section>
+
+    <section data-step="r9">
+      <div class="page-head"><div>
+        <div class="eyebrow">排位賽 · 步驟 9</div><h1>加碼／保底</h1>
+        <p class="lead">只在 11:08 前已經有保底時才做，11:25 一到就停。</p>
+      </div></div>
+      <div class="card">
+        <div class="card-title">加碼：換種子再跑一次</div>
+        <p class="card-desc">複製設定檔並把 SEED 改成 1，再照步驟 5–7 跑一遍。分數高 0.01 以上而且清單全過才換。多半只會同分，當保險用。</p>
+        <div class="actions"><button class="btn btn-primary" id="r9-s1">建立 SEED=1 設定檔並切換</button></div>
+      </div>
+      <div class="card">
+        <div class="card-title">保底：求解太慢時</div>
+        <p class="card-desc">11:15 求解還沒完、run.log 停在「primer 診斷 … 以 N 棒重搜」時用。MAXITER 改 300、關掉 primer 重搜，分數可能稍低。可以跟原本那個同時跑，誰先完成用誰。</p>
+        <div class="actions"><button class="btn" id="r9-fast">建立保底設定檔並切換</button></div>
+      </div>
+      <div id="r9-msg"></div>
+    </section>
+
+    <section data-step="r10">
+      <div class="page-head"><div>
+        <div class="eyebrow">排位賽</div><h1>出狀況怎麼辦</h1>
+      </div></div>
+      <div class="card">
+        <table class="t">
+          <tr><th style="width:190px">狀況</th><th>怎麼做</th></tr>
+          <tr><td><b>求解太慢</b><br><span class="hint">11:15 還沒完</span></td><td>看步驟 5 的 run.log。在「拆棒」就等（最多 10 分鐘）。在「primer 診斷 … 以 N 棒重搜」：到步驟 9 開保底設定同時跑，誰先完成用誰</td></tr>
+          <tr><td><b>結束碼 3</b></td><td>找不到合法路線。看 no_legal_route.json 與能量下限。下限 &gt; 3,000 m/s 就問工作人員；否則 MAXITER 改 2000 重跑（時間加倍）</td></tr>
+          <tr><td><b>失格</b></td><td>看失格原因；Δv 超標同結束碼 3</td></tr>
+          <tr><td><b>重瞄準不通過</b></td><td>步驟 6 填棒號換一棒餘裕大的。還是不過就交步驟 5 的 output_submit.txt</td></tr>
+          <tr><td><b>GMAT 打不開</b></td><td>確認路徑（必須 ASCII），重跑重驗；不行就到主辦機上跑</td></tr>
+          <tr><td><b>Mac 當掉或沒電</b></td><td>有備機就從步驟 5 重跑；沒有就交 USB 上最新那份</td></tr>
+          <tr><td><b>主辦機結果不同</b></td><td>問他們的力學模型與太空船參數，改步驟 1 的曆元與太空船參數，從步驟 6 重跑</td></tr>
+          <tr><td><b>GUI 壞掉</b></td><td>每個輸出框上方都有完整指令，複製到終端機跑；或照紙本手冊 docs/ranking/CONTEST_DAY.md</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title">已知地雷</div>
+        <ol>
+          <li>k_v、C_v 的單位。</li>
+          <li>邊界是地心距離還是高度（差 6,378 km）。</li>
+          <li>TA 正負號。</li>
+          <li>T_MAX_SEC 從 epoch 起算，不是從近地點。</li>
+          <li>run.json 寫 completed 不代表能交，只看步驟 7。</li>
+        </ol>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ================================================================ 金／銅牌賽 -->
+<div class="layout" id="tab-medal" style="display:none">
+  <nav class="nav" id="medal-nav"></nav>
+  <main id="medal-main">
+
+    <section data-step="m0">
+      <div class="page-head"><div>
+        <div class="eyebrow">金／銅牌賽</div><h1>規則與時程</h1>
+        <p class="lead">題目公告後有 10 分鐘分析，接著 6 回合、每回合 10 分鐘。</p>
+      </div></div>
+      <div id="m0-env"></div>
+      <div class="card">
+        <div class="card-title">規則重點</div>
+        <table class="t kv" style="margin-top:8px">
+          <tr><th>出手</th><td>雙方<b>同時</b>在回合起點各推一發，互相看不到</td></tr>
+          <tr><th>回合</th><td>6 回合，每回合滑行 T_round</td></tr>
+          <tr><th>單發上限</th><td>ΔV_lim，超過會被等比例縮放（工具交 ΔV_lim − 0.05 以內）</td></tr>
+          <tr><th>攔截</th><td>任一時刻距離 ≤ R_cap，追方贏</td></tr>
+          <tr><th>撞地</th><td>高度 &lt; 0 的一方輸（工具推完近地點至少留 30 km）</td></tr>
+          <tr><th>逃方勝利</th><td>撐完 6 回合<b>而且</b>最後半長軸 a 在安全空域 [lo, hi]</td></tr>
+          <tr><th>提交</th><td><code>角色, 回合, ΔvX, ΔvY, ΔvZ</code>（m/s、EarthMJ2000Eq）</td></tr>
+          <tr><th>角色</th><td>公告後 10 分鐘分析，排位較優的一方選</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title">公告後的 10 分鐘</div>
+        <table class="t kv" style="margin-top:8px">
+          <tr><th>0–2 分</th><td>記錄：USB 檔放進來、填規則（步驟 1、2）</td></tr>
+          <tr><th>2–3 分</th><td>主控：解析初始狀態（步驟 2）</td></tr>
+          <tr><th>3–6 分</th><td>主控：角色選擇器（步驟 3）</td></tr>
+          <tr><th>6–9 分</th><td>全隊：看結果</td></tr>
+          <tr><th>9–10 分</th><td>主控：決定角色、告知工作人員、建 session（步驟 4）</td></tr>
+        </table>
+      </div>
+      <details class="more"><summary>分工</summary><div class="body">
+        <table class="t kv">
+          <tr><th>主控</th><td>操作 Mac、決定採用</td></tr>
+          <tr><th>記錄</th><td>放 USB 檔、填規則、手寫提交行、留抄本</td></tr>
+          <tr><th>驗證</th><td>唸數字核對、看三項檢查、第 6 分鐘提醒時間</td></tr>
+        </table>
+      </div></details>
+    </section>
+
+    <section data-step="m1">
+      <div class="page-head"><div>
+        <div class="eyebrow">金／銅牌賽 · 步驟 1</div><h1>填公告規則</h1>
+        <p class="lead">只有這幾個數字會變。Δv 用 m/s、時間用秒；安全空域如果題目給的是高度，選「高度」會自動換成半長軸。</p>
+      </div></div>
+      <div id="m1-cur"></div>
+      <div class="card">
+        <div class="fields">
+          <label class="field"><span>追方 ΔV_lim <em>m/s</em></span><input id="m1-dvp" inputmode="decimal"></label>
+          <label class="field"><span>逃方 ΔV_lim <em>m/s，一樣就留空</em></span><input id="m1-dve" inputmode="decimal"></label>
+          <label class="field"><span>R_cap <em>km</em></span><input id="m1-rcap" inputmode="decimal"></label>
+          <label class="field"><span>T_round <em>秒</em></span><input id="m1-tr" inputmode="decimal"></label>
+        </div>
+        <div class="sub">安全空域</div>
+        <div class="fields">
+          <label class="field"><span>題目給的是</span><select id="m1-unit"><option value="sma">半長軸 a（km）</option><option value="alt">高度（km）</option></select></label>
+          <label class="field"><span>下限</span><input id="m1-lo" inputmode="decimal"></label>
+          <label class="field"><span>上限</span><input id="m1-hi" inputmode="decimal"></label>
+        </div>
+        <div class="actions"><button class="btn btn-primary" id="m1-save">存規則檔</button></div>
+        <div id="m1-msg"></div>
+      </div>
+    </section>
+
+    <section data-step="m2">
+      <div class="page-head"><div>
+        <div class="eyebrow">金／銅牌賽 · 步驟 2</div><h1>初始狀態</h1>
+        <p class="lead">把主辦 USB 上的狀態檔放進來並解析。|r| 應該在 6700–8000 km、|v| 在 7–8 km/s。解析成功會另存 <code>initial_state.json</code>，步驟 3、4 用它。</p>
+      </div></div>
+      <div class="card">
+        <label class="drop" id="m2-drop"><input type="file" id="m2-file" multiple>把 USB 上的檔案拖到這裡，或<b>點這裡選檔案</b></label>
+        <div class="filelist" id="m2-files"></div>
+        <div class="fields wide" style="margin-top:16px">
+          <label class="field"><span>要解析的檔案</span><select class="dayfile" id="m2-sel"></select></label>
+          <label class="field"><span>船名對應 <em>認不出來才填</em></span><input id="m2-names" placeholder="pursuer=船名,evader=船名"></label>
+          <label class="field"><span>或檔案順序 <em>認不出來才填</em></span><input id="m2-order" placeholder="pursuer,evader"></label>
+        </div>
+        <div class="actions"><button class="btn btn-primary" id="m2-parse">解析</button></div>
+        <div data-job="medal.parse"></div>
+      </div>
+      <details class="more"><summary>檔案讀不了：手動輸入 12 個數字</summary><div class="body">
+        <p class="hint">EarthMJ2000Eq，位置 km、速度 km/s。存好後會出現在上面的檔案清單，照樣按「解析」確認。</p>
+        <div id="m2-manual" style="margin-top:12px"></div>
+        <div class="inline" style="margin-top:12px">
+          <label class="field"><span>存成檔名</span><input id="m2-mname" value="manual_initial.json"></label>
+          <button class="btn" id="m2-msave">存檔</button>
+        </div>
+      </div></details>
+      <details class="more"><summary>給的是經緯高：先轉檔</summary><div class="body">
+        <p class="hint">輸入 JSON 每艘寫 GMAT 欄位：DateFormat、Epoch、CoordinateSystem: EarthFixed、DisplayStateType: SphericalAZFPA、RMAG、RA（經度）、DEC（緯度）、VMAG、AZI、FPA（水平 = 90°）。先把這個 JSON 放進上面的檔案清單。</p>
+        <div class="fields wide" style="margin-top:12px">
+          <label class="field"><span>經緯高 JSON</span><select class="dayfile" id="m2-csel"></select></label>
+          <label class="field"><span>輸出檔名</span><input id="m2-cout" value="initial.json"></label>
+        </div>
+        <div class="actions"><button class="btn" id="m2-conv">轉檔</button></div>
+        <div data-job="medal.convert"></div>
+      </div></details>
+    </section>
+
+    <section data-step="m3">
+      <div class="page-head"><div>
+        <div class="eyebrow">金／銅牌賽 · 步驟 3</div><h1>角色選擇器</h1>
+        <p class="lead">用公告的題目自己跟自己對打，估計選追方或躲方的勝率。</p>
+      </div><span class="est">約 2 分鐘</span></div>
+      <div class="card">
+        <div class="fields wide">
+          <label class="field"><span>初始狀態檔</span><select class="dayfile" id="m3-sel"></select></label>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" id="m3-go">跑角色選擇器</button>
+          <label class="check"><input type="checkbox" id="m3-fast"> 快速版（約 40 秒，趕時間用）</label>
+        </div>
+        <div data-job="medal.role_select"></div>
+      </div>
+      <div class="note info"><b>預設選躲方。</b>以下任一種才改選追方：
+        <ol><li>題目特徵說「6 發都推滿也到不了安全空域」</li>
+        <li>我方躲方對 capture_pursuer 的勝率明顯低於 100%</li>
+        <li>安全證書比例 &lt; 90%</li></ol></div>
+    </section>
+
+    <section data-step="m4">
+      <div class="page-head"><div>
+        <div class="eyebrow">金／銅牌賽 · 步驟 4</div><h1>建 session</h1>
+        <p class="lead">決定角色、告知工作人員之後，建立整場紀錄。兩艘的 epoch 不同時會印出傳播秒數，要跟公告對得上。</p>
+      </div></div>
+      <div class="card">
+        <div class="fields wide">
+          <label class="field"><span>我方角色</span><select id="m4-role"><option value="">請選擇</option><option value="evader">躲方（逃方）</option><option value="pursuer">追方</option></select></label>
+          <label class="field"><span>初始狀態檔</span><select class="dayfile" id="m4-sel"></select></label>
+        </div>
+        <div class="fields wide" style="margin-top:12px">
+          <label class="field"><span>船名對應 <em>選 USB 原檔才需要</em></span><input id="m4-names"></label>
+          <label class="field"><span>檔案順序 <em>選 USB 原檔才需要</em></span><input id="m4-order"></label>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" id="m4-go">建立</button>
+          <label class="check"><input type="checkbox" id="m4-over"> 已經有 session 時覆蓋（舊檔會備份）</label>
+        </div>
+        <div data-job="medal.new"></div>
+      </div>
+    </section>
+
+    <section data-step="m5">
+      <div class="page-head"><div>
+        <div class="eyebrow">金／銅牌賽 · 步驟 5</div><h1 id="m5-title">每回合</h1>
+        <p class="lead">取得建議 → 手寫提交行 → 交出 → 主辦公告後記錄雙方實際 Δv。</p>
+      </div></div>
+      <div class="card">
+        <div class="timer-row">
+          <div class="timer" id="m5-timer">10:00</div>
+          <button class="btn btn-primary" id="m5-tstart">本回合開始計時</button>
+          <button class="btn" id="m5-treset">歸零</button>
+        </div>
+        <div class="phases" id="m5-phases">
+          <div><b>0–2 分</b>放狀態檔</div><div><b>2–6 分</b>取得建議、看檢查</div><div><b>6–8 分</b>手寫、唸數字核對</div><div><b>8–9 分</b>交出</div><div><b>公告後</b>記錄公告</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">A. 取得建議</div>
+        <p class="card-desc">第 1 回合不用選狀態檔。之後每回合把主辦給的回合起點狀態檔放進來再選它。</p>
+        <label class="drop" id="m5-drop" style="margin-top:16px"><input type="file" id="m5-file">把本回合狀態檔拖到這裡，或<b>點這裡選檔案</b></label>
+        <div class="fields wide" style="margin-top:16px">
+          <label class="field"><span>本回合起點狀態檔</span><select class="dayfile" id="m5-sel" data-none="不給（第 1 回合）"></select></label>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" id="m5-go">取得建議</button>
+          <label class="check"><input type="checkbox" id="m5-fast"> 快速版（趕時間用）</label>
+        </div>
+        <div id="m5-advice"></div>
+        <div data-job="medal.advise"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">B. 記錄公告</div>
+        <p class="card-desc">填主辦公告的<b>實際</b> Δv（m/s）。對手被縮放是正常的，照公告值填。我方已自動帶入提交值，公告不同就改。</p>
+        <div style="margin-top:16px">
+          <div class="dv-row" id="m5-opp"></div>
+          <div class="dv-row" id="m5-our"></div>
+        </div>
+        <div class="fields wide" style="margin-top:16px">
+          <label class="field"><span>下一回合起點狀態檔 <em>有給就選，可立刻核對</em></span><select class="dayfile" id="m5-nsel" data-none="不給"></select></label>
+        </div>
+        <div class="actions"><button class="btn btn-primary" id="m5-ann">記錄公告</button></div>
+        <div data-job="medal.announce"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">整場紀錄</div>
+        <div id="m5-rounds" style="margin-top:8px"></div>
+        <div class="actions"><button class="btn" id="m5-show">印整場摘要</button></div>
+        <div data-job="medal.show"></div>
+      </div>
+    </section>
+
+    <section data-step="m6">
+      <div class="page-head"><div>
+        <div class="eyebrow">金／銅牌賽</div><h1>故障應變</h1>
+      </div></div>
+      <div class="card">
+        <table class="t">
+          <tr><th style="width:190px">狀況</th><th>做法</th></tr>
+          <tr><td><b>解析讀不了</b></td><td>看錯誤訊息；填船名對應或檔案順序；再不行用手動輸入</td></tr>
+          <tr><td><b>數字像公尺或 m/s</b></td><td>換單位重填</td></tr>
+          <tr><td><b>經緯高狀態</b></td><td>步驟 2 的「先轉檔」</td></tr>
+          <tr><td><b>重驗未通過</b></td><td>交工具給的那一行（畫面上的提交行就是）</td></tr>
+          <tr><td><b>一致性檢查疑似錯誤</b></td><td>核對單位、角色有沒有對調、座標系、時間；仍以官方狀態為準</td></tr>
+          <tr><td><b>工具當掉</b></td><td>按停止再跑一次；不行就換備機（day/session.json 用 USB 帶過去）</td></tr>
+          <tr><td><b>時間不夠</b></td><td>勾快速版；最壞情況躲方照上一回合方向推、追方不推，但一定要交</td></tr>
+          <tr><td><b>GUI 壞掉</b></td><td>輸出框上方有完整指令，複製到終端機；或照紙本手冊 CONTEST_DAY_FINAL.md</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title">戰術</div>
+        <ul>
+          <li><b>躲方</b>：照工具交。不要手動改成每回合推同一個方向。</li>
+          <li><b>追方</b>：抓不到會算證書的躲方；機會在對手犯錯（閃法太直覺、最後 a 不在安全空域）。照工具交。</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ================================================================ 所有工作 -->
+<div id="tab-jobs" style="display:none">
+  <div class="layout" style="grid-template-columns:minmax(0,1fr)">
+    <main>
+      <div class="page-head"><div><h1>所有工作</h1><p class="lead">這次開 GUI 以來跑過的每一條指令，新的在上面。</p></div></div>
+      <div id="jobs-list"></div>
+    </main>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const fmt = (x, d = 2) => (x === null || x === undefined || x === "") ? "—" : Number(x).toFixed(d);
+const ST = {ok: "✓", bad: "✕", warn: "!", na: "–"};
+const stIcon = s => `<span class="st ${s}">${ST[s]}</span>`;
+const checkRow = (state, title, detail) => `<div class="check-row">${stIcon(state)}<div><div class="t">${esc(title)}</div>${detail ? `<div class="d">${esc(detail)}</div>` : ""}</div></div>`;
+const stat = (label, value, hero) => `<div class="stat${hero ? " hero" : ""}"><span>${esc(label)}</span><b>${value}</b></div>`;
+
+function toast(msg, ok = false) {
+  const t = $("#toast"); t.textContent = msg; t.className = ok ? "ok" : ""; t.style.display = "block";
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = "none", ok ? 2500 : 7000);
+}
+async function api(path, body) {
+  const opt = body === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)};
+  let res;
+  try { res = await (await fetch(path, opt)).json(); }
+  catch (e) { toast("連不到 GUI 伺服器：終端機那個視窗是不是關了？"); throw e; }
+  if (!res.ok) { toast(res.error); throw new Error(res.error); }
+  return res;
+}
+function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
+
+// ---------------------------------------------------------------- 分頁與步驟
+// [id, 名稱, 圓圈裡的字, 分組標題]
+const RANK_STEPS = [["r0", "總覽", "★", "開始"], ["r1", "抄題目", "1", "設定"], ["r2", "T_max", "2"], ["r3", "計分參數", "3"], ["r4", "體檢", "4"],
+  ["r5", "求解", "5", "求解與驗證"], ["r6", "重瞄準＋重驗", "6"], ["r7", "失格清單＋存 USB", "7"], ["r8", "繳交", "8", "繳交"], ["r9", "加碼／保底", "9"],
+  ["r10", "出狀況怎麼辦", "?", "參考"]];
+const MEDAL_STEPS = [["m0", "規則與時程", "★", "開始"], ["m1", "填規則", "1", "公告後 10 分鐘"], ["m2", "初始狀態", "2"], ["m3", "角色選擇器", "3"],
+  ["m4", "建 session", "4"], ["m5", "每回合", "5", "比賽中"], ["m6", "故障應變", "?", "參考"]];
+
+function buildNav(navId, mainId, steps, keyName) {
+  const nav = $(navId);
+  nav.innerHTML = steps.map(([id, label, mark, sec]) => (sec ? `<div class="nav-sec">${sec}</div>` : "") +
+    `<button data-go="${id}"><span class="ix" id="dot-${id}" data-mark="${mark}">${mark}</span>${label}</button>`).join("");
+  nav.addEventListener("click", e => { const b = e.target.closest("button"); if (b) go(mainId, navId, b.dataset.go, keyName); });
+  go(mainId, navId, store(keyName) || steps[0][0], keyName);
+}
+function go(mainId, navId, id, keyName) {
+  $$(`${mainId} section`).forEach(s => s.classList.toggle("on", s.dataset.step === id));
+  $$(`${navId} button`).forEach(b => b.classList.toggle("on", b.dataset.go === id));
+  store(keyName, id); window.scrollTo(0, 0);
+  onShow(id);
+}
+const goRank = id => go("#rank-main", "#rank-nav", id, "odc.rankstep");
+const goMedal = id => go("#medal-main", "#medal-nav", id, "odc.medalstep");
+function setDot(id, state) {
+  const d = $("#dot-" + id); if (!d) return;
+  d.className = "ix" + (state ? " " + state : "");
+  d.textContent = {ok: "✓", bad: "✕", warn: "!"}[state] || d.dataset.mark;
+}
+
+$$("#tabs button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
+function showTab(t) {
+  $$("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
+  $("#tab-rank").style.display = t === "rank" ? "" : "none";
+  $("#tab-medal").style.display = t === "medal" ? "" : "none";
+  $("#tab-jobs").style.display = t === "jobs" ? "" : "none";
+  store("odc.tab", t);
+  if (t === "rank") refreshRank(); else if (t === "medal") refreshMedal(); else renderJobs();
+}
+
+// ---------------------------------------------------------------- 背景工作顯示
+const jobs = {};          // id -> info（含全部 lines）
+const latestByKey = {};   // key -> id
+const doneHooks = {};     // id -> callback
+const collapsed = {};     // id -> 使用者收起輸出
+
+function jobBoxHTML(j) {
+  const secs = Math.round(((j.ended || Date.now() / 1000) - j.started));
+  const tag = j.running ? `<span class="tag warn">執行中</span>` : j.stopped ? `<span class="tag">已停止</span>`
+    : j.rc === 0 ? `<span class="tag ok">完成</span>` : `<span class="tag bad">失敗（結束碼 ${j.rc}）</span>`;
+  const out = j.lines.slice(-400).join("\n") + (j.live ? "\n" + j.live : "");
+  return `<div class="job${collapsed[j.id] ? " collapsed" : ""}" data-id="${j.id}"><div class="job-head">${tag}<span class="title">${esc(j.title)}</span><span class="time">${secs} 秒</span>
+    <span class="sp"></span>${j.running ? `<button class="btn btn-sm btn-danger" data-stop="${j.id}">停止</button>` : ""}
+    <button class="btn btn-sm" data-copy="${j.id}">複製指令</button><button class="btn btn-sm" data-fold="${j.id}">${collapsed[j.id] ? "顯示輸出" : "收起輸出"}</button></div>
+    <div class="job-cmd mono">${esc(j.command)}</div><pre class="out">${esc(out) || "（還沒有輸出）"}</pre></div>`;
+}
+function renderJob(id) {
+  const j = jobs[id]; if (!j) return;
+  $$(`[data-job="${j.key}"]`).forEach(slot => {
+    if (latestByKey[j.key] !== id) return;
+    const pre = $("pre", slot); const atBottom = !pre || pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 30;
+    slot.innerHTML = jobBoxHTML(j);
+    const p2 = $("pre", slot); if (atBottom) p2.scrollTop = p2.scrollHeight;
+  });
+  updateRunning();
+}
+document.addEventListener("click", async e => {
+  const s = e.target.closest("[data-stop]"); if (s) { await api("/api/job/stop", {id: s.dataset.stop}); return; }
+  const f = e.target.closest("[data-fold]");
+  if (f) { collapsed[f.dataset.fold] = !collapsed[f.dataset.fold]; renderJob(f.dataset.fold); if ($("#tab-jobs").style.display !== "none") renderJobs(); return; }
+  const c = e.target.closest("[data-copy]");
+  if (c) { try { await navigator.clipboard.writeText(jobs[c.dataset.copy].command); toast("指令已複製", true); } catch (err) { toast("複製失敗，請手動選取指令"); } }
+});
+async function poll(id) {
+  const j = jobs[id];
+  try {
+    const r = await api(`/api/job?id=${id}&since=${j.lines.length}`);
+    j.lines.push(...r.job.lines); Object.assign(j, {...r.job, lines: j.lines});
+  } catch (e) { return; }
+  renderJob(id);
+  if (j.running) setTimeout(() => poll(id), 700);
+  else if (doneHooks[id]) { const f = doneHooks[id]; delete doneHooks[id]; f(j); }
+}
+async function runCmd(endpoint, body, onDone) {
+  const r = await api(endpoint, body);
+  const j = r.job; j.lines = [];
+  jobs[j.id] = j; latestByKey[j.key] = j.id;
+  if (onDone) doneHooks[j.id] = onDone;
+  renderJob(j.id); poll(j.id);
+  return j;
+}
+function updateRunning() {
+  const run = Object.values(jobs).filter(j => j.running);
+  const el = $("#running");
+  el.classList.toggle("on", run.length > 0);
+  el.textContent = run.length ? "執行中：" + run.map(j => j.title).join("、") : "";
+}
+function renderJobs() {
+  const list = Object.values(jobs).sort((a, b) => b.started - a.started);
+  $("#jobs-list").innerHTML = list.length ? list.map(jobBoxHTML).join("") : `<div class="card"><p class="empty">還沒有跑過任何指令。</p></div>`;
+}
+async function restoreJobs() {
+  const r = await api("/api/jobs");
+  for (const j of r.jobs.sort((a, b) => a.started - b.started)) {
+    j.lines = []; jobs[j.id] = j; latestByKey[j.key] = j.id; poll(j.id);
+  }
+}
+
+// ---------------------------------------------------------------- 時鐘
+const RANK_TIMES = [["10:45", "開始：步驟 1 抄題目"], ["10:57", "步驟 5 開跑求解"], ["11:08", "過了就不做步驟 9"],
+  ["11:15", "求解還沒完 → 出狀況怎麼辦"], ["11:20", "USB 上一定要有保底"], ["11:25", "停止改善，開始繳交"],
+  ["11:35", "確認上傳成功"], ["11:45", "排位賽結束"]];
+const MEDAL_TIMES = [["12:50", "公布四強"], ["13:00", "銅牌賽開始"], ["14:30", "金牌賽開始"], ["16:00", "金牌賽結束"]];
+function tickClock() {
+  const now = new Date();
+  $(".clock .now").textContent = now.toTimeString().slice(0, 8);
+  const list = $("#tab-medal").style.display === "none" ? RANK_TIMES : MEDAL_TIMES;
+  const next = list.map(([t, l]) => { const [h, m] = t.split(":"); const d = new Date(now); d.setHours(+h, +m, 0, 0); return [d, t, l]; }).find(([d]) => d > now);
+  if (next) { const left = Math.round((next[0] - now) / 1000); $(".clock .next").textContent = `${next[1]} ${next[2]} · 還有 ${Math.floor(left / 60)} 分 ${left % 60} 秒`; }
+  else $(".clock .next").textContent = "";
+  tickRoundTimer();
+}
+setInterval(tickClock, 1000);
+
+// ---------------------------------------------------------------- 排位賽
+let R = {config: {exists: false}, runs: []};
+const cfgName = () => store("odc.cfg") || "ranking";
+const SC = [["DRY_MASS_KG", "乾質量", "kg"], ["CD", "Cd", ""], ["CR", "Cr", ""], ["DRAG_AREA_M2", "阻力面積", "m²"], ["SRP_AREA_M2", "SRP 面積", "m²"]];
+const EL = ["SMA", "ECC", "INC", "RAAN", "AOP", "TA"];
+const ELU = {SMA: "SMA km", ECC: "ECC", INC: "INC °", RAAN: "RAAN °", AOP: "AOP °", TA: "TA °"};
+
+function gridHTML(prefix) {
+  let h = `<div></div>` + EL.map(e => `<div class="h">${ELU[e]}</div>`).join("");
+  for (const o of ["A", "B"]) h += `<div class="o">${o}</div>` + EL.map(e => `<input id="${prefix}-${o}-${e}" inputmode="decimal" aria-label="${o} ${e}">`).join("");
+  return h;
+}
+$("#r1-grid").innerHTML = gridHTML("g1");
+$("#r1-grid2").innerHTML = gridHTML("g2");
+$("#r1-sc").innerHTML = SC.map(([k, l, u]) => `<label class="field"><span>${l}${u ? ` <em>${u}</em>` : ""}</span><input id="sc-${k}" inputmode="decimal"></label>`).join("");
+$("#r1-verify-on").addEventListener("change", e => { $("#r1-grid2").style.display = e.target.checked ? "" : "none"; compareGrids(); });
+$("#r1-grid").addEventListener("input", compareGrids);
+$("#r1-grid2").addEventListener("input", compareGrids);
+function compareGrids() {
+  const on = $("#r1-verify-on").checked; let bad = 0, empty = 0;
+  for (const o of ["A", "B"]) for (const e of EL) {
+    const a = $(`#g1-${o}-${e}`), b = $(`#g2-${o}-${e}`);
+    const mis = on && b.value.trim() !== "" && Number(a.value) !== Number(b.value);
+    if (on && b.value.trim() === "") empty++;
+    if (mis) bad++;
+    a.classList.toggle("mismatch", mis); b.classList.toggle("mismatch", mis);
+  }
+  $("#r1-match").innerHTML = !on ? "" : bad ? `<div class="note bad">有 ${bad} 格兩個人抄的不一樣，回去看題目。</div>`
+    : empty ? `<div class="note warn">核對欄還有 ${empty} 格沒填。</div>` : `<div class="note ok">兩個人抄的十二個數字完全一致。</div>`;
+}
+
+async function refreshRank() {
+  const r = await api(`/api/ranking/overview?name=${encodeURIComponent(cfgName())}`);
+  R = r; const c = r.config;
+  $("#cfg-name").value = cfgName();
+  // 步驟狀態
+  setDot("r1", c.exists && !c.placeholder_orbit ? (c.warnings.length ? "warn" : "ok") : "");
+  setDot("r2", c.exists && c.rules && c.rules.T_MAX_SEC !== 40000 ? "ok" : "");
+  const scoreDone = c.exists && c.rules && !["k_t", "C_t", "k_v", "C_v"].some(k => c.placeholder_rules.includes(k));
+  setDot("r3", scoreDone ? "ok" : "");
+  const solves = r.runs.filter(x => x.kind === "solve"), rts = r.runs.filter(x => x.kind === "rt"), vs = r.runs.filter(x => x.kind === "verify");
+  const goodSolve = solves.filter(x => x.score !== undefined && x.disqualified === false);
+  setDot("r5", goodSolve.length ? "ok" : solves.some(s => s.status === "running") ? "run" : solves.length ? "bad" : "");
+  setDot("r6", rts.some(x => x.status === "accepted") && vs.some(v => v.passed) ? "ok" : rts.length ? "warn" : "");
+  // 已經開始求解就照執行結果往下指；佔位值另外用警告提醒（彩排用佔位題時才不會一直被指回步驟 1）
+  let next, why;
+  if (!c.exists) { next = "r1"; why = `還沒有設定檔 ${c.path}，到步驟 1 建立。`; }
+  else if (!solves.length && c.placeholder_orbit) { next = "r1"; why = "設定檔裡還是範本的佔位軌道，到步驟 1 抄題目。"; }
+  else if (!solves.length && c.rules.T_MAX_SEC === 40000) { next = "r2"; why = "T_MAX_SEC 還是範本的 40000，到步驟 2。"; }
+  else if (!solves.length && !scoreDone) { next = "r3"; why = "計分參數還是範本值，到步驟 3。"; }
+  else if (!solves.length) { next = "r4"; why = "設定都填好了。做步驟 4 體檢，然後步驟 5 開跑。"; }
+  else if (!goodSolve.length) { next = "r5"; why = "求解還沒成功（或還在跑），看步驟 5。"; }
+  else if (!rts.some(x => x.status === "accepted")) { next = "r6"; why = "有合法解了，到步驟 6 重瞄準。"; }
+  else if (!vs.some(v => v.passed)) { next = "r6"; why = "重瞄準過了，到步驟 6 做 GMAT 重驗。"; }
+  else { next = "r7"; why = "重驗也過了，到步驟 7 跑清單並存 USB。存完有空檔看步驟 9。"; }
+  const ph = c.exists ? [...(c.placeholder_orbit ? ["軌道根數"] : []), ...c.placeholder_rules] : [];
+  $("#r0-next").innerHTML = `<div class="note info row" style="margin:0 0 16px"><div><b>下一步</b>　${esc(why)}</div><button class="btn btn-primary" onclick="goRank('${next}')">前往</button></div>` +
+    (c.exists && c.warnings.length ? `<div class="note warn" style="margin:0 0 16px">${c.warnings.map(esc).join("<br>")}</div>` : "") +
+    (solves.length && ph.length ? `<div class="note warn" style="margin:0 0 16px">設定檔裡還是範本佔位值：${esc(ph.join("、"))}。彩排用佔位題沒關係；比賽當天這代表忘了換。</div>` : "");
+  $("#r0-gmat").innerHTML = r.gmat_ok ? "" : `<div class="note bad">找不到 GMAT：${esc(r.gmat)}。步驟 6 會失敗，先檢查路徑。</div>`;
+  const kind = {solve: "求解", rt: "重瞄準", verify: "GMAT 重驗"};
+  const state = x => x.kind === "verify" ? (x.passed ? `<span class="tag ok">通過</span>` : `<span class="tag">未通過／還沒完</span>`)
+    : x.kind === "rt" ? (x.status === "accepted" ? `<span class="tag ok">通過</span>` : `<span class="tag ${x.status ? "bad" : ""}">${esc(x.status || "還沒完")}</span>`)
+    : x.no_legal_route ? `<span class="tag bad">找不到合法路線</span>` : x.disqualified ? `<span class="tag bad">失格</span>`
+    : x.disqualified === false ? `<span class="tag ok">合法</span>` : `<span class="tag">${esc(x.status || "—")}</span>`;
+  $("#r0-runs").innerHTML = r.runs.length ? `<table class="t" style="margin-top:8px"><tr><th>目錄</th><th>種類</th><th>狀態</th><th>分數</th></tr>` +
+    r.runs.slice().reverse().map(x => `<tr><td class="mono">${esc(x.name)}</td><td>${kind[x.kind]}</td><td>${state(x)}</td>
+      <td style="font-variant-numeric:tabular-nums">${x.score !== undefined ? fmt(x.score, 4) : "—"}</td></tr>`).join("") + "</table>"
+    : `<p class="empty">還沒有任何執行結果。</p>`;
+  fillRankForms();
+}
+
+function fillRankForms() {
+  const c = R.config;
+  $("#r1-create").innerHTML = c.exists
+    ? `<div class="note ${c.placeholder_orbit ? "warn" : "ok"}" style="margin:0 0 16px">設定檔 <code>${esc(c.path)}</code>${c.placeholder_orbit ? "　目前還是範本的佔位軌道" : ""}</div>`
+    : `<div class="note warn row" style="margin:0 0 16px"><div>還沒有設定檔 <code>${esc(c.path)}</code></div><button class="btn btn-primary" id="r1-new">建立設定檔</button></div>`;
+  if (!c.exists) $("#r1-new").onclick = () => runCmd("/api/ranking/cmd", {action: "new-config", name: cfgName()}, () => refreshRank());
+  if (c.exists && !fillRankForms.loaded) {
+    fillRankForms.loaded = cfgName();
+    for (const o of ["A", "B"]) for (const e of EL) $(`#g1-${o}-${e}`).value = c["orbit_" + o]?.[e] ?? "";
+    $("#r1-epoch").value = c.epoch || ""; $("#r1-epochfmt").value = c.epoch_format || "";
+    for (const [k] of SC) $("#sc-" + k).value = c.spacecraft?.[k] ?? "";
+  }
+  const rules = c.rules || {};
+  const tmPh = rules.T_MAX_SEC === 40000;
+  $("#r2-cur").innerHTML = c.exists ? `<div class="note ${tmPh ? "warn" : "ok"}" style="margin:0 0 16px">設定檔目前 T_MAX_SEC = <b>${esc(rules.T_MAX_SEC)}</b> 秒${tmPh ? "　還是範本佔位值" : ""}</div>` : "";
+  const ph = (c.placeholder_rules || []).filter(k => k !== "T_MAX_SEC");
+  $("#r3-cur").innerHTML = c.exists ? `<div class="note ${ph.length ? "warn" : "ok"}" style="margin:0 0 16px">設定檔目前（工具單位）：k_t ${esc(rules.k_t)}、C_t ${esc(rules.C_t)}、k_v ${esc(rules.k_v)}、C_v ${esc(rules.C_v)}、C_r ${esc(rules.C_r)}${ph.length ? "<br>還是範本佔位值：" + esc(ph.join("、")) : ""}</div>` : "";
+  // 步驟 5 預設目錄
+  const runInput = $("#r5-run");
+  if (!runInput.dataset.touched) {
+    const prefix = cfgName() === "ranking" ? "rank" : cfgName().replace(/^ranking-/, "rank-");
+    let n = 1; const names = new Set(R.runs.map(x => x.name));
+    let cand = cfgName().endsWith("-fast") ? "rank-fast" : prefix + "-" + n;
+    while (names.has(cand)) cand = prefix + "-" + (++n);
+    runInput.value = cand;
+  }
+  // 步驟 6、7 下拉
+  const solves = R.runs.filter(x => x.kind === "solve" && x.score !== undefined).reverse();
+  setOptions("#r6-run", solves.map(x => [x.name, `${x.name}（${fmt(x.score, 4)}${x.disqualified ? "，失格" : ""}）`]));
+  const rts = R.runs.filter(x => x.kind === "rt").reverse();
+  const rtOpts = rts.map(x => [x.name, `${x.name}（${x.status || "未完成"}${x.score !== undefined ? "，" + fmt(x.score, 4) : ""}）`]);
+  setOptions("#r6-rtsel", rtOpts); setOptions("#r7-rt", rtOpts.filter((_, i) => rts[i].status));
+}
+function setOptions(sel, opts, noneLabel) {
+  const el = $(sel), cur = el.value;
+  el.innerHTML = (noneLabel !== undefined ? `<option value="">${esc(noneLabel)}</option>` : "") +
+    (opts.length || noneLabel !== undefined ? opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("") : `<option value="">（還沒有）</option>`);
+  if (opts.some(([v]) => v === cur)) el.value = cur;
+}
+
+$("#cfg-switch").onclick = () => {
+  const n = $("#cfg-name").value.trim(); if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(n)) return toast("名稱只能用英文、數字、. _ -");
+  store("odc.cfg", n); fillRankForms.loaded = null; delete $("#r5-run").dataset.touched; refreshRank(); toast("已切換到 " + n, true);
+};
+$("#r1-save").onclick = async () => {
+  const body = {name: cfgName(), orbit_A: {}, orbit_B: {}, epoch: $("#r1-epoch").value, epoch_format: $("#r1-epochfmt").value, spacecraft: {}};
+  for (const o of ["A", "B"]) for (const e of EL) {
+    const v = $(`#g1-${o}-${e}`).value.trim(); if (v === "") return toast(`${o} 的 ${e} 還沒填`);
+    body["orbit_" + o][e] = v;
+  }
+  for (const [k] of SC) body.spacecraft[k] = $("#sc-" + k).value;
+  if ($("#r1-verify-on").checked && $("#r1-match .bad")) return toast("核對欄還有不一樣的格子，先解決");
+  const r = await api("/api/ranking/config", body);
+  $("#r1-msg").innerHTML = `<div class="note ok">已存進 <code>${esc(r.config.path)}</code></div>` + (r.config.warnings.length ? `<div class="note warn">${r.config.warnings.map(esc).join("<br>")}</div>` : "") +
+    (!$("#r1-verify-on").checked ? `<div class="note warn">還沒做兩人核對：勾「打開核對欄」，讓隊友 A 再打一次。</div>` : "");
+  refreshRank();
+};
+$("#r2-write-sec").onclick = async () => { await api("/api/ranking/config", {name: cfgName(), t_max_sec: $("#r2-sec").value}); toast("T_MAX_SEC 已寫入", true); refreshRank(); };
+const tmaxBody = write => ({action: "tmax", key: "rank.tmax", name: cfgName(), mode: $("#r2-mode").value, boundary: $("#r2-b").value, write});
+$("#r2-try").onclick = () => runCmd("/api/ranking/cmd", tmaxBody(false));
+$("#r2-write").onclick = () => runCmd("/api/ranking/cmd", tmaxBody(true), () => refreshRank());
+const scoreBody = write => ({action: "scoring", key: "rank.scoring", name: cfgName(), write,
+  kt: $("#r3-kt").value, kt_unit: $("#r3-ktu").value, Ct: $("#r3-Ct").value, Ct_unit: $("#r3-Ctu").value,
+  kv: $("#r3-kv").value, kv_unit: $("#r3-kvu").value, Cv: $("#r3-Cv").value, Cv_unit: $("#r3-Cvu").value, Cr: $("#r3-Cr").value,
+  ref_dv: $("#r3-rdv").value, ref_dv_unit: $("#r3-rdvu").value, ref_t: $("#r3-rt").value});
+$("#r3-try").onclick = () => runCmd("/api/ranking/cmd", scoreBody(false));
+$("#r3-write").onclick = () => runCmd("/api/ranking/cmd", scoreBody(true), () => refreshRank());
+$("#r4-check").onclick = () => runCmd("/api/ranking/cmd", {action: "check", name: cfgName()});
+$("#r4-feas").onclick = () => runCmd("/api/ranking/cmd", {action: "feasibility", name: cfgName()});
+
+$("#r5-run").addEventListener("input", e => e.target.dataset.touched = "1");
+$("#r5-go").onclick = async () => {
+  const run = $("#r5-run").value.trim();
+  await runCmd("/api/ranking/cmd", {action: "solve", name: cfgName(), run}, () => { showSolveSummary(run); refreshRank(); });
+  solveRun = run; pollRunLog();
+};
+let solveRun = null;
+async function pollRunLog() {
+  if (!solveRun) return;
+  try {
+    const r = await api(`/api/ranking/run?run=${encodeURIComponent(solveRun)}`);
+    const pre = $("#r5-log"); pre.textContent = r.summary.log_tail.join("") || "（run.log 還沒出現）"; pre.scrollTop = pre.scrollHeight;
+  } catch (e) { /* 目錄還沒建 */ }
+  const id = latestByKey["rank.solve"];
+  if (id && jobs[id]?.running) setTimeout(pollRunLog, 2000);
+}
+async function showSolveSummary(run) {
+  const r = await api(`/api/ranking/run?run=${encodeURIComponent(run)}`); const s = r.summary;
+  const id = latestByKey["rank.solve"]; const rc = id ? jobs[id].rc : null;
+  $("#r5-log").textContent = s.log_tail.join("");
+  let h = "";
+  if (rc === 3 || s.no_legal_route) h += `<div class="note bad">結束碼 3：找不到合法路線。看「出狀況怎麼辦」。</div>`;
+  else if (rc !== null && rc !== 0 && !jobs[id].stopped) h += `<div class="note bad">求解失敗（結束碼 ${rc}），看下面的輸出。</div>`;
+  if (s.score !== undefined) {
+    h += `<div class="stats">${stat("分數", fmt(s.score, 4), true)}${stat("失格", s.disqualified ? "是" : "否")}${stat("棒數", s.num_burns)}
+      ${stat("總 Δv (m/s)", fmt(s.total_dv, 1))}${stat("T (s)", fmt(s.T_team, 0))}</div>`;
+    h += s.disqualified ? `<div class="note bad">失格：${esc((s.dq_reasons || []).join("；"))}。看「出狀況怎麼辦」。</div>`
+      : `<div class="note ok row"><div>合法解，接著做步驟 6 重瞄準。</div><button class="btn btn-primary" onclick="goRank('r6')">前往步驟 6</button></div>`;
+  }
+  $("#r5-sum").innerHTML = h;
+}
+
+$("#r6-rt").onclick = () => {
+  const run = $("#r6-run").value; if (!run) return toast("還沒有成功的求解");
+  runCmd("/api/ranking/cmd", {action: "retarget", name: cfgName(), run, burn: $("#r6-burn").value}, j => {
+    const ok = j.lines.some(l => l.includes("全攝動重瞄準通過"));
+    $("#r6-rtres").innerHTML = ok ? `<div class="note ok">全攝動重瞄準通過，接著做下面的 GMAT 重驗。</div>`
+      : `<div class="note bad">重瞄準沒通過。填一個棒號換一棒再試；還是不過就交步驟 5 的 output_submit.txt。</div>`;
+    refreshRank().then(() => { const m = j.command.match(/--run-dir outputs\/runs\/(\S+)/); if (m) $("#r6-rtsel").value = m[1]; });
+  });
+};
+$("#r6-verify").onclick = () => {
+  const rt = $("#r6-rtsel").value; if (!rt) return toast("先重瞄準");
+  runCmd("/api/ranking/cmd", {action: "verify", name: cfgName(), rt}, j => {
+    const ok = j.lines.some(l => l.includes("GMAT 獨立驗證通過"));
+    $("#r6-vres").innerHTML = ok ? `<div class="note ok row"><div>GMAT 獨立驗證通過。</div><button class="btn btn-primary" onclick="goRank('r7')">前往步驟 7</button></div>`
+      : `<div class="note bad">GMAT 重驗沒通過，看下面的輸出和「出狀況怎麼辦」。</div>`;
+    refreshRank().then(() => { $("#r7-rt").value = rt; });
+  });
+};
+
+let lastCheck = null;
+async function loadChecklist() {
+  const rt = $("#r7-rt").value; if (!rt) { $("#r7-list").innerHTML = `<p class="empty">還沒有重瞄準結果。</p>`; return; }
+  const r = await api(`/api/ranking/checklist?rt=${encodeURIComponent(rt)}&name=${encodeURIComponent(cfgName())}`);
+  const c = lastCheck = r.checklist;
+  $("#r7-list").innerHTML = `<div class="stats">${stat("官方分數估計", fmt(c.score, 4), true)}</div>` +
+    `<div class="checks">${c.items.map(i => checkRow(i.ok ? "ok" : i.blocking ? "bad" : "warn", i.label, i.detail)).join("")}</div>` +
+    (c.all_ok ? "" : `<div class="note bad">有沒通過的項目：這份不能交，看「出狀況怎麼辦」。</div>`);
+  $("#r7-tag").value = rt.replace(/-rt\d*$/, "").replace(/-/g, "");
+  setDot("r7", c.all_ok ? "ok" : "bad");
+}
+$("#r7-load").onclick = loadChecklist;
+$("#r7-rt").addEventListener("change", loadChecklist);
+async function loadVolumes() {
+  const r = await api("/api/volumes");
+  setOptions("#r7-vol", [...r.volumes.map(v => [v, "/Volumes/" + v]), ["__local__", "沒有隨身碟：先存在本機 outputs/ODC_Final"]]);
+}
+$("#r7-volref").onclick = loadVolumes;
+$("#r7-save").onclick = async () => {
+  if (!lastCheck) return toast("先跑清單");
+  if (!lastCheck.all_ok) return toast("清單沒有全部通過，不能存成繳交件");
+  if (!$("#r7-human").checked) return toast("先勾「已逐字元核對官方數字」");
+  const r = await api("/api/ranking/usb", {rt: lastCheck.rt, volume: $("#r7-vol").value, score: lastCheck.score, tag: $("#r7-tag").value, verify_dirs: lastCheck.verify_dirs});
+  $("#r7-saved").innerHTML = `<div class="note ok"><b>已存</b><div class="mono" style="margin-top:4px">${r.files.map(esc).join("<br>")}</div>
+    <div style="margin-top:8px"><button class="btn btn-sm" id="r7-reveal" style="margin:0">在 Finder 顯示</button></div></div>`;
+  $("#r7-reveal").onclick = () => api("/api/reveal", {path: r.files[0]});
+};
+async function variant(kind) {
+  const r = await api("/api/ranking/variant", {name: cfgName(), kind});
+  store("odc.cfg", r.name); fillRankForms.loaded = null; delete $("#r5-run").dataset.touched;
+  await refreshRank();
+  $("#r9-msg").innerHTML = `<div class="note ok">已建立並切換到 <code>configs/local/${esc(r.name)}.json</code>。到步驟 5 開跑（目錄 ${esc($("#r5-run").value)}），跑完照 6、7 做。要切回原本的設定檔，到「總覽」改名稱。</div>`;
+}
+$("#r9-s1").onclick = () => variant("s1");
+$("#r9-fast").onclick = () => variant("fast");
+
+// ---------------------------------------------------------------- 金／銅牌賽
+let M = {};
+const XYZ = ["X", "Y", "Z", "VX", "VY", "VZ"];
+$("#m2-manual").innerHTML = ["pursuer", "evader"].map(s => `<div class="sub" style="margin-top:8px">${s === "pursuer" ? "追方" : "逃方"}</div><div class="fields">` +
+  XYZ.map(k => `<label class="field"><span>${k} <em>${k.startsWith("V") ? "km/s" : "km"}</em></span><input id="mm-${s}-${k}" inputmode="decimal"></label>`).join("") + "</div>").join("");
+$("#m5-opp").innerHTML = `<div class="lbl">對手實際 Δv</div>` + ["X", "Y", "Z"].map(k => `<label class="field"><span>${k} <em>m/s</em></span><input id="opp-${k}" inputmode="decimal"></label>`).join("");
+$("#m5-our").innerHTML = `<div class="lbl">我方實際 Δv</div>` + ["X", "Y", "Z"].map(k => `<label class="field"><span>${k} <em>m/s</em></span><input id="our-${k}" inputmode="decimal"></label>`).join("");
+
+async function refreshMedal() {
+  const r = await api("/api/medal/overview"); M = r;
+  $("#m0-env").innerHTML = r.drl_ok ? "" : `<div class="note bad" style="margin:0 0 16px">找不到 ${esc(r.drl)}/.venv/bin/python，金牌賽工具跑不起來。</div>`;
+  setDot("m1", r.rules ? "ok" : "");
+  setDot("m4", r.session ? "ok" : "");
+  if (r.rules) {
+    const x = r.rules;
+    $("#m1-cur").innerHTML = `<div class="note ok" style="margin:0 0 16px">已存規則檔：ΔV_lim 追 ${x.max_dv_pursuer_mps}／逃 ${x.max_dv_evader_mps} m/s、R_cap ${x.capture_radius_km} km、T_round ${x.window_sec} s、安全空域 a ∈ [${fmt(x.safe_sma_km?.[0], 3)}, ${fmt(x.safe_sma_km?.[1], 3)}] km、${x.rounds} 回合</div>`;
+    if (!refreshMedal.loaded) { refreshMedal.loaded = true;
+      $("#m1-dvp").value = x.max_dv_pursuer_mps; $("#m1-dve").value = x.max_dv_evader_mps; $("#m1-rcap").value = x.capture_radius_km;
+      $("#m1-tr").value = x.window_sec; $("#m1-lo").value = x.safe_sma_km?.[0] ?? ""; $("#m1-hi").value = x.safe_sma_km?.[1] ?? ""; }
+  } else $("#m1-cur").innerHTML = `<div class="note warn" style="margin:0 0 16px">還沒有規則檔。</div>`;
+  $("#m2-files").innerHTML = r.files.length ? r.files.slice().reverse().map(f => `<div class="f"><span>${esc(f.name)}</span><span class="sz">${(f.size / 1024).toFixed(1)} KB</span>
+    <button class="btn btn-sm" data-view="${esc(f.name)}">看內容</button></div>`).join("") : `<div class="f"><span class="empty" style="padding:0">day/ 還是空的</span></div>`;
+  const opts = r.files.filter(f => !/^(announced|session|role_select)(\.bak-\d+)?\.json$/.test(f.name) && !/^session\.bak/.test(f.name)).map(f => [f.name, f.name]).reverse();
+  $$("select.dayfile").forEach(el => setOptions("#" + el.id, opts, el.dataset.none));
+  // 角色選擇器只吃 JSON：有解析好的 initial_state.json 就預設選它
+  if (opts.some(([v]) => v === "initial_state.json")) for (const id of ["#m3-sel", "#m4-sel"]) if (!$(id).dataset.touched) $(id).value = "initial_state.json";
+  // 回合
+  const s = r.session;
+  if (s) {
+    const roleName = s.role === "pursuer" ? "追方" : "躲方";
+    const over = s.round > s.rounds_total;
+    $("#m5-title").textContent = over ? `${s.rounds_total} 回合已結束 · 我方${roleName}` : `第 ${s.round} / ${s.rounds_total} 回合 · 我方${roleName}`;
+    $("#m5-rounds").innerHTML = `<table class="t"><tr><th>回合</th><th>我方提交</th><th>重驗</th><th>公告</th><th>對手 Δv (m/s)</th><th>一致性</th></tr>` +
+      r.rounds.map(x => `<tr><td>${x.round}</td><td class="mono">${esc(x.line || "—")}</td><td>${x.passed === true ? stIcon("ok") : x.passed === false ? stIcon("bad") : "—"}</td>
+        <td>${x.announced ? `<span class="tag ok">已記錄</span>` : "—"}</td><td class="mono">${x.opp_dv ? x.opp_dv.map(v => fmt(v, 2)).join(", ") : "—"}</td>
+        <td>${x.consistency ? `<span class="tag ${x.consistency.includes("通過") ? "ok" : "bad"}">${esc(x.consistency)}</span>` : "—"}</td></tr>`).join("") + "</table>";
+    setDot("m5", over ? "ok" : "");
+    const cur = r.rounds.find(x => x.round === s.round);
+    if (cur?.our_dv && $("#our-X").dataset.round !== String(s.round)) {
+      ["X", "Y", "Z"].forEach((k, i) => $("#our-" + k).value = cur.our_dv[i]);
+      $("#our-X").dataset.round = String(s.round);
+    }
+  } else {
+    $("#m5-title").textContent = "每回合";
+    $("#m5-rounds").innerHTML = `<p class="empty">還沒有 session，先到步驟 4 建立。</p>`;
+  }
+  if (r.role_select) setDot("m3", "ok");
+}
+document.addEventListener("click", async e => {
+  const v = e.target.closest("[data-view]"); if (!v) return; e.preventDefault();
+  const r = await api(`/api/medal/file?name=${encodeURIComponent(v.dataset.view)}`);
+  const w = window.open("", "_blank"); if (w) { w.document.title = r.name; w.document.body.innerHTML = `<pre style="white-space:pre-wrap;font:13px Menlo,monospace">${esc(r.text)}</pre>`; }
+});
+
+async function upload(files) {
+  let last = null;
+  for (const f of files) {
+    const res = await (await fetch(`/api/medal/upload?name=${encodeURIComponent(f.name)}`, {method: "POST", headers: {"X-ODC-Upload": "1"}, body: f})).json();
+    if (!res.ok) { toast(res.error); return null; }
+    last = res.name; toast(`已放進 day/${res.name}`, true);
+  }
+  await refreshMedal();
+  return last;
+}
+function wireDrop(dropSel, inputSel, after) {
+  const d = $(dropSel);
+  d.addEventListener("dragover", e => { e.preventDefault(); d.classList.add("over"); });
+  d.addEventListener("dragleave", () => d.classList.remove("over"));
+  d.addEventListener("drop", async e => { e.preventDefault(); d.classList.remove("over"); const n = await upload(e.dataTransfer.files); if (n && after) after(n); });
+  $(inputSel).addEventListener("change", async e => { const n = await upload(e.target.files); e.target.value = ""; if (n && after) after(n); });
+}
+wireDrop("#m2-drop", "#m2-file", n => { $("#m2-sel").value = n; });
+wireDrop("#m5-drop", "#m5-file", n => { $("#m5-sel").value = n; });
+
+$("#m1-save").onclick = async () => {
+  const r = await api("/api/medal/rules", {dv_p: $("#m1-dvp").value, dv_e: $("#m1-dve").value || $("#m1-dvp").value, rcap: $("#m1-rcap").value,
+    tround: $("#m1-tr").value, lo: $("#m1-lo").value, hi: $("#m1-hi").value, safe_unit: $("#m1-unit").value});
+  $("#m1-msg").innerHTML = r.warnings.length ? `<div class="note warn">${r.warnings.map(esc).join("<br>")}</div>` : "";
+  toast("規則檔已存", true);
+  refreshMedal.loaded = false; $("#m1-unit").value = "sma"; refreshMedal();
+};
+const nameBody = p => ({names: $(`#${p}-names`).value, order: $(`#${p}-order`).value});
+$("#m2-parse").onclick = () => runCmd("/api/medal/cmd", {action: "parse", file: $("#m2-sel").value, ...nameBody("m2")}, j => {
+  refreshMedal();
+  if (j.rc === 0) toast("解析成功，已存 initial_state.json", true);
+});
+["#m3-sel", "#m4-sel"].forEach(id => $(id).addEventListener("change", e => e.target.dataset.touched = "1"));
+$("#m2-msave").onclick = async () => {
+  const body = {out: $("#m2-mname").value, pursuer: {}, evader: {}};
+  for (const s of ["pursuer", "evader"]) for (const k of XYZ) body[s][k] = $(`#mm-${s}-${k}`).value;
+  const r = await api("/api/medal/manual", body); toast(`已存 day/${r.name}`, true); await refreshMedal(); $("#m2-sel").value = r.name;
+};
+$("#m2-conv").onclick = () => runCmd("/api/medal/cmd", {action: "convert", file: $("#m2-csel").value, out: $("#m2-cout").value}, () => refreshMedal());
+$("#m3-go").onclick = () => runCmd("/api/medal/cmd", {action: "role_select", file: $("#m3-sel").value, fast: $("#m3-fast").checked}, () => refreshMedal());
+$("#m4-go").onclick = () => {
+  if (!$("#m4-role").value) return toast("先選我方角色");
+  runCmd("/api/medal/cmd", {action: "new", role: $("#m4-role").value, file: $("#m4-sel").value, overwrite: $("#m4-over").checked, ...nameBody("m4")},
+    j => { refreshMedal(); if (j.rc === 0) toast("session 建好了，到步驟 5", true); });
+};
+$("#m5-go").onclick = () => {
+  $("#m5-advice").innerHTML = "";
+  runCmd("/api/medal/cmd", {action: "advise", file: $("#m5-sel").value, fast: $("#m5-fast").checked}, async j => {
+    const r = await api(`/api/medal/advise?id=${j.id}`); const a = r.advise;
+    await refreshMedal();
+    if (j.rc !== 0 || !a.submit) { $("#m5-advice").innerHTML = `<div class="note bad">取得建議失敗，看下面的輸出。時間不夠就勾快速版再跑。</div>`; return; }
+    const s = M.session || {};
+    const lastRound = s.round === s.rounds_total || (a.head || "").includes(`第 ${s.rounds_total}/`);
+    const yes = (text, word) => text ? (text.includes(word) && !text.includes("未" + word) ? "ok" : "bad") : "bad";
+    let rows = checkRow(yes(a.recheck, "通過"), "重驗：通過", a.recheck);
+    if (s.role === "evader") {
+      rows += checkRow(yes(a.cert, "成立"), "安全證書：成立", a.cert);
+      if (lastRound && a.a_after !== undefined && s.safe_sma_km) {
+        const [lo, hi] = s.safe_sma_km;
+        rows += checkRow(a.a_after >= lo && a.a_after <= hi ? "ok" : "bad", `最後一回合：推完 a 在安全空域 [${fmt(lo, 3)}, ${fmt(hi, 3)}]`, a.after);
+      }
+    } else rows += checkRow("na", "追方：照交", a.after);
+    rows += checkRow(a.consistency ? (a.consistency.includes("通過") ? "ok" : "bad") : "na", "一致性檢查：通過",
+      a.consistency || ((a.head || "").startsWith("第 1/") ? "第 1 回合沒有這項" : "這回合沒給狀態檔，沒有核對；主辦有給就選它再取得一次建議"));
+    let h = `<div class="sub" style="margin-bottom:0">手寫這一行交出去（照抄，含正負號）</div><div class="submit-line">${esc(a.submit.replace(/^提交：/, ""))}</div>`;
+    if (a.handcheck) h += `<p class="hint" style="margin-top:8px">${esc(a.handcheck)}</p>`;
+    h += `<div class="checks">${rows}</div>`;
+    if (a.recheck && a.recheck.includes("未通過")) h += `<div class="note bad">重驗沒通過：交工具給的這一行（上面那行就是）。</div>`;
+    if (a.consistency && a.consistency.includes("疑似錯誤")) h += `<div class="note bad">一致性檢查疑似錯誤：核對單位、角色有沒有對調、座標系、時間；仍以官方狀態為準。</div>`;
+    $("#m5-advice").innerHTML = h;
+    const m = a.submit.match(/,\s*\d+\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)/);
+    if (m) { ["X", "Y", "Z"].forEach((k, i) => $("#our-" + k).value = m[i + 1]); }
+  });
+};
+$("#m5-ann").onclick = () => {
+  const opp = ["X", "Y", "Z"].map(k => $("#opp-" + k).value.trim()), our = ["X", "Y", "Z"].map(k => $("#our-" + k).value.trim());
+  if (opp.some(v => v === "")) return toast("對手 Δv 三個數都要填（沒推就填 0）");
+  runCmd("/api/medal/cmd", {action: "announce", opp, our, file: $("#m5-nsel").value}, j => {
+    refreshMedal();
+    if (j.rc === 0) { ["X", "Y", "Z"].forEach(k => $("#opp-" + k).value = ""); $("#m5-advice").innerHTML = ""; resetRoundTimer(); toast("已記錄，進下一回合", true); }
+  });
+};
+$("#m5-show").onclick = () => runCmd("/api/medal/cmd", {action: "show"});
+
+// 每回合 10 分鐘計時
+let roundStart = Number(store("odc.roundStart")) || 0;
+function tickRoundTimer() {
+  const el = $("#m5-timer"); if (!el) return;
+  if (!roundStart) { el.textContent = "10:00"; el.style.color = ""; $$("#m5-phases div").forEach(d => d.classList.remove("on")); return; }
+  const t = (Date.now() - roundStart) / 1000, left = 600 - t;
+  const a = Math.abs(Math.round(left)); el.textContent = (left < 0 ? "-" : "") + `${Math.floor(a / 60)}:${String(a % 60).padStart(2, "0")}`;
+  el.style.color = left < 60 ? "var(--bad)" : left < 240 ? "var(--warn)" : "";
+  const ph = t < 120 ? 0 : t < 360 ? 1 : t < 480 ? 2 : t < 540 ? 3 : 4;
+  $$("#m5-phases div").forEach((d, i) => d.classList.toggle("on", i === ph));
+}
+function resetRoundTimer() { roundStart = 0; store("odc.roundStart", "0"); tickRoundTimer(); }
+$("#m5-tstart").onclick = () => { roundStart = Date.now(); store("odc.roundStart", String(roundStart)); tickRoundTimer(); };
+$("#m5-treset").onclick = resetRoundTimer;
+
+// ---------------------------------------------------------------- 顯示步驟時要做的事
+function onShow(id) {
+  if (id === "r5") { const id2 = latestByKey["rank.solve"]; if (id2 && !jobs[id2].running) { const m = jobs[id2].command.match(/--run-dir outputs\/runs\/(\S+)/); if (m) showSolveSummary(m[1]); } }
+  if (id === "r7") { loadVolumes(); if (R.config.exists) refreshRank().then(loadChecklist); }
+  if (id && id.startsWith("m")) refreshMedal();
+  if (id && id.startsWith("r") && id !== "r7") refreshRank();
+}
+
+// ---------------------------------------------------------------- 開始
+(async () => {
+  buildNav("#rank-nav", "#rank-main", RANK_STEPS, "odc.rankstep");
+  buildNav("#medal-nav", "#medal-main", MEDAL_STEPS, "odc.medalstep");
+  await restoreJobs().catch(() => {});
+  showTab(store("odc.tab") || "rank");
+  tickClock();
+  const sid = latestByKey["rank.solve"];
+  if (sid && jobs[sid].running) { const m = jobs[sid].command.match(/--run-dir outputs\/runs\/(\S+)/); if (m) { solveRun = m[1]; pollRunLog(); } }
+})();
+</script>
+</body>
+</html>

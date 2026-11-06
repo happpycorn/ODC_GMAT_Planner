@@ -25,6 +25,9 @@
 
 兩場的指令只在各自的資料夾裡跑。開兩個終端機視窗，分別命名「排位賽」和「金牌賽」，**不要在同一個視窗裡 `cd` 來回切換**。
 
+**GUI**：雙擊 `ODC_Program/gui/start.command` 開決賽控制台（[說明](../../gui/README.md)），兩場都可以在裡面照步驟做，資料夾 GUI 會自己切換。
+它跑的就是手冊上的指令，每個輸出框上方都印著完整指令；GUI 出問題就改照手冊在終端機跑。
+
 ## 開賽前確認
 
 - 前一晚照 [PRE_CONTEST](../ranking/PRE_CONTEST.md) 與 [PRE_CONTEST_FINAL](../../../ODC_GMAT_DRL/PRE_CONTEST_FINAL.md) 做完，最後一項是清場。
