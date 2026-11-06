@@ -1,11 +1,11 @@
 # 決賽控制台（GUI）
 
 照手冊一步一步做的本機網頁。按鈕背後跑的就是 [CONTEST_DAY](../docs/ranking/CONTEST_DAY.md) 和
-[CONTEST_DAY_FINAL](../../ODC_GMAT_DRL/CONTEST_DAY_FINAL.md) 上的同一條指令，不改任何求解程式，也不需要網路。
+[CONTEST_DAY_FINAL](../medal/CONTEST_DAY_FINAL.md) 上的同一條指令，不改任何求解程式，也不需要網路。
 
 ## 開啟
 
-在 Finder 雙擊 `gui/start.command`。它會開一個終端機視窗，並在瀏覽器打開 <http://127.0.0.1:8765>。
+Mac 在 Finder 雙擊 `gui/start.command`；Windows 雙擊 `gui\start.bat`。它會開一個終端機視窗，並在瀏覽器打開 <http://127.0.0.1:8765>。
 GUI 用完之前**不要關那個終端機視窗**。
 
 也可以自己在專案根目錄跑：
@@ -37,7 +37,7 @@ uv run python gui/app.py
 
 ### 金／銅牌賽
 
-主辦給的狀態檔直接拖進頁面，會複製到 `ODC_GMAT_DRL/day/`。
+主辦給的狀態檔直接拖進頁面，會複製到 `medal/day/`。
 每回合按「取得建議」後，畫面會用大字顯示要手寫的提交行，並把三項檢查（重驗、安全證書、一致性）標成 ✅ 或 ❌。
 「記錄公告」會自動帶入我方提交值，再把對手的實際 Δv 填進去就好。
 

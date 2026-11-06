@@ -3,8 +3,8 @@
 **錄影：** Fu-Yuen Hsiao「2026 衛星軌道設計競賽 GMAT 教育訓練課程錄影 (4)」（https://www.youtube.com/watch?v=DAfod6-xQEI ）的
 球形地球、不同步出發、高度 < 0 算穿越、經緯高初始條件，判斷是講金／銅牌賽的二體情境（排位賽是 EGM96 20×20，不是球形地球），列在第一節最後三列。
 
-**規則原文：** `ODC_Program/rules/四強賽規則_20261029.pdf`（2026/10/29 初版，11-01 下載）。條文摘要在
-`ODC_Program/docs/final/FINAL_STRATEGY.md`「官方資訊」一節，這裡只寫對工具的影響。
+**規則原文：** 根目錄的 `rules/四強賽規則_20261029.pdf`（2026/10/29 初版，11-01 下載）。條文摘要在
+根目錄的 `docs/final/FINAL_STRATEGY.md`「官方資訊」一節，這裡只寫對工具的影響。
 
 ## 一、規則跟目前引擎的差異
 
@@ -46,7 +46,7 @@
 
 ## 三、開發計畫
 
-寫程式交給 Codex，Claude 定規格和驗收。排位賽的 P3 盲測與 P4 彩排（見 `ODC_Program/docs/final/FINAL_STRATEGY.md`）同時在進行，
+寫程式交給 Codex，Claude 定規格和驗收。排位賽的 P3 盲測與 P4 彩排（見根目錄的 `docs/final/FINAL_STRATEGY.md`）同時在進行，
 這份時程跟它們錯開。
 
 | 日期 | 工作 | 完成的樣子 |

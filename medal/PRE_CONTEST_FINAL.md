@@ -14,7 +14,7 @@
 - [ ] 比賽前先跑一次 `final advise` 暖機（numba 編譯）
 - [ ] 插電／不插電各跑一次 role_select 看耗電
 - [ ] 關自動睡眠、螢幕自動鎖
-- [ ] 給主辦的提問（`ODC_Program/docs/ranking/QUESTIONS_FOR_ORGANIZER.md` 第 4、5、7 題）有回覆就照答案改 `configs/final_format.json`；沒回覆的抄在紙上，開賽時問
+- [ ] 給主辦的提問（[QUESTIONS_FOR_ORGANIZER](../docs/ranking/QUESTIONS_FOR_ORGANIZER.md) 第 4、5、7 題）有回覆就照答案改 `configs/final_format.json`；沒回覆的抄在紙上，開賽時問
 - [ ] 印出手冊第二、三、七節，帶紙筆
 - [ ] 備機也做一次
 - [ ] **清場**（彩排完才做）：彩排的 `day_rehearsal_*` 和 `runs/` 整批搬去封存，當天的 `day/` 才不會混到舊檔：
@@ -24,4 +24,4 @@
   find runs -mindepth 1 -maxdepth 1 -exec mv {} "$A/" \;
   find . -maxdepth 1 -name 'day*'; git status --short
   ```
-  最後一行什麼都沒印才算完成。全天流程見 `ODC_Program/docs/final/DAY_OVERVIEW.md`。
+  最後一行什麼都沒印才算完成。全天流程見 [DAY_OVERVIEW](../docs/final/DAY_OVERVIEW.md)。

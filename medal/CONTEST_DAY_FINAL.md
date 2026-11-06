@@ -1,6 +1,6 @@
 # 金／銅牌賽當天作戰手冊（2026-11-09 @ 大臺南會展中心）
 
-> **比賽中禁止網路與生成式 AI**，隊員照這份自己做完。指令都在 `~/Documents/Program/ODC_GMAT_DRL` 執行，一律用
+> **比賽中禁止網路與生成式 AI**，隊員照這份自己做完。指令都在 `~/Documents/Program/ODC_Program/medal` 執行，一律用
 > `.venv/bin/python`。`<...>` 換成實際檔名。venv 壞了：有網路時跑 `uv sync --python 3.12`。
 
 ## 一、規則重點

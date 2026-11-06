@@ -1,11 +1,12 @@
-# ODC_GMAT_DRL —— 軌道設計競賽「決賽」追逃戰
+# medal/（原 ODC_GMAT_DRL）—— 軌道設計競賽「決賽」追逃戰
 
 第一屆軌道設計競賽（TASA / 淡江）**決賽（四強賽）** 的物理、解析/推演策略、DRL 訓練與當天作戰工具。初賽 9/5 已晉級（57 隊取前 8）；決賽 **2026-11-09 @ 大臺南會展中心**。
 
 - **怎麼用** → 這份
 - **問題本質、理論、為什麼這樣做、實測教訓** → [METHODOLOGY.md](METHODOLOGY.md)
 - **每個實驗量到什麼（E1–E12）** → [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)
-- **全天總覽（排位賽＋金／銅牌賽）** → `ODC_Program/docs/final/DAY_OVERVIEW.md`
+- **全天總覽（排位賽＋金／銅牌賽）** → [docs/final/DAY_OVERVIEW.md](../docs/final/DAY_OVERVIEW.md)
+- **新電腦安裝（兩個工具＋GUI 一次裝好）** → [docs/SETUP.md](../docs/SETUP.md)
 - **當天流程** → [CONTEST_DAY_FINAL.md](CONTEST_DAY_FINAL.md)；賽前檢查 → [PRE_CONTEST_FINAL.md](PRE_CONTEST_FINAL.md)
 - **做到哪、接下來做什麼** → [ROADMAP.md](ROADMAP.md)（進度同步在 Linear 專案 `ODC_GMAT_DRL`）
 
@@ -22,6 +23,10 @@
 ---
 
 ## 安裝
+
+2026-11-06 起這個工具是 ODC_Program 的子資料夾 `medal/`（git subtree，保留原歷史），但仍是**獨立的 uv 專案**：
+自己的 `pyproject.toml`、`uv.lock`、`.venv`，套件版本跟根目錄的排位賽工具不同（numpy 2.5 對 1.26）。
+新電腦用根目錄的 `setup.sh` 一次裝好；只裝這邊就在 `medal/` 裡：
 
 ```bash
 pip install uv

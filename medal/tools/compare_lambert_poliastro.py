@@ -4,7 +4,7 @@ poliastro 裝不進本 repo 的 venv，所以分兩段跑：
     # 1) 本 repo：產生隨機案例 + 我們的解
     uv run python tools/compare_lambert_poliastro.py gen /tmp/lam_cases.npz
     # 2) Planner 的 venv（有 poliastro 0.17）：讀案例、用 poliastro 解、比對
-    cd ~/ODC_GMAT_Planner && uv run python ~/ODC_GMAT_DRL/tools/compare_lambert_poliastro.py cmp /tmp/lam_cases.npz
+    cd <ODC_Program 根目錄> && uv run python medal/tools/compare_lambert_poliastro.py cmp /tmp/lam_cases.npz
 """
 import sys
 
