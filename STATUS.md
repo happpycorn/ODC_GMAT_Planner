@@ -1,9 +1,40 @@
 # 專案狀態
 
-最後更新：2026-11-04
+最後更新：2026-11-06
 
 TASA／淡江大學「第一屆軌道設計競賽」的太空船攔截任務規劃工具；初賽第二名。下一場是 **2026-11-09 決賽的排位賽（10:45–11:45，60 分鐘）**，
 目標前二進金牌賽（[策略](docs/final/FINAL_STRATEGY.md)）。全天流程看 [DAY_OVERVIEW](docs/final/DAY_OVERVIEW.md)，排位賽當天照 [CONTEST_DAY](docs/ranking/CONTEST_DAY.md) 做，賽前照 [PRE_CONTEST](docs/ranking/PRE_CONTEST.md)。
+
+## 11-06 合併成單一 repo（分支 `monorepo`，還沒合回 Master）
+
+**比賽退路仍是 `Master`（52723c4）＋舊的 `~/Documents/Program/ODC_GMAT_DRL`**；`monorepo` 分支沒 push、沒合併，舊 repo 沒動。
+兩個 repo 都打了本機 tag `pre-monorepo-20261106`（沒 push）。
+
+做了什麼：
+- ODC_GMAT_DRL（main 6fe29bc）用 `git subtree add` 併進 `medal/`，保留歷史；仍是**獨立的 uv 專案**（自己的 `pyproject.toml`、`uv.lock`、`.venv`），不是 uv workspace。
+  版本基準在 [ENV_BASELINE_20261106](docs/final/ENV_BASELINE_20261106.md)；合併後、以及 /tmp 新 clone 跑 `setup.sh` 後，兩邊 `uv pip freeze` 都跟基準逐行相同。
+- GUI：金牌賽目錄改成 `ROOT/medal`（`ODC_DRL_DIR` 仍可覆寫）；GMAT 路徑改由 [gui/gmat_path.py](gui/gmat_path.py) 找
+  （`configs/local/config.json` 的 `local.gmat_console_path` → `GMAT_CONSOLE` → 常見位置）；停止工作、隨身碟清單、顯示檔案加了 Windows／Linux 分支。
+- 一鍵安裝 [setup.sh](setup.sh)（Mac／Linux）、[setup.ps1](setup.ps1)（Windows）、`gui/start.bat`；新電腦步驟在 [SETUP](docs/SETUP.md)。
+- 手冊：DAY_OVERVIEW、gui/README、medal 的 CONTEST_DAY_FINAL／PRE_CONTEST_FINAL／README、QUESTIONS_FOR_ORGANIZER、FINAL_STRATEGY 改成 `medal/` 路徑；USB 備份改成一個 bundle。
+- 求解程式、參數一行都沒改（`odc/`、`medal/` 的程式碼只動了一個 docstring）。
+
+驗收（Mac，A/B 前 pin `OMP/OPENBLAS/MKL_NUM_THREADS=1`）：
+- 排位賽：`odc.py test --quick -q` 24/24；pytest 89 passed、1 skipped（`test_split_stm.py` 直接執行也通過）。
+- 佔位題 CLI：求解 **86.7847**（4 棒、639.35 m/s、T 19,972.99 s）、重瞄準 **86.7807** accepted、verify 通過，跟已知答案完全相同。求解 5 分 08 秒，比 11-03 的 136–158 s 慢，推測是 pin 了 BLAS 執行緒，沒有另外驗證。
+- 金牌賽：pytest 318 passed、17 skipped、1 failed（已知的 `test_rule_map::test_rule_ranges_sample_unchanged` 浮點假失敗）；`final_rehearsal --role evader --opponent capture_pursuer --fast` 6 回合、GMAT 結局 escape，advise 最長 3.3 s。
+- GUI（`ODC_DAY_DIR` 指到暫存）：排位賽從建設定檔點到步驟 7（求解 86.7847、重瞄準 86.7807、清單全過、存檔到本機 `outputs/ODC_Final`）；
+  金牌賽填規則→放狀態檔→解析→角色選擇器 `--fast`（34.7 s，建議躲方）→建 session→6 回合 advise／announce，每回合提交行跟 CLI 彩排逐字相同；停止按鈕實測 2 秒內停下、沒留子行程。
+- /tmp 新 clone `monorepo` 跑 `./setup.sh --yes`：7 項全 ✓，4 分 54 秒（uv 快取是熱的；真正的新電腦要多下載約 2 GB）。
+
+沒做或沒驗到：
+- **Windows 完全沒實機跑過**：`setup.ps1`、`start.bat` 沒執行過（Mac 上沒有 PowerShell）；GUI 的 Windows 分支只用假環境測過 venv 路徑、Ctrl+Break 停止、可移除磁碟、`explorer /select`。Linux 隨身碟與 `xdg-open` 也只用假環境測。
+- `setup.sh` 的「找不到 GMAT 就問一次」互動分支沒實際輸入過（測了 `--yes` 與不存在的 `--gmat`）。
+- 隨身碟存檔只測了「存在本機」，沒有寫進真的隨身碟；「打開所在資料夾」沒按（Mac 分支跟原本一樣是 `open -R`）。
+- `odc/config/defaults.py` 的 GMAT 最後備援值仍是這台 Mac 的路徑（凍結期不動程式）；別台電腦靠 setup 寫進 `config.json`、`new-config --gmat-console` 解決。
+- 舊的 `docs/research`、`medal/docs/notes`、`medal/reports` 等歷史紀錄裡的舊路徑沒改。
+- `configs/local/test_1.json` 和 `outputs/runs/test-1*`（11-06 19:44，比這次合併早）不是這次產生的，沒有刪；當天開賽前要照 DAY_OVERVIEW 清掉。
+- 合併後的 Mac 若要當比賽主機，`medal/.venv` 已建好；切過去前要在 `monorepo` 上再照 PRE_CONTEST 彩排一次（numba 快取會重新編譯）。
 
 ## 目前狀態
 

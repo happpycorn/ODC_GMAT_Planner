@@ -56,6 +56,8 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
    - 金牌賽 pytest 的快速子集（加 `--full-check` 跑完整的約 315 項）
    - GUI 在背景啟動、打兩支 API，再關掉
 
+11-06 在 Mac 上從新 clone 跑完整個 `setup.sh` 是 4 分 54 秒（uv 快取是熱的）。
+
 有 ✕ 時腳本的結束碼是 1，照那一行的提示修完重跑 `./setup.sh` 就好（重跑不會弄壞已經裝好的東西）。
 
 選項：`--gmat <路徑>` 直接指定 GMAT、`--yes` 不問問題、`--no-check` 只安裝。

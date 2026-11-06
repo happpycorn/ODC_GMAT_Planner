@@ -54,7 +54,7 @@ if (-not (Test-Path "configs\local\config.json") -and (Test-Path ".venv\Scripts\
     if (Test-Path "configs\local\config.json") { Write-Host "已建立 configs\local\config.json（預設情境）" }
 }
 if (-not $Gmat) { $Gmat = (& $Py gui\gmat_path.py 2>$null | Select-Object -First 1) }
-if ($Gmat -and -not (Test-Path -PathType Leaf $Gmat)) { Write-Host "設定裡的 GMAT 路徑不存在：$Gmat"; $Gmat = "" }
+if ($Gmat -and -not (Test-Path -PathType Leaf $Gmat)) { Write-Host "GMAT 路徑不存在：$Gmat"; $Gmat = "" }
 if (-not $Gmat -and -not $Yes) {
     $Gmat = (Read-Host "找不到 GmatConsole.exe。貼上完整路徑，直接按 Enter 跳過").Trim('"', ' ')
 }

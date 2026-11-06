@@ -63,7 +63,7 @@ PY=.venv/bin/python
 GMAT="$GMAT_ARG"
 [ -n "$GMAT" ] || GMAT="$("$PY" gui/gmat_path.py 2>/dev/null)"
 if [ -n "$GMAT" ] && [ ! -f "$GMAT" ]; then
-  echo "設定裡的 GMAT 路徑不存在：$GMAT"
+  echo "GMAT 路徑不存在：$GMAT"
   GMAT=""
 fi
 if [ -z "$GMAT" ] && [ $ASSUME_YES -eq 0 ]; then
@@ -82,7 +82,14 @@ else
   bad "沒有 GMAT 路徑（排位賽步驟 6 與經緯高轉檔會失敗；之後重跑 ./setup.sh --gmat <路徑>）"
 fi
 
-[ $CHECK -eq 1 ] || { echo; printf '%s\n' "${RESULTS[@]}"; exit 0; }
+summary() {
+  echo
+  echo "================ 結果 ================"
+  printf '%s\n' "${RESULTS[@]}"
+  case "${RESULTS[*]}" in *✕*) exit 1 ;; esac
+  exit 0
+}
+[ $CHECK -eq 1 ] || summary
 
 # ---------------------------------------------------------------- 體檢
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
@@ -135,8 +142,4 @@ done
 kill $GUI_PID 2>/dev/null; wait $GUI_PID 2>/dev/null
 if [ $GUI_OK -eq 1 ]; then ok "GUI 啟動（http://127.0.0.1:8765，雙擊 gui/start.command 開）"; else bad "GUI 啟動失敗（手動跑 uv run python gui/app.py 看錯誤）"; fi
 
-echo
-echo "================ 結果 ================"
-printf '%s\n' "${RESULTS[@]}"
-case "${RESULTS[*]}" in *✕*) exit 1 ;; esac
-exit 0
+summary
