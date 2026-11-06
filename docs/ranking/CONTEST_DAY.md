@@ -104,7 +104,7 @@ uv run python odc.py feasibility configs/local/ranking.json
 uv run python odc.py solve configs/local/ranking.json --run-dir outputs/runs/rank-1 -q
 ```
 
-只跑**一個**行程（會用滿核心）。進度看 `tail -f outputs/runs/rank-1/run.log`。跑完 `echo $?`（0 正常、3 找不到合法路線），再看結果：
+只跑**一個**行程（會用滿核心）。不要在設了 `OMP_NUM_THREADS=1` 之類的視窗跑：SEED=null 時這會讓求解慢約 27%（11-07 實測 195 s 對 153 s，分數相同）。Discord、瀏覽器分頁這類吃 CPU 的程式先關掉。進度看 `tail -f outputs/runs/rank-1/run.log`。跑完 `echo $?`（0 正常、3 找不到合法路線），再看結果：
 
 ```bash
 python3 -c "import json;d=json.load(open('outputs/runs/rank-1/mission.json'))['mission_info'];print('分數',round(d['score'],4),'失格',d['disqualified'],d['dq_reasons'],'棒數',d['num_burns'],'總Δv',round(d['total_dv_mps'],1),'T',round(d['T_team']))"

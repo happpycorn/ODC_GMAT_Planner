@@ -21,7 +21,8 @@ TASA／淡江大學「第一屆軌道設計競賽」的太空船攔截任務規�
 
 驗收（Mac，A/B 前 pin `OMP/OPENBLAS/MKL_NUM_THREADS=1`）：
 - 排位賽：`odc.py test --quick -q` 24/24；pytest 89 passed、1 skipped（`test_split_stm.py` 直接執行也通過）。
-- 佔位題 CLI：求解 **86.7847**（4 棒、639.35 m/s、T 19,972.99 s）、重瞄準 **86.7807** accepted、verify 通過，跟已知答案完全相同。求解 5 分 08 秒，比 11-03 的 136–158 s 慢，推測是 pin 了 BLAS 執行緒，沒有另外驗證。
+- 佔位題 CLI：求解 **86.7847**（4 棒、639.35 m/s、T 19,972.99 s）、重瞄準 **86.7807** accepted、verify 通過，跟已知答案完全相同。求解 5 分 08 秒，比 11-03 的 136–158 s 慢。
+- **速度沒有退步**（11-07 A/B，同一份佔位題、`--stop-after solve`、機器沒別的工作）：不 pin 153 s、pin BLAS 執行緒 195 s，兩次都是 86.7847。上面的 5 分 08 秒是 pin 加上完整流程（含 GMAT）的結果；SEED=null 時 pin 會慢約 27%，所以比賽當天不要設這三個變數（已寫進 CONTEST_DAY 步驟 5）。合併前的 Master 在 11-06 19:39 解同一題也花了 279 s（`outputs/runs/test-1`，沒 pin），當時多半有別的程式在搶 CPU，沒查證。
 - 金牌賽：pytest 318 passed、17 skipped、1 failed（已知的 `test_rule_map::test_rule_ranges_sample_unchanged` 浮點假失敗）；`final_rehearsal --role evader --opponent capture_pursuer --fast` 6 回合、GMAT 結局 escape，advise 最長 3.3 s。
 - GUI（`ODC_DAY_DIR` 指到暫存）：排位賽從建設定檔點到步驟 7（求解 86.7847、重瞄準 86.7807、清單全過、存檔到本機 `outputs/ODC_Final`）；
   金牌賽填規則→放狀態檔→解析→角色選擇器 `--fast`（34.7 s，建議躲方）→建 session→6 回合 advise／announce，每回合提交行跟 CLI 彩排逐字相同；停止按鈕實測 2 秒內停下、沒留子行程。
