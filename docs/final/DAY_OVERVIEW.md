@@ -33,18 +33,19 @@
 
 ## USB
 
-兩支 USB 都照這個結構放：
+兩支 USB 都照這個結構放，路徑全用英文（GMAT 讀不了非 ASCII 路徑）：
 
 ```
-排位賽/   帶分數檔名的繳交件，例如 rank1_86.78_output_submit.txt、對應的 Report
-金牌賽/   主辦給的狀態檔、day/session.json 的備份、每回合手寫提交行的照片或抄本
-備份/     兩個 repo 的 git bundle（備機要用時 git clone 它；venv 必須在賽前先建好）
+ODC_Final/
+  ranking/   排位賽：帶分數檔名的繳交件，例如 rank1_86.78_output_submit.txt、對應的 Report
+  medal/     金／銅牌賽：主辦給的狀態檔、day/session.json 的備份、每回合手寫提交行的照片或抄本
+  backup/    兩個 repo 的 git bundle（備機要用時 git clone 它；venv 必須在賽前先建好）
 ```
 
 ## 午休（11:45–13:00）
 
-1. 確認排位賽上傳成功，USB `排位賽/` 裡有最後交的那份。
-2. 關掉「排位賽」視窗。把 `ODC_Program/outputs/runs/` 整個複製到 USB `排位賽/`，賽後要用。
+1. 確認排位賽上傳成功，USB `ODC_Final/ranking/` 裡有最後交的那份。
+2. 關掉「排位賽」視窗。把 `ODC_Program/outputs/runs/` 整個複製到 USB `ODC_Final/ranking/`，賽後要用。
 3. 打開「金牌賽」視窗，跑一次 `.venv/bin/python -m pytest -q` 確認環境正常。
 4. 12:50 公布四強後，看是銅牌賽（13:00）還是金牌賽（14:30），照 CONTEST_DAY_FINAL 第二節準備。
 
