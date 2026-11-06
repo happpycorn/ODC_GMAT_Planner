@@ -1,0 +1,5 @@
+{
+  "_comment": "躲者小單發多燃料（解析大腦平衡地圖中追者只贏 8% 的格子）",
+  "max_dv_pursuer_mps": 1500.0, "max_dv_evader_mps": 150.0,
+  "fuel_pursuer_mps": 3000.0, "fuel_evader_mps": 3000.0
+}

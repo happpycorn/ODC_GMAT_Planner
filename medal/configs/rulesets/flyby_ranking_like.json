@@ -1,0 +1,6 @@
+{
+  "_comment": "ranking_like.json（單發 250 m/s、總 Δv 3 km/s，雙方對稱）+ 排位賽的 T_max 定義：飛掠方（初始比能量較高的一方）過近地點後，地心距離第一次增加到 t_max_boundary_km 的時刻。40,000 km = game/scenarios.py FLYBY_BOUNDARY_KM，配 --scenario flyby / flyby_pursuer（T_max 約 2–3.5 小時）。邊界值是佔位，官方開賽才公布",
+  "max_dv_pursuer_mps": 250.0, "max_dv_evader_mps": 250.0,
+  "fuel_pursuer_mps": 3000.0, "fuel_evader_mps": 3000.0,
+  "t_max_boundary_km": 40000.0
+}

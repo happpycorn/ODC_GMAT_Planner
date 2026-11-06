@@ -1,0 +1,19 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+.vscode/*
+
+# 訓練產物與評測原始紀錄（報表 .md 會 commit；部署用的模型另存 models/）
+runs/
+reports/*.jsonl
+reports/*.log
+reports/smoke*
+.DS_Store

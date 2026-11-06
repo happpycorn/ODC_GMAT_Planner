@@ -1,0 +1,9 @@
+before_audit.json.gz pursuer_1burn.json：所有候選／模型分數／終局逐位元相同
+before_audit.json.gz evader_1burn.json：所有候選／模型分數／終局逐位元相同
+before_audit.json.gz pursuer_2burn.json：所有候選／模型分數／終局逐位元相同
+step1_final_audit.json.gz pursuer_1burn.json：所有候選／模型分數／終局逐位元相同
+step1_final_audit.json.gz evader_1burn.json：所有候選／模型分數／終局逐位元相同
+step1_final_audit.json.gz pursuer_2burn.json：所有候選／模型分數／終局逐位元相同
+after_audit.json.gz pursuer_1burn.json：所有候選／模型分數／終局逐位元相同
+after_audit.json.gz evader_1burn.json：所有候選／模型分數／終局逐位元相同
+after_audit.json.gz pursuer_2burn.json：所有候選／模型分數／終局逐位元相同

@@ -1,0 +1,14 @@
+{
+  "window_sec": 300.0,
+  "max_dv_pursuer_mps": 1500.0,
+  "max_dv_evader_mps": 1500.0,
+  "fuel_pursuer_mps": 3000.0,
+  "fuel_evader_mps": 3000.0,
+  "capture_radius_km": 5.0,
+  "t_max_sec": 0.0,
+  "t_max_periods": 4.0,
+  "gravity_degree": 2,
+  "first_mover": "pursuer",
+  "crash_altitude_km": 100.0,
+  "substep_sec": 60.0
+}

@@ -1,0 +1,17 @@
+{
+  "_comment": "金／銅牌賽規則變體（F2–F4 評測用）：R_cap 20 km（其餘同 final_official）。正式賽制其餘欄位同 final_official.json；safe_sma_km 由 sample_final_scenario 依題目覆寫。",
+  "turn_mode": "simultaneous",
+  "rounds": 6,
+  "window_sec": 1200.0,
+  "burns_per_turn": 1,
+  "max_dv_pursuer_mps": 250.0,
+  "max_dv_evader_mps": 250.0,
+  "fuel_pursuer_mps": null,
+  "fuel_evader_mps": null,
+  "capture_radius_km": 20.0,
+  "capture_mode": "continuous",
+  "safe_sma_km": null,
+  "t_max_sec": 0.0,
+  "gravity_degree": 0,
+  "crash_altitude_km": 0.0
+}

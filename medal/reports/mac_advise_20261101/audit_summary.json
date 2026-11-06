@@ -1,0 +1,348 @@
+{
+  "comparison": "完整軌跡以 float.hex() ==；見 audit_check.txt",
+  "raw_trace_directory": "/tmp/odc_mac_advise_20261101",
+  "phases": {
+    "before": [
+      {
+        "state": "pursuer_1burn.json",
+        "calls": {
+          "closest_approach": 7563,
+          "intercept_scan": 7537,
+          "propagate": 699
+        },
+        "trace_counts": {
+          "lambert_act": 13798,
+          "outcome_score": 700,
+          "evaluate": 234
+        },
+        "trace_sha256": "e2bfbba1053accb34bcbf474171a2cc8f98cb240984debec833c58f5d1accee1",
+        "result_sha256": "ec5dfcf343e01336011606e7667b29caedb5893f3e1b11f33dc00a71229ce4bc",
+        "four_weight_probe": {
+          "calls": {
+            "closest_approach": 4,
+            "intercept_scan": 4,
+            "propagate": 4
+          },
+          "candidate_dv": [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.25516673808478885,
+              -12.866479441655976,
+              55.54028732911099
+            ],
+            [
+              -5.737461586083015,
+              -56.894516937791906,
+              -190.8851350046109
+            ]
+          ]
+        }
+      },
+      {
+        "state": "evader_1burn.json",
+        "calls": {
+          "closest_approach": 3225,
+          "intercept_scan": 3223,
+          "propagate": 221
+        },
+        "trace_counts": {
+          "lambert_act": 4827,
+          "outcome_score": 218,
+          "evaluate": 47
+        },
+        "trace_sha256": "61f363f2ec82c4f78798bd39e0569fd48ae7a37e12fcc9c39aec3e3ae2728a8b",
+        "result_sha256": "80ad707c45757502766e888262ac691149e3a723764d4ca203fdae3b30be8d9a",
+        "four_weight_probe": {
+          "calls": {
+            "closest_approach": 4,
+            "intercept_scan": 4,
+            "propagate": 4
+          },
+          "candidate_dv": [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              27.257745827018724,
+              -31.595590399256324,
+              246.4928679693432
+            ]
+          ]
+        }
+      },
+      {
+        "state": "pursuer_2burn.json",
+        "calls": {
+          "closest_approach": 21880,
+          "intercept_scan": 21765,
+          "propagate": 1094
+        },
+        "trace_counts": {
+          "lambert_act": 64754,
+          "outcome_score": 1528,
+          "evaluate": 668
+        },
+        "trace_sha256": "02d937231c56fd79c9316354930b994b874ff33bd9198df79431365e260f7144",
+        "result_sha256": "ab7e8e10c0d0beafabfe2293c6839f66dcb56980abf1f5f51dce4cf80f8a492b",
+        "four_weight_probe": {
+          "calls": {
+            "closest_approach": 4,
+            "intercept_scan": 4,
+            "propagate": 4
+          },
+          "candidate_dv": [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.25516673808478885,
+              -12.866479441655976,
+              55.54028732911099
+            ],
+            [
+              -5.737461586083015,
+              -56.894516937791906,
+              -190.8851350046109
+            ]
+          ]
+        }
+      }
+    ],
+    "step1_final": [
+      {
+        "state": "pursuer_1burn.json",
+        "calls": {
+          "closest_approach": 7199,
+          "intercept_scan": 7174,
+          "propagate": 342
+        },
+        "trace_counts": {
+          "lambert_act": 13798,
+          "outcome_score": 700,
+          "evaluate": 234
+        },
+        "trace_sha256": "e2bfbba1053accb34bcbf474171a2cc8f98cb240984debec833c58f5d1accee1",
+        "result_sha256": "ec5dfcf343e01336011606e7667b29caedb5893f3e1b11f33dc00a71229ce4bc",
+        "four_weight_probe": {
+          "calls": {
+            "closest_approach": 1,
+            "intercept_scan": 1,
+            "propagate": 2
+          },
+          "candidate_dv": [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.25516673808478885,
+              -12.866479441655976,
+              55.54028732911099
+            ],
+            [
+              -5.737461586083015,
+              -56.894516937791906,
+              -190.8851350046109
+            ]
+          ]
+        }
+      },
+      {
+        "state": "evader_1burn.json",
+        "calls": {
+          "closest_approach": 3114,
+          "intercept_scan": 3112,
+          "propagate": 115
+        },
+        "trace_counts": {
+          "lambert_act": 4827,
+          "outcome_score": 218,
+          "evaluate": 47
+        },
+        "trace_sha256": "61f363f2ec82c4f78798bd39e0569fd48ae7a37e12fcc9c39aec3e3ae2728a8b",
+        "result_sha256": "80ad707c45757502766e888262ac691149e3a723764d4ca203fdae3b30be8d9a",
+        "four_weight_probe": {
+          "calls": {
+            "closest_approach": 1,
+            "intercept_scan": 1,
+            "propagate": 1
+          },
+          "candidate_dv": [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              27.257745827018724,
+              -31.595590399256324,
+              246.4928679693432
+            ]
+          ]
+        }
+      },
+      {
+        "state": "pursuer_2burn.json",
+        "calls": {
+          "closest_approach": 21222,
+          "intercept_scan": 21114,
+          "propagate": 466
+        },
+        "trace_counts": {
+          "lambert_act": 64754,
+          "outcome_score": 1528,
+          "evaluate": 668
+        },
+        "trace_sha256": "02d937231c56fd79c9316354930b994b874ff33bd9198df79431365e260f7144",
+        "result_sha256": "ab7e8e10c0d0beafabfe2293c6839f66dcb56980abf1f5f51dce4cf80f8a492b",
+        "four_weight_probe": {
+          "calls": {
+            "closest_approach": 1,
+            "intercept_scan": 1,
+            "propagate": 2
+          },
+          "candidate_dv": [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.25516673808478885,
+              -12.866479441655976,
+              55.54028732911099
+            ],
+            [
+              -5.737461586083015,
+              -56.894516937791906,
+              -190.8851350046109
+            ]
+          ]
+        }
+      }
+    ],
+    "after": [
+      {
+        "state": "pursuer_1burn.json",
+        "calls": {
+          "closest_approach": 7199,
+          "intercept_scan": 7174,
+          "propagate": 342
+        },
+        "trace_counts": {
+          "lambert_act": 13798,
+          "outcome_score": 700,
+          "evaluate": 234
+        },
+        "trace_sha256": "e2bfbba1053accb34bcbf474171a2cc8f98cb240984debec833c58f5d1accee1",
+        "result_sha256": "ec5dfcf343e01336011606e7667b29caedb5893f3e1b11f33dc00a71229ce4bc",
+        "four_weight_probe": {
+          "calls": {
+            "closest_approach": 1,
+            "intercept_scan": 1,
+            "propagate": 2
+          },
+          "candidate_dv": [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.25516673808478885,
+              -12.866479441655976,
+              55.54028732911099
+            ],
+            [
+              -5.737461586083015,
+              -56.894516937791906,
+              -190.8851350046109
+            ]
+          ]
+        }
+      },
+      {
+        "state": "evader_1burn.json",
+        "calls": {
+          "closest_approach": 3114,
+          "intercept_scan": 3112,
+          "propagate": 115
+        },
+        "trace_counts": {
+          "lambert_act": 4827,
+          "outcome_score": 218,
+          "evaluate": 47
+        },
+        "trace_sha256": "61f363f2ec82c4f78798bd39e0569fd48ae7a37e12fcc9c39aec3e3ae2728a8b",
+        "result_sha256": "80ad707c45757502766e888262ac691149e3a723764d4ca203fdae3b30be8d9a",
+        "four_weight_probe": {
+          "calls": {
+            "closest_approach": 1,
+            "intercept_scan": 1,
+            "propagate": 1
+          },
+          "candidate_dv": [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              27.257745827018724,
+              -31.595590399256324,
+              246.4928679693432
+            ]
+          ]
+        }
+      },
+      {
+        "state": "pursuer_2burn.json",
+        "calls": {
+          "closest_approach": 21222,
+          "intercept_scan": 21114,
+          "propagate": 466
+        },
+        "trace_counts": {
+          "lambert_act": 64754,
+          "outcome_score": 1528,
+          "evaluate": 668
+        },
+        "trace_sha256": "02d937231c56fd79c9316354930b994b874ff33bd9198df79431365e260f7144",
+        "result_sha256": "ab7e8e10c0d0beafabfe2293c6839f66dcb56980abf1f5f51dce4cf80f8a492b",
+        "four_weight_probe": {
+          "calls": {
+            "closest_approach": 1,
+            "intercept_scan": 1,
+            "propagate": 2
+          },
+          "candidate_dv": [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.25516673808478885,
+              -12.866479441655976,
+              55.54028732911099
+            ],
+            [
+              -5.737461586083015,
+              -56.894516937791906,
+              -190.8851350046109
+            ]
+          ]
+        }
+      }
+    ]
+  }
+}

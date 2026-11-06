@@ -1,0 +1,6 @@
+{
+  "_comment": "symmetric.json（雙方單發 1500、總 3000）+ 排位賽 T_max 定義（飛掠方過近地點後地心距離第一次增加到 40,000 km 的時刻）。flyby 家族的第二組確認規則",
+  "max_dv_pursuer_mps": 1500.0, "max_dv_evader_mps": 1500.0,
+  "fuel_pursuer_mps": 3000.0, "fuel_evader_mps": 3000.0,
+  "t_max_boundary_km": 40000.0
+}

@@ -1,0 +1,98 @@
+{
+  "timings": [
+    {
+      "state": "evader_1burn.json",
+      "workers": 1,
+      "first_sec": [
+        58.073351946659386
+      ],
+      "first_median_sec": 58.073351946659386,
+      "warm_sec": [
+        16.5588011671789,
+        16.47308087022975,
+        16.34905418427661
+      ],
+      "warm_median_sec": 16.47308087022975
+    },
+    {
+      "state": "evader_1burn.json",
+      "workers": 4,
+      "first_sec": [
+        27.24197968794033
+      ],
+      "first_median_sec": 27.24197968794033,
+      "warm_sec": [
+        14.296520291827619,
+        15.333284492138773,
+        14.229535643011332
+      ],
+      "warm_median_sec": 14.296520291827619
+    },
+    {
+      "state": "pursuer_1burn.json",
+      "workers": 1,
+      "first_sec": [
+        39.74409490218386
+      ],
+      "first_median_sec": 39.74409490218386,
+      "warm_sec": [
+        26.18177544604987,
+        26.81785204820335,
+        27.88427719194442
+      ],
+      "warm_median_sec": 26.81785204820335
+    },
+    {
+      "state": "pursuer_1burn.json",
+      "workers": 4,
+      "first_sec": [
+        30.327009020838886
+      ],
+      "first_median_sec": 30.327009020838886,
+      "warm_sec": [
+        18.204260882921517,
+        17.640446349978447,
+        17.661697018891573
+      ],
+      "warm_median_sec": 17.661697018891573
+    },
+    {
+      "state": "pursuer_2burn.json",
+      "workers": 1,
+      "first_sec": [
+        79.00303494976833
+      ],
+      "first_median_sec": 79.00303494976833,
+      "warm_sec": [
+        66.32842359272763,
+        65.35591655317694,
+        66.17011276911944
+      ],
+      "warm_median_sec": 66.17011276911944
+    },
+    {
+      "state": "pursuer_2burn.json",
+      "workers": 4,
+      "first_sec": [
+        45.6869929227978
+      ],
+      "first_median_sec": 45.6869929227978,
+      "warm_sec": [
+        32.3101053009741,
+        32.03280300227925,
+        31.84293559100479
+      ],
+      "warm_median_sec": 32.03280300227925
+    }
+  ],
+  "exact": {
+    "runs_equal": 24,
+    "states": 3,
+    "comparison": "float.hex() ==，原始 CLI 文字只移除耗時及 workers 設定",
+    "sha256": {
+      "evader_1burn.json": "f19827e8132a3654eb3e1ffd7eb2f6b2a69d6cf879c9d83ea330b6e56df73495",
+      "pursuer_1burn.json": "ad7248f80edcdf4b353424b71e1cb0112d1ff40ac87077c8416c5c5987a48694",
+      "pursuer_2burn.json": "616c1fbb28c41c6803c96b2e283ab7dd0fa9acf186210c44b37d12712376e176"
+    }
+  }
+}

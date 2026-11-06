@@ -1,0 +1,9 @@
+{
+  "algo": "PPO",
+  "role": "pursuer",
+  "action_power": 1.0,
+  "use_intercept_obs": true,
+  "action_mode": "guided",
+  "run": "sp3",
+  "tag": "it04"
+}

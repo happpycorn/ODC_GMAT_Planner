@@ -1,0 +1,46 @@
+{
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "python": "3.12.12 (main, Dec 17 2025, 21:07:08) [Clang 21.1.4 ]",
+  "cpu_count": 10,
+  "hardware": [
+    "Model Name: MacBook Air",
+    "Model Identifier: Mac16,12",
+    "Chip: Apple M4",
+    "Total Number of Cores: 10 (4 Performance and 6 Efficiency)",
+    "Memory: 32 GB"
+  ],
+  "performance_cores": 4,
+  "sysctl": "sysctl: sysctl fmt -1 1024 1: Operation not permitted",
+  "environment": {
+    "OMP_NUM_THREADS": null,
+    "OPENBLAS_NUM_THREADS": null,
+    "MKL_NUM_THREADS": null,
+    "VECLIB_MAXIMUM_THREADS": null,
+    "ACCELERATE_MAX_THREADS": null,
+    "BLIS_NUM_THREADS": null,
+    "NUMBA_NUM_THREADS": null,
+    "ODC_SCAN_REUSE": null,
+    "ODC_STRICT_SURVIVAL": null,
+    "ODC_GAP_SURVIVAL": null
+  },
+  "numpy_config": "Build Dependencies:\n  blas:\n    detection method: system\n    found: true\n    include directory: unknown\n    lib directory: unknown\n    name: accelerate\n    openblas configuration: unknown\n    pc file directory: unknown\n    version: unknown\n  lapack:\n    detection method: system\n    found: true\n    include directory: unknown\n    lib directory: unknown\n    name: accelerate\n    openblas configuration: unknown\n    pc file directory: unknown\n    version: unknown\nCompilers:\n  c:\n    commands: cc\n    linker: ld64\n    name: clang\n    version: 15.0.0\n  c++:\n    commands: c++\n    linker: ld64\n    name: clang\n    version: 15.0.0\n  cython:\n    commands: cython\n    linker: cython\n    name: cython\n    version: 3.2.5\nMachine Information:\n  build:\n    cpu: aarch64\n    endian: little\n    family: aarch64\n    system: darwin\n  host:\n    cpu: aarch64\n    endian: little\n    family: aarch64\n    system: darwin\nPython Information:\n  path: /private/var/folders/dq/2t71w9pd3jx50vh3kp15_dt40000gn/T/build-env-tj33wwz_/bin/python\n  version: '3.12'\nSIMD Extensions:\n  baseline:\n  - NEON\n  - NEON_FP16\n  - NEON_VFPV4\n  - ASIMD\n  found:\n  - ASIMDHP\n  - ASIMDDP\n  not found:\n  - ASIMDFHM\n\n",
+  "versions": "{'numpy': '2.5.0', 'numba': '0.67.0', 'scipy': '1.18.1', 'stable-baselines3': '2.9.0'}\n",
+  "workers_requested": [
+    "1",
+    "4",
+    "perf"
+  ],
+  "workers_measured": [
+    1,
+    4
+  ],
+  "source_sha256": {
+    "copilot.py": "fbaf48aae78d80a8cc64b0e2aea7f62cd5fd4f5925fc24c053b136dfc423a00c",
+    "agents/analytic.py": "caf488907ba107a14c04fbaf9890bac7a78e8b9ca65f3f9cdd69da8d15545c81",
+    "agents/rollout.py": "bb40f2881fc3902652fcd1479d914a066b1910b4db0aa32f40d6276d247656fa",
+    "evaluation/tournament.py": "1564b34ead502dbf72e2ffe12d62878897a110f6e21395effb6e8ee2afcc207d",
+    "evaluate.py": "a3d79cd960593984d852346bf7a1163baafa5d90e1b241e9349df8ae4a1805ee",
+    "tools/bench_advise.py": "cd852e8c24f48ac5c5c37d978fcbeb7de4e25eef032a30b36b095bc83aaa9c01"
+  },
+  "started_at": "2026-11-01T02:07:35+0800"
+}

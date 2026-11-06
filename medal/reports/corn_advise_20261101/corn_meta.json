@@ -1,0 +1,39 @@
+{
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "python": "3.10.20 (main, Mar 20 2026, 00:33:12) [Clang 22.1.1 ]",
+  "cpu_count": 16,
+  "hardware": [],
+  "performance_cores": null,
+  "sysctl": "",
+  "environment": {
+    "OMP_NUM_THREADS": null,
+    "OPENBLAS_NUM_THREADS": null,
+    "MKL_NUM_THREADS": null,
+    "VECLIB_MAXIMUM_THREADS": null,
+    "ACCELERATE_MAX_THREADS": null,
+    "BLIS_NUM_THREADS": null,
+    "NUMBA_NUM_THREADS": null,
+    "ODC_SCAN_REUSE": null,
+    "ODC_STRICT_SURVIVAL": null,
+    "ODC_GAP_SURVIVAL": null
+  },
+  "numpy_config": "Build Dependencies:\n  blas:\n    detection method: pkgconfig\n    found: true\n    include directory: /opt/_internal/cpython-3.10.15/lib/python3.10/site-packages/scipy_openblas64/include\n    lib directory: /opt/_internal/cpython-3.10.15/lib/python3.10/site-packages/scipy_openblas64/lib\n    name: scipy-openblas\n    openblas configuration: OpenBLAS 0.3.29  USE64BITINT DYNAMIC_ARCH NO_AFFINITY\n      Haswell MAX_THREADS=64\n    pc file directory: /project/.openblas\n    version: 0.3.29\n  lapack:\n    detection method: pkgconfig\n    found: true\n    include directory: /opt/_internal/cpython-3.10.15/lib/python3.10/site-packages/scipy_openblas64/include\n    lib directory: /opt/_internal/cpython-3.10.15/lib/python3.10/site-packages/scipy_openblas64/lib\n    name: scipy-openblas\n    openblas configuration: OpenBLAS 0.3.29  USE64BITINT DYNAMIC_ARCH NO_AFFINITY\n      Haswell MAX_THREADS=64\n    pc file directory: /project/.openblas\n    version: 0.3.29\nCompilers:\n  c:\n    commands: cc\n    linker: ld.bfd\n    name: gcc\n    version: 10.2.1\n  c++:\n    commands: c++\n    linker: ld.bfd\n    name: gcc\n    version: 10.2.1\n  cython:\n    commands: cython\n    linker: cython\n    name: cython\n    version: 3.1.0\nMachine Information:\n  build:\n    cpu: x86_64\n    endian: little\n    family: x86_64\n    system: linux\n  host:\n    cpu: x86_64\n    endian: little\n    family: x86_64\n    system: linux\nPython Information:\n  path: /tmp/build-env-a8ncef9o/bin/python\n  version: '3.10'\nSIMD Extensions:\n  baseline:\n  - SSE\n  - SSE2\n  - SSE3\n  found:\n  - SSSE3\n  - SSE41\n  - POPCNT\n  - SSE42\n  - AVX\n  - F16C\n  - FMA3\n  - AVX2\n  not found:\n  - AVX512F\n  - AVX512CD\n  - AVX512_KNL\n  - AVX512_KNM\n  - AVX512_SKX\n  - AVX512_CLX\n  - AVX512_CNL\n  - AVX512_ICL\n\n",
+  "versions": "{'numpy': '2.2.6', 'numba': '0.67.0', 'scipy': '1.15.3', 'stable-baselines3': '2.9.0'}\n",
+  "workers_requested": [
+    "1",
+    "4"
+  ],
+  "workers_measured": [
+    1,
+    4
+  ],
+  "source_sha256": {
+    "copilot.py": "ee6d810b983bb495841ef2a152262d0fecace4a78cb62cf9b013f70e129af8d9",
+    "agents/analytic.py": "caf488907ba107a14c04fbaf9890bac7a78e8b9ca65f3f9cdd69da8d15545c81",
+    "agents/rollout.py": "bb40f2881fc3902652fcd1479d914a066b1910b4db0aa32f40d6276d247656fa",
+    "evaluation/tournament.py": "5af09ed5919b16e2f03190f3439ebbf4c494f7e1beab5e21a56b129332827e40",
+    "evaluate.py": "75d3f754208e61298a9f0d9f79fd4eeb0e230b185146837e86070d3c62e24165",
+    "tools/bench_advise.py": "cd852e8c24f48ac5c5c37d978fcbeb7de4e25eef032a30b36b095bc83aaa9c01"
+  },
+  "started_at": "2026-11-01T14:16:13+0800"
+}

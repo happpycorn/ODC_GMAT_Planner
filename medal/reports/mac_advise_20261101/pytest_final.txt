@@ -1,0 +1,26 @@
+........................................................................ [ 33%]
+.....................ssss......................sssssss.................. [ 67%]
+...s......................F..........................................    [100%]
+=================================== FAILURES ===================================
+_____________ test_rule_ranges_sample_unchanged[seed0-None-want0] ______________
+
+seed = [0, 0], base = None
+want = (130.32735750532808, 436.3546929501402, 213.31229693756472, 915.9808538577392, 1467.5078504037663, 15.400059002097473, ...)
+
+    @pytest.mark.parametrize("seed,base,want", RANGES_BEFORE)
+    def test_rule_ranges_sample_unchanged(seed, base, want):
+        """舊的 RuleRanges().sample：結果與亂數消耗（下一個亂數）都跟加 rule_presets 之前逐位元相同。"""
+        rng = np.random.default_rng(seed)
+        R = RuleRanges().sample(rng) if base is None else RuleRanges().sample(rng, base=base)
+        got = (R.window_sec, R.max_dv_pursuer_mps, R.max_dv_evader_mps, R.fuel_pursuer_mps, R.fuel_evader_mps,
+               R.capture_radius_km, R.t_max_periods, R.first_mover, R.burns_per_turn, float(rng.random()))
+>       assert got == want
+E       assert (130.32735750...02097473, ...) == (130.32735750...02097473, ...)
+E         
+E         At index 1 diff: 436.3546929501406 != 436.3546929501402
+E         Use -v to get more diff
+
+tests/test_rule_map.py:34: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_rule_map.py::test_rule_ranges_sample_unchanged[seed0-None-want0]
+1 failed, 200 passed, 12 skipped in 24.89s

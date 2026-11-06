@@ -1,0 +1,9 @@
+{
+  "_comment": "symmetric.json（雙方 1500/3000）加上一回合最多 3 發、同窗口內間隔 ≥ 100 s（大推力多發，間隔存活放寬的確認規則）",
+  "max_dv_pursuer_mps": 1500.0,
+  "max_dv_evader_mps": 1500.0,
+  "fuel_pursuer_mps": 3000.0,
+  "fuel_evader_mps": 3000.0,
+  "burns_per_turn": 3,
+  "min_burn_gap_sec": 100.0
+}

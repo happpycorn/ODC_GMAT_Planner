@@ -1,0 +1,9 @@
+{
+  "algo": "PPO",
+  "role": "evader",
+  "action_power": 1.0,
+  "use_intercept_obs": true,
+  "action_mode": "direct",
+  "run": "sp3",
+  "tag": "it08"
+}

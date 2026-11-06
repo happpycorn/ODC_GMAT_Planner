@@ -1,0 +1,15 @@
+{
+  "agents/__init__.py": "35bbc029c56dfe006106d48d62622cee382af46e2ac4211fcb86132c4879d56a",
+  "agents/analytic.py": "caf488907ba107a14c04fbaf9890bac7a78e8b9ca65f3f9cdd69da8d15545c81",
+  "agents/rollout.py": "bb40f2881fc3902652fcd1479d914a066b1910b4db0aa32f40d6276d247656fa",
+  "agents/scan_reuse.py": "f3be76d213fec976a719244c3da8be19a56f5b35c3efcfeab414af7943e07510",
+  "copilot.py": "fbaf48aae78d80a8cc64b0e2aea7f62cd5fd4f5925fc24c053b136dfc423a00c",
+  "evaluate.py": "a3d79cd960593984d852346bf7a1163baafa5d90e1b241e9349df8ae4a1805ee",
+  "evaluation/__init__.py": "06bb7fd45874ffd9465ce97418318d5fb94d9681df156016c9b4ad3045c0df1c",
+  "evaluation/tournament.py": "1564b34ead502dbf72e2ffe12d62878897a110f6e21395effb6e8ee2afcc207d",
+  "runtime_threads.py": "5cd8ad48ad4710a201538be61a43b33845601915620abcc9fbea8388203fcb07",
+  "tests/test_scan_reuse.py": "1f60b8ae9d74121601f878636f7a5f83a994b2438550fa413e94f11c4b6fe76b",
+  "tests/test_runtime_threads.py": "74838c282bfd7c7cda557192810e7414d4f2a97a3d3909aa410f618ec523228d",
+  "tools/bench_advise.py": "cd852e8c24f48ac5c5c37d978fcbeb7de4e25eef032a30b36b095bc83aaa9c01",
+  "tools/audit_advise.py": "f604c2ce39ea987d1bcc24f3e6806ba46f409d1f4eddb9036fe87a7956bcffef"
+}

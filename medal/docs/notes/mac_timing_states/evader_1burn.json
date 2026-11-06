@@ -1,0 +1,58 @@
+{
+  "rules": {
+    "window_sec": 300.0,
+    "max_dv_pursuer_mps": 250.0,
+    "max_dv_evader_mps": 250.0,
+    "fuel_pursuer_mps": 3000.0,
+    "fuel_evader_mps": 3000.0,
+    "capture_radius_km": 5.0,
+    "t_max_sec": 0.0,
+    "t_max_periods": 4.0,
+    "t_max_boundary_km": 0.0,
+    "gravity_degree": 2,
+    "first_mover": "pursuer",
+    "crash_altitude_km": 100.0,
+    "substep_sec": 60.0,
+    "capture_mode": "continuous",
+    "burns_per_turn": 1,
+    "min_burn_gap_sec": 100.0
+  },
+  "role": "evader",
+  "mover": "evader",
+  "t_elapsed_sec": 300.0,
+  "t_max_sec": 22574.292346117934,
+  "fuel_used_mps": {
+    "pursuer": 199.26625225753855,
+    "evader": 0.0
+  },
+  "pursuer": {
+    "r_km": [
+      1389.4442003180136,
+      -1928.7591537764774,
+      6320.625146776388
+    ],
+    "v_kms": [
+      2.5092703873182463,
+      -6.814037311606799,
+      -2.8318995621159027
+    ]
+  },
+  "evader": {
+    "r_km": [
+      -945.3829352300684,
+      -1500.0530498751891,
+      6495.909194719464
+    ],
+    "v_kms": [
+      4.303291288105071,
+      -6.350762376403583,
+      -0.9420221788245131
+    ]
+  },
+  "_source": {
+    "recipe": "E26：make_games(seed=1, game_id=0, scenario=mixed)",
+    "family": "inclined",
+    "rules": "configs/rulesets/ranking_like.json",
+    "evader_pre_turn": "rollout_pursuer"
+  }
+}

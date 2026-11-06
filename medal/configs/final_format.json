@@ -1,0 +1,7 @@
+{
+  "role_names": {"pursuer": "追方", "evader": "逃方"},
+  "round_base": 1,
+  "decimals": 4,
+  "dv_margin_mps": 0.05,
+  "template": "{role}, {round}, {dvx}, {dvy}, {dvz}"
+}

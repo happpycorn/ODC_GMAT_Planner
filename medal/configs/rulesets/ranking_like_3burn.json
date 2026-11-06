@@ -1,0 +1,9 @@
+{
+  "_comment": "ranking_like.json 加上一回合最多 3 發、同窗口內間隔 ≥ 100 s（HAP-107；排位賽規則的機動間隔下限）",
+  "max_dv_pursuer_mps": 250.0,
+  "max_dv_evader_mps": 250.0,
+  "fuel_pursuer_mps": 3000.0,
+  "fuel_evader_mps": 3000.0,
+  "burns_per_turn": 3,
+  "min_burn_gap_sec": 100.0
+}

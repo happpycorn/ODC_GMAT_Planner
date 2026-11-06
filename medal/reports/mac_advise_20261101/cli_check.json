@@ -1,0 +1,10 @@
+{
+  "runs_equal": 72,
+  "states": 3,
+  "comparison": "float.hex() ==，原始 CLI 文字只移除耗時及 workers 設定",
+  "sha256": {
+    "pursuer_1burn.json": "ec5dfcf343e01336011606e7667b29caedb5893f3e1b11f33dc00a71229ce4bc",
+    "evader_1burn.json": "80ad707c45757502766e888262ac691149e3a723764d4ca203fdae3b30be8d9a",
+    "pursuer_2burn.json": "ab7e8e10c0d0beafabfe2293c6839f66dcb56980abf1f5f51dce4cf80f8a492b"
+  }
+}

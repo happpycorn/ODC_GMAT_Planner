@@ -1,0 +1,5 @@
+{
+  "_comment": "照排位賽規則（2026-10-06 初版）猜的四強賽數字：單發 250 m/s、總 Δv 3 km/s，雙方對稱；其餘同 Rules() 預設，只改燃料結構以便和 symmetric.json 對照",
+  "max_dv_pursuer_mps": 250.0, "max_dv_evader_mps": 250.0,
+  "fuel_pursuer_mps": 3000.0, "fuel_evader_mps": 3000.0
+}

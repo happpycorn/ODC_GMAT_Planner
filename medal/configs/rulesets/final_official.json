@@ -1,0 +1,17 @@
+{
+  "_comment": "金／銅牌賽正式賽制（2026/10/29 規則初版）：雙方同時出手、6 回合、每回合起點一發、總 Δv 不設上限（燃料 null）、純二體、高度 < 0 算撞地。ΔV_lim（max_dv_*）、R_cap（capture_radius_km）、T_round（window_sec）、安全空域（safe_sma_km）當場公告，這些是佔位；safe_sma_km 由 game.scenarios.sample_final_scenario 依題目覆寫，公告後直接填 [lo, hi]（km）。",
+  "turn_mode": "simultaneous",
+  "rounds": 6,
+  "window_sec": 1200.0,
+  "burns_per_turn": 1,
+  "max_dv_pursuer_mps": 250.0,
+  "max_dv_evader_mps": 250.0,
+  "fuel_pursuer_mps": null,
+  "fuel_evader_mps": null,
+  "capture_radius_km": 5.0,
+  "capture_mode": "continuous",
+  "safe_sma_km": null,
+  "t_max_sec": 0.0,
+  "gravity_degree": 0,
+  "crash_altitude_km": 0.0
+}

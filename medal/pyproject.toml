@@ -1,0 +1,21 @@
+[project]
+name = "odc-gmat-drl"
+version = "0.1.0"
+description = "第一屆軌道設計競賽決賽（回合交替軌道追逃賽局）的物理、解析策略與 DRL 訓練"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numba>=0.67.0",
+    "optuna>=4.9.0",
+    "scipy>=1.15.3",
+    "stable-baselines3[extra]>=2.9.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
