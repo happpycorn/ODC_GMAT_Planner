@@ -13,6 +13,9 @@ set -u
 cd "$(dirname "$0")" || exit 1
 ROOT="$(pwd)"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+# 跟合併前的基準（docs/final/ENV_BASELINE_20261106.md）同一個 Python。寫完整版本號，uv 才不會拿系統裡別的 3.12.x
+# （WSL 的 /usr/bin/python3.12 是 3.12.3），沒有就下載 uv 自己管理的這一版。
+PYVER=3.12.12
 
 GMAT_ARG="" ASSUME_YES=0 CHECK=1 FULL=0
 while [ $# -gt 0 ]; do
@@ -47,10 +50,10 @@ echo "$(uv --version)"
 
 # ---------------------------------------------------------------- 套件
 step "排位賽工具（根目錄）uv sync"
-if uv sync --frozen --python 3.12; then ok "排位賽 venv（.venv）"; else bad "排位賽 uv sync 失敗"; fi
+if uv sync --frozen --python "$PYVER"; then ok "排位賽 venv（.venv，Python $(.venv/bin/python -c 'import platform;print(platform.python_version())')）"; else bad "排位賽 uv sync 失敗"; fi
 
 step "金／銅牌賽工具（medal/）uv sync"
-if (cd medal && uv sync --frozen --python 3.12); then ok "金牌賽 venv（medal/.venv）"; else bad "金牌賽 uv sync 失敗"; fi
+if (cd medal && uv sync --frozen --python "$PYVER"); then ok "金牌賽 venv（medal/.venv，Python $(medal/.venv/bin/python -c 'import platform;print(platform.python_version())')）"; else bad "金牌賽 uv sync 失敗"; fi
 
 # ---------------------------------------------------------------- GMAT
 step "GMAT"

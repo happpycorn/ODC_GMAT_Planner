@@ -11,6 +11,8 @@ Set-Location -Path $PSScriptRoot
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $env:PYTHONIOENCODING = "utf-8"
 $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
+# 跟合併前的基準同一個 Python；寫完整版本號，uv 才不會拿系統裡別的 3.12.x
+$PyVer = "3.12.12"
 $Results = New-Object System.Collections.Generic.List[string]
 function Ok($m)   { $Results.Add("✓ $m"); Write-Host "✓ $m" }
 function Bad($m)  { $Results.Add("✕ $m"); Write-Host "✕ $m" }
@@ -35,12 +37,12 @@ uv --version
 
 # ---------------------------------------------------------------- 套件
 Step "排位賽工具（根目錄）uv sync"
-uv sync --frozen --python 3.12
+uv sync --frozen --python $PyVer
 if ($LASTEXITCODE -eq 0) { Ok "排位賽 venv（.venv）" } else { Bad "排位賽 uv sync 失敗" }
 
 Step "金／銅牌賽工具（medal\）uv sync"
 Push-Location medal
-uv sync --frozen --python 3.12
+uv sync --frozen --python $PyVer
 $rc = $LASTEXITCODE
 Pop-Location
 if ($rc -eq 0) { Ok "金牌賽 venv（medal\.venv）" } else { Bad "金牌賽 uv sync 失敗" }

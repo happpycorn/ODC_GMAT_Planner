@@ -45,7 +45,8 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 
 ### 安裝腳本做的事
 
-1. 根目錄和 `medal/` 各跑一次 `uv sync --frozen --python 3.12`：照 lock 檔裝，不升級任何套件。
+1. 根目錄和 `medal/` 各跑一次 `uv sync --frozen --python 3.12.12`：照 lock 檔裝，不升級任何套件。
+   Python 指定到小版本，跟合併前的基準一樣；系統裡的 3.12.x 不合就由 uv 下載自己的 3.12.12。舊的 venv 版本不同會被重建。
 2. 沒有 `configs/local/config.json` 就建一份預設的，再把 GmatConsole 的路徑寫進它的 `local.gmat_console_path`。
    GMAT 的找法：`--gmat` 參數 → 已寫在 `config.json` 的路徑 → 環境變數 `GMAT_CONSOLE` → 常見安裝位置
    （Mac 的 `~/Documents/GMAT*`、`/Applications/GMAT*`；Linux 的 `~/software/GMAT`、`/opt/GMAT*`；Windows 的 `Program Files\GMAT*`）。
@@ -81,5 +82,5 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 
 - **`uv sync` 說 lock 檔過期**：有人改了 `pyproject.toml` 卻沒更新 `uv.lock`。不要自己 `uv lock`，回報給負責的人。
 - **GUI 顯示「找不到 GMAT」**：改 `configs/local/config.json` 的 `local.gmat_console_path`，或重跑 `./setup.sh --gmat <路徑>`，再重開 GUI。
-- **GUI 顯示「找不到 medal/.venv/...」**：`cd medal && uv sync --frozen --python 3.12`。
+- **GUI 顯示「找不到 medal/.venv/...」**：`cd medal && uv sync --frozen --python 3.12.12`。
 - **Finder 雙擊 start.command 說找不到 uv**：`start.command` 會補上 `~/.local/bin`、Homebrew 的路徑；uv 裝在別處就把那個資料夾加進去。
