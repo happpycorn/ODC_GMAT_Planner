@@ -5,10 +5,11 @@
 TASA／淡江大學「第一屆軌道設計競賽」的太空船攔截任務規劃工具；初賽第二名。下一場是 **2026-11-09 決賽的排位賽（10:45–11:45，60 分鐘）**，
 目標前二進金牌賽（[策略](docs/final/FINAL_STRATEGY.md)）。全天流程看 [DAY_OVERVIEW](docs/final/DAY_OVERVIEW.md)，排位賽當天照 [CONTEST_DAY](docs/ranking/CONTEST_DAY.md) 做，賽前照 [PRE_CONTEST](docs/ranking/PRE_CONTEST.md)。
 
-## 11-06 合併成單一 repo（分支 `monorepo`，還沒合回 Master）
+## 11-06 合併成單一 repo（11-07 已合回 Master）
 
-**比賽退路仍是 `Master`（52723c4）＋舊的 `~/Documents/Program/ODC_GMAT_DRL`**；`monorepo` 分支沒 push、沒合併，舊 repo 沒動。
-兩個 repo 都打了本機 tag `pre-monorepo-20261106`（沒 push）。
+11-07 用 fast-forward 合回 Master（b866951）並 push，`monorepo` 分支已刪。舊的 `~/Documents/Program/ODC_GMAT_DRL` 沒動、沒封存。
+要回到合併前：兩個 repo 的本機 tag `pre-monorepo-20261106`（沒 push；ODC_Program 是 52723c4）。
+同時清掉 GitHub 上已合併的舊 `codex/*`、`claude/*` 分支；有未合併 commit 的兩個留成 tag `archive/codex-e1-frequency`、`archive/codex-global-oracle`。
 
 做了什麼：
 - ODC_GMAT_DRL（main 6fe29bc）用 `git subtree add` 併進 `medal/`，保留歷史；仍是**獨立的 uv 專案**（自己的 `pyproject.toml`、`uv.lock`、`.venv`），不是 uv workspace。
@@ -35,7 +36,8 @@ TASA／淡江大學「第一屆軌道設計競賽」的太空船攔截任務規�
 - `odc/config/defaults.py` 的 GMAT 最後備援值仍是這台 Mac 的路徑（凍結期不動程式）；別台電腦靠 setup 寫進 `config.json`、`new-config --gmat-console` 解決。
 - 舊的 `docs/research`、`medal/docs/notes`、`medal/reports` 等歷史紀錄裡的舊路徑沒改。
 - `configs/local/test_1.json` 和 `outputs/runs/test-1*`（11-06 19:44，比這次合併早）不是這次產生的，沒有刪；當天開賽前要照 DAY_OVERVIEW 清掉。
-- 合併後的 Mac 若要當比賽主機，`medal/.venv` 已建好；切過去前要在 `monorepo` 上再照 PRE_CONTEST 彩排一次（numba 快取會重新編譯）。
+- Mac 的 `medal/.venv` 已建好；比賽前照 PRE_CONTEST／PRE_CONTEST_FINAL 在新的 Master 上再彩排一次（numba 快取會重新編譯）。
+- WSL（Corn）11-07 從新 clone 跑 `setup.sh` 7 項全 ✓、金牌賽完整 pytest 336 過；`setup.sh` 改成指定 Python 3.12.12 後，舊的 3.12.3 venv 會就地重建。
 
 ## 目前狀態
 
