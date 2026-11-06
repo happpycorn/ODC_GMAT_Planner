@@ -953,7 +953,7 @@ async function refreshRank() {
   $("#r0-next").innerHTML = `<div class="note info row" style="margin:0 0 16px"><div><b>下一步</b>　${esc(why)}</div><button class="btn btn-primary" onclick="goRank('${next}')">前往</button></div>` +
     (c.exists && c.warnings.length ? `<div class="note warn" style="margin:0 0 16px">${c.warnings.map(esc).join("<br>")}</div>` : "") +
     (solves.length && ph.length ? `<div class="note warn" style="margin:0 0 16px">設定檔裡還是範本佔位值：${esc(ph.join("、"))}。彩排用佔位題沒關係；比賽當天這代表忘了換。</div>` : "");
-  $("#r0-gmat").innerHTML = r.gmat_ok ? "" : `<div class="note bad">找不到 GMAT：${esc(r.gmat)}。步驟 6 會失敗，先檢查路徑。</div>`;
+  $("#r0-gmat").innerHTML = r.gmat_ok ? "" : `<div class="note bad">找不到 GMAT：${esc(r.gmat)}。步驟 6 會失敗；在 configs/local/config.json 填 local.gmat_console_path（或重跑 setup.sh）。</div>`;
   const kind = {solve: "求解", rt: "重瞄準", verify: "GMAT 重驗"};
   const state = x => x.kind === "verify" ? (x.passed ? `<span class="tag ok">通過</span>` : `<span class="tag">未通過／還沒完</span>`)
     : x.kind === "rt" ? (x.status === "accepted" ? `<span class="tag ok">通過</span>` : `<span class="tag ${x.status ? "bad" : ""}">${esc(x.status || "還沒完")}</span>`)
@@ -1102,7 +1102,7 @@ $("#r7-load").onclick = loadChecklist;
 $("#r7-rt").addEventListener("change", loadChecklist);
 async function loadVolumes() {
   const r = await api("/api/volumes");
-  setOptions("#r7-vol", [...r.volumes.map(v => [v, "/Volumes/" + v]), ["__local__", "沒有隨身碟：先存在本機 outputs/ODC_Final"]]);
+  setOptions("#r7-vol", [...r.volumes.map(v => [v, r.paths[v]]), ["__local__", "沒有隨身碟：先存在本機 outputs/ODC_Final"]]);
 }
 $("#r7-volref").onclick = loadVolumes;
 $("#r7-save").onclick = async () => {
@@ -1111,7 +1111,7 @@ $("#r7-save").onclick = async () => {
   if (!$("#r7-human").checked) return toast("先勾「已逐字元核對官方數字」");
   const r = await api("/api/ranking/usb", {rt: lastCheck.rt, volume: $("#r7-vol").value, score: lastCheck.score, tag: $("#r7-tag").value, verify_dirs: lastCheck.verify_dirs});
   $("#r7-saved").innerHTML = `<div class="note ok"><b>已存</b><div class="mono" style="margin-top:4px">${r.files.map(esc).join("<br>")}</div>
-    <div style="margin-top:8px"><button class="btn btn-sm" id="r7-reveal" style="margin:0">在 Finder 顯示</button></div></div>`;
+    <div style="margin-top:8px"><button class="btn btn-sm" id="r7-reveal" style="margin:0">打開所在資料夾</button></div></div>`;
   $("#r7-reveal").onclick = () => api("/api/reveal", {path: r.files[0]});
 };
 async function variant(kind) {
@@ -1133,7 +1133,7 @@ $("#m5-our").innerHTML = `<div class="lbl">我方實際 Δv</div>` + ["X", "Y", 
 
 async function refreshMedal() {
   const r = await api("/api/medal/overview"); M = r;
-  $("#m0-env").innerHTML = r.drl_ok ? "" : `<div class="note bad" style="margin:0 0 16px">找不到 ${esc(r.drl)}/.venv/bin/python，金牌賽工具跑不起來。</div>`;
+  $("#m0-env").innerHTML = r.drl_ok ? "" : `<div class="note bad" style="margin:0 0 16px">找不到 ${esc(r.drl_python)}，金牌賽工具跑不起來（在 medal/ 跑 uv sync，或重跑 setup.sh）。</div>`;
   setDot("m1", r.rules ? "ok" : "");
   setDot("m4", r.session ? "ok" : "");
   if (r.rules) {

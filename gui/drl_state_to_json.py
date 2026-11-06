@@ -1,7 +1,7 @@
 """解析官方狀態檔（parse 認得的任何格式），印摘要並另存成 role_select／new 都吃的 JSON。
 
-用金牌賽的 venv、在 ODC_GMAT_DRL 根目錄跑：
-    .venv/bin/python <ODC_Program>/gui/drl_state_to_json.py day/<USB檔> day/initial_state.json
+用金牌賽的 venv、在 medal/ 底下跑：
+    .venv/bin/python ../gui/drl_state_to_json.py day/<USB檔> day/initial_state.json
 """
 import argparse
 import json

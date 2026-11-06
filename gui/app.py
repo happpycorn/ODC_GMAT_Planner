@@ -1,4 +1,4 @@
-"""決賽當天用的本機 GUI：排位賽（ODC_Program）與金／銅牌賽（ODC_GMAT_DRL）照手冊一步一步做。
+"""決賽當天用的本機 GUI：排位賽（專案根目錄）與金／銅牌賽（medal/）照手冊一步一步做。
 
 只用標準函式庫，不需網路。每個按鈕在背後跑的就是手冊上的同一條指令，畫面會印出指令全文，
 GUI 壞掉時照抄到終端機一樣能做。
@@ -25,12 +25,19 @@ from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
 GUI_DIR = Path(__file__).resolve().parent
-DRL = Path(os.environ.get("ODC_DRL_DIR", ROOT.parent / "ODC_GMAT_DRL")).resolve()
-GMAT = os.environ.get("GMAT_CONSOLE", "/Users/corn/Documents/GMAT R2026a/bin/GmatConsole")
+sys.path.insert(0, str(GUI_DIR))
+import gmat_path  # noqa: E402
+
+WINDOWS = os.name == "nt"
+DRL = Path(os.environ.get("ODC_DRL_DIR", ROOT / "medal")).resolve()
+GMAT, GMAT_SOURCE = gmat_path.resolve()
+GMAT = GMAT or "GmatConsole"  # 找不到時照樣顯示指令，畫面會標紅
 EARTH_R_KM = 6378.137
 
 ODC = ["uv", "run", "python", "odc.py"]
-DRLPY = [".venv/bin/python"]
+# Windows 的 venv 在 Scripts\，而且相對路徑的執行檔不會照 cwd 找，所以用絕對路徑
+DRL_PYTHON = DRL / ".venv" / ("Scripts/python.exe" if WINDOWS else "bin/python")
+DRLPY = [str(DRL_PYTHON)] if WINDOWS else [".venv/bin/python"]
 RUNS = ROOT / "outputs" / "runs"
 DAY = Path(os.environ.get("ODC_DAY_DIR", DRL / "day")).resolve()  # 測 GUI 時改到別處，比賽當天用預設
 DAY_ARG = os.path.relpath(DAY, DRL) if DAY.is_relative_to(DRL) else str(DAY)
@@ -74,9 +81,11 @@ def start_job(key, title, cmd, cwd):
                 raise UserError(f"「{job.title}」還在跑，等它結束或先按停止")
     job = Job(key, title, [str(c) for c in cmd], cwd)
     env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
+    # 自成一個行程群組，停止時連 uv 底下的 python 一起停
+    group = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if WINDOWS else {"start_new_session": True})
     try:
         job.proc = subprocess.Popen(job.cmd, cwd=job.cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                    stdin=subprocess.DEVNULL, env=env, start_new_session=True)
+                                    stdin=subprocess.DEVNULL, env=env, **group)
     except FileNotFoundError as exc:
         raise UserError(f"找不到程式：{exc.filename}（在 {cwd}）")
 
@@ -118,11 +127,18 @@ def stop_job(job_id):
         return
     job.stopped = True
     try:
-        os.killpg(job.proc.pid, signal.SIGINT)
-        time.sleep(1.5)
-        if job.proc.poll() is None:
-            os.killpg(job.proc.pid, signal.SIGTERM)
-    except ProcessLookupError:
+        if WINDOWS:
+            # Windows 沒有 killpg：先送 Ctrl+Break 給整個群組，停不下來再 terminate
+            job.proc.send_signal(signal.CTRL_BREAK_EVENT)
+            time.sleep(1.5)
+            if job.proc.poll() is None:
+                job.proc.terminate()
+        else:
+            os.killpg(job.proc.pid, signal.SIGINT)
+            time.sleep(1.5)
+            if job.proc.poll() is None:
+                os.killpg(job.proc.pid, signal.SIGTERM)
+    except (ProcessLookupError, OSError):
         pass
 
 
@@ -455,15 +471,49 @@ def ranking_overview(name):
             else:
                 item["passed"] = verify_passed(d.name)
             runs.append(item)
-    return {"config": cfg, "runs": runs, "gmat": GMAT, "gmat_ok": Path(GMAT).exists()}
+    return {"config": cfg, "runs": runs, "gmat": GMAT, "gmat_ok": Path(GMAT).is_file(), "gmat_source": GMAT_SOURCE}
+
+
+def removable_drives():
+    """Windows 的可移除磁碟代號（E: 之類）。"""
+    import ctypes
+    kernel = ctypes.windll.kernel32
+    mask = kernel.GetLogicalDrives()
+    drives = []
+    for i in range(26):
+        root = f"{chr(65 + i)}:\\"
+        if mask >> i & 1 and kernel.GetDriveTypeW(root) == 2:  # DRIVE_REMOVABLE
+            drives.append(root)
+    return drives
 
 
 def volumes():
-    vols = []
-    for p in sorted(Path("/Volumes").iterdir()) if Path("/Volumes").exists() else []:
+    """看得到、可以寫的隨身碟：{顯示名稱: 掛載路徑}。"""
+    if WINDOWS:
+        mounts = [Path(d) for d in removable_drives()]
+    elif sys.platform == "darwin":
+        mounts = sorted(Path("/Volumes").iterdir()) if Path("/Volumes").exists() else []
+    else:
+        user = os.environ.get("USER") or os.environ.get("LOGNAME") or ""
+        mounts = []
+        for parent in (Path("/media") / user, Path("/run/media") / user):
+            if user and parent.is_dir():
+                mounts += sorted(parent.iterdir())
+    vols = {}
+    for p in mounts:
         if p.is_dir() and not p.is_symlink() and os.access(p, os.W_OK):
-            vols.append(p.name)
+            vols[p.drive if WINDOWS else p.name] = str(p)
     return vols
+
+
+def reveal(target):
+    """在檔案管理員裡顯示這個檔案。"""
+    if WINDOWS:
+        subprocess.run(["explorer", f"/select,{target}"], check=False)
+    elif sys.platform == "darwin":
+        subprocess.run(["open", "-R", str(target)], check=False)
+    else:
+        subprocess.run(["xdg-open", str(target.parent)], check=False)
 
 
 def save_to_usb(body):
@@ -477,9 +527,10 @@ def save_to_usb(body):
     if vol == "__local__":
         dest = ROOT / "outputs" / "ODC_Final" / "ranking"
     else:
-        if vol not in volumes():
+        vols = volumes()
+        if vol not in vols:
             raise UserError(f"找不到隨身碟 {vol!r}；重新整理清單")
-        dest = Path("/Volumes") / vol / "ODC_Final" / "ranking"
+        dest = Path(vols[vol]) / "ODC_Final" / "ranking"
     dest.mkdir(parents=True, exist_ok=True)
     prefix = f"{tag}_{score:.2f}"
     copied = [shutil.copy2(src, dest / f"{prefix}_output_submit.txt")]
@@ -663,7 +714,7 @@ def medal_overview():
         except (OSError, ValueError):
             rs = None
     return {"rules": read_rules(), "files": medal_files(), "session": sess, "rounds": rounds,
-            "role_select": rs, "drl": str(DRL), "drl_ok": (DRL / ".venv" / "bin" / "python").exists()}
+            "role_select": rs, "drl": str(DRL), "drl_python": str(DRL_PYTHON), "drl_ok": DRL_PYTHON.exists()}
 
 
 # ---------------------------------------------------------------- HTTP
@@ -733,13 +784,14 @@ class Handler(BaseHTTPRequestHandler):
             title, cmd = ranking_command(body)
             return {"job": start_job(body.get("key") or f"rank.{body.get('action')}", title, cmd, ROOT).info()}
         if path == "/api/volumes":
-            return {"volumes": volumes()}
+            vols = volumes()
+            return {"volumes": list(vols), "paths": vols}
         if path == "/api/ranking/usb" and method == "POST":
             return save_to_usb(json.loads(self.body()))
         if path == "/api/reveal" and method == "POST":
             target = Path(json.loads(self.body()).get("path", ""))
             if target.exists():
-                subprocess.run(["open", "-R", str(target)], check=False)
+                reveal(target)
             return {}
         if path == "/api/medal/overview":
             return medal_overview()
@@ -777,7 +829,9 @@ def main():
     args = ap.parse_args()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     url = f"http://127.0.0.1:{args.port}"
-    print(f"ODC 決賽 GUI：{url}\n排位賽資料夾 {ROOT}\n金牌賽資料夾 {DRL}\n關掉這個視窗或按 Ctrl+C 結束。", flush=True)
+    print(f"ODC 決賽 GUI：{url}\n排位賽資料夾 {ROOT}\n金牌賽資料夾 {DRL}\n"
+          f"GMAT：{GMAT}（{GMAT_SOURCE or '找不到，執行 setup.sh 或在 configs/local/config.json 填 local.gmat_console_path'}）\n"
+          "關掉這個視窗或按 Ctrl+C 結束。", flush=True)
     if not args.no_browser:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:
