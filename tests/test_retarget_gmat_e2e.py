@@ -1,10 +1,11 @@
 """全攝動 B 平面重瞄準的端到端測試：真的呼叫 GmatConsole（找不到就略過，不算失敗）。
 
 情境是一棒的 LEO 攔截（B 7000 km → A 7100 km、傾角差 0.1°，2900 s 轉移，153 m/s），
-Python 端在 J2–J4 下打靶到離 A 3.5 km（跟正式管線的瞄準方式一樣）。兩個案例：
-1. 單棒上限 250 m/s：重瞄準應該通過，產生全攝動固定燃燒繳交腳本，GMAT 驗證命中。
-2. 同一方案但單棒上限 160 m/s：重瞄準後那棒約 164 m/s → 失格 → 保留原方案、不產繳交腳本。
-每個案例 3–4 個 GMAT 行程、串行執行（同時只有一個），合計約 20 秒。
+Python 端在 J2–J4 下打靶到離 A 3.5 km（跟正式管線的瞄準方式一樣）。三個案例：
+1. 預設瞄準圈 3.5 km：原方案全攝動落在 3.4994 km、已在圈內 → 不跑 DC、棒不變，照樣產繳交腳本。
+2. RETARGET_AIM_KM=0（瞄正中心、走 DC）、單棒上限 250 m/s：重瞄準應該通過，產生全攝動固定燃燒繳交腳本，GMAT 驗證命中。
+3. 同 2 但單棒上限 160 m/s：重瞄準後那棒約 164 m/s → 失格 → 保留原方案、不產繳交腳本。
+每個案例 2–4 個 GMAT 行程、串行執行（同時只有一個），合計約 30 秒。
 
 GmatConsole 的位置依序找：環境變數 GMAT_CONSOLE → configs/local/config.json 的
 local.gmat_console_path → 開發機的預設安裝路徑。
@@ -48,13 +49,15 @@ def find_console():
     return next((c for c in cands if c and os.path.isfile(c)), None)
 
 
-def make_mission(path, max_dv_mps):
+def make_mission(path, max_dv_mps, aim_km=None):
     # 打靶數值由 J2–J4 的 propagate_dop853 + Lambert + Newton 求得（離 A 3.500 km）
     cfg = copy.deepcopy(ref_defaults.DEFAULT_CONFIG)
     cfg["orbit_A"] = {"SMA": 7100.0, "ECC": 0.0, "INC": 28.6, "RAAN": 0.0, "AOP": 0.0, "TA": 358.0}
     cfg["orbit_B"] = {"SMA": 7000.0, "ECC": 0.0005, "INC": 28.5, "RAAN": 0.0, "AOP": 0.0, "TA": 0.0}
     cfg["rules"].update(MAX_DV_MPS=max_dv_mps, MAX_TOTAL_DV_MPS=3000.0)
     cfg["strategy"]["GRAVITY_DEGREE"] = 4
+    if aim_km is not None:
+        cfg["strategy"]["RETARGET_AIM_KM"] = aim_km
     o = ref_optimizer.MissionOptimizer(cfg)
     dv = 153.1487
     mi = {"x": [300.0, 0.0, 0.0, 0.0, 0.0], "num_burns": 1,
@@ -68,9 +71,9 @@ def make_mission(path, max_dv_mps):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def run(console, root, name, max_dv_mps):
+def run(console, root, name, max_dv_mps, aim_km=None):
     src = root / f"{name}_src" / "mission.json"
-    sha = make_mission(src, max_dv_mps)
+    sha = make_mission(src, max_dv_mps, aim_km)
     folder = root / name
     ref_stages.main(["--from-mission", str(src), "--retarget-full-perturbation", "--gmat-console", console,
               "--run-dir", str(folder), "-q"])
@@ -88,7 +91,20 @@ def main():
     print(f"=== 全攝動 B 平面重瞄準端到端（{console}）===")
     with tempfile.TemporaryDirectory(prefix="odc-retarget-e2e-") as d:
         root = Path(d)
-        folder, rec = run(console, root, "accept", 250.0)
+        folder, rec = run(console, root, "ring", 250.0)
+        res = rec["result"]
+        rt = res.get("retargeted", {})
+        print(f"  原方案全攝動 d_min {res['original']['replay'].get('d_min_km', float('nan')):.4f} km，"
+              f"瞄準圈 {res.get('aim', {}).get('aim_km')} km")
+        check("瞄準圈：原方案已在圈內 → 不跑 DC、通過", rec["status"] == "accepted"
+              and res.get("aim", {}).get("dc_skipped") is True and res["dc"].get("skipped") is True)
+        check("瞄準圈：棒不變、總 Δv 不增加", rt.get("burns") == res["original"]["burns"]
+              and rt["burn_change"]["total_dv_change_mps"] == 0.0)
+        fixed = res["fixed_script_verification"]
+        check("瞄準圈：固定燃燒繳交腳本 GMAT 驗證命中、Δr 跟重播 d_min 差 < 50 m",
+              bool(fixed) and fixed["intercept_success"] and abs(fixed["miss_km"] - rt["d_min_km"]) < 0.05)
+
+        folder, rec = run(console, root, "accept", 250.0, aim_km=0.0)
         res = rec["result"]
         orig = res["original"]["replay"]
         print(f"  原方案全攝動 d_min {orig.get('d_min_km', float('nan')):.4f} km")
@@ -109,7 +125,7 @@ def main():
         check("繳交腳本是全攝動模型、沒有求解器",
               "EGM96.cof" in sub and "NRLMSISE00" in sub and "Target DC_Targeter" not in sub)
 
-        folder, rec = run(console, root, "reject", 160.0)
+        folder, rec = run(console, root, "reject", 160.0, aim_km=0.0)
         res = rec["result"]
         print(f"  reasons: {res['reasons']}")
         check("單棒上限 160 m/s：重瞄準失格 → rejected", rec["status"] == "rejected"

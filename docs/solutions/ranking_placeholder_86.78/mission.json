@@ -1,42 +1,42 @@
 {
   "schema_version": 1,
   "stage": "mission",
-  "saved_at": "2026-10-30T18:39:16",
+  "saved_at": "2026-11-07T22:41:35",
   "provenance": {
-    "git_commit": "209953c607eb6168f265ff9efe25bd1807b68855",
+    "git_commit": "dee73cb2ddff3945706d5d87cab8bcf5335c9e47",
     "python": "3.12.12",
     "files": {
       "odc/physics/core_math.py": "f278bb91983d42ea2164b5f32f7ed41f1d5f3f5e55454bda462c5d28e45d7db2",
       "odc/physics/propagator.py": "613a605508c5f9e20326333abad85ba483e1fb969987bb51385b8d93f37a1e69",
-      "odc/scoring/scorer.py": "328f1e98ed9c405cdc6a7e3f6dfdb7dc8a8ecc9a907585b755f28c60b125dd77",
-      "odc/search/optimizer.py": "fad0ab9fecedc3481e7930deb327e1585b1f850f9c1736c8a09ce5b38b95a489",
+      "odc/scoring/scorer.py": "22e0187318c05d80c73c5c1e7b2fda261f53569c9fd70104a2b76fab9832551a",
+      "odc/search/optimizer.py": "3d9e20ef32b87df6e39204c8752938ae408ae3b7589596a6e02ca01ff5fd0cea",
       "odc/search/fitness.py": "869925155129c96589025e00a04f732c0d6af0f76cf21f2f386e8c5296bdc1bd",
       "odc/search/ranking.py": "c18e61a8895ac4a2931b7ad1dd55bb8005ffdf5bf2722260db47b0ce0952191c",
       "odc/search/revs.py": "a395104463e1afd2bb4ebba248e70a62e13cc3bb916159e902e49bc1b2ce1cfe",
       "odc/search/replay.py": "179d34abcd7acf0c88ce5ae85ee31c27dfa8ac8aac4979c11e4430f4e47543ec",
       "odc/search/seeds.py": "c0a867a6109dc997f0c685d4a35ba84293c18a863fcc8bb983343543895b16e1",
-      "odc/search/mission_eval.py": "d21028c8ed01db6bdf9cb1e5bfe296d7b5f143d28474c6de6d6032b3c01e8ea3",
-      "odc/split/burn_splitter.py": "b8b2e5927c996788fac75f4d1e31bff267166b077ac8cdee35294fd652126eba",
-      "odc/config/validator.py": "7521279cf9bc65afca0f92281d3c4c4a5d5b04c3c93c8f0d879c04de0103d281",
+      "odc/search/mission_eval.py": "09f10dabccea0449714c2645779d4bd54b2e76315820a4f144b0a50c866de528",
+      "odc/split/burn_splitter.py": "b2c010b15eb4ef16a7f0a64f59c7e81c3b04091d353165a5a43019e4649a24ee",
+      "odc/config/validator.py": "e26f5e6862386e7b8f1b26178d855c8b9cd674f75eebbabc195a1bcef040d906",
       "uv.lock": "57650664982b28eaa921e68e653c2076d034d6440e7f862999d28a8543040b01",
-      "odc/config/defaults.py": "c925c1926b959b4c8ee597ebef109209c8d72826570a70ac63a142cefe2baa29",
+      "odc/config/defaults.py": "b0d7c465a3c5e529aebdaaaf173077f887b2084516c72599956191645a17c869",
       "odc/gmat/verification.py": "2738fffbef3a38497002d997bedcd1e357b9fb8a5bef924da9eefd876e30816a",
-      "odc/pipeline/report.py": "38b4e839936ad130ff1f8937564c5b639c0cb9771c5eb6554f9b48c82b2fc4d2",
+      "odc/pipeline/report.py": "c289df8904e96d9ddb8fec88f53653109439090dcee61813a7dc1174c9bdcead",
       "odc/pipeline/primer_stage.py": "21553ee4bb4414b6673ea365fb026cdd384725b737866445fd2938839251e0a9",
       "odc/pipeline/legalize.py": "7b998df4c978ad803875af24daae8952c6e4ec377895e9c1dcf77cc2732eb9f3",
       "odc/pipeline/checkpoints.py": "7cf2b0e1a313a81f5acc1b53da0df5a7a7298002ab684513eaa14033e8a8e145",
       "odc/pipeline/solve.py": "a027fb57976775cbb3e35aafe5f133be22294d8c0e3d0e74d3f37709161cc68d",
-      "odc/pipeline/stages.py": "47992afb754d361ac438f321a116d69e772f6304253f9c379ec50c38a479e189",
-      "odc/gmat/script_generator.py": "ab8edb14fdc4e13394ddd9ad1d6a49270a51e1413ed428464bd766eab5e62a23",
+      "odc/pipeline/stages.py": "374243ee5063cded38f9dd82e5357b5a2a8f51e41efbb0c6516e5fe6d315fb45",
+      "odc/gmat/script_generator.py": "fadf72ef7ce32db8f3685491e51911ca6fa7a000b2cb3a47b3f3a54199fd961b",
       "odc/pipeline/artifacts.py": "3bd2c9904ac81c0f08f838bf6a4b5ae13f50f28884d600cdaa9b6775b7bfe101",
       "odc/config/gmat_env.py": "0ef553fac583d022f8e90ee26e95230bd117113b03dd5554f19536e6668b4b19",
-      "odc/gmat/retarget.py": "0486b078e471e1dc7af15d6fde2669f5c33c23fef5675334907c6902cf1830bc"
+      "odc/gmat/retarget.py": "eb27254a6c2adf8b68f81ab3132175f99370a864de59ffd227326029abdc460d"
     }
   },
   "source": null,
   "config": {
     "_comment_scenario": "排位賽規則範本（rules/排位賽規則_20261006.pdf，摘要 docs/ranking/RANKING_ROUND_RULES_20261006.md）。真的規則數字只有 rules.MAX_DV_MPS=250（超過 250+1e-5 m/s 直接失格）、rules.MAX_TOTAL_DV_MPS=3000（總 Δv 超過失格）、MIN_MANEUVER_INTERVAL_SEC=100（違規每次扣 10 分）。",
-    "_comment_placeholders": "佔位值！orbit_A / orbit_B / T_MAX_SEC / k_t / C_t / k_v / C_v 全部照抄 configs/shared/hyperbolic_smoke.json 的雙曲線冒煙情境，不是官方數字——A 的軌道、任務邊界（T_max）和計分參數要開賽當下才公布，拿到後整組換掉（k_v/C_v 官方給 km/s 制，要換成 m/s）。",
+    "_comment_placeholders": "佔位值！orbit_A / orbit_B / T_MAX_SEC / k_t / C_t / k_v / C_v / C_r 全部照抄 configs/shared/hyperbolic_smoke.json 的雙曲線冒煙情境，不是官方數字——A 的軌道、任務邊界（T_max）和計分參數要開賽當下才公布，拿到後整組換掉（k_v/C_v 官方給 km/s 制，要換成 m/s；C_r 是 2026-11-04 修訂版距離項的尺度，單位 km）。",
     "_comment_burns": "這組佔位軌道最省單棒 1257 m/s，250 m/s 上限下至少要拆成 6 棒；DE 先找路線、靠 AUTO_SPLIT_LEGALIZE 拆棒。這麼多棒的拆棒收斂與執行時間還沒驗過（另案），MAX_BURNS 先沿用冒煙情境。",
     "_comment_split": "拆棒設定已是預設（stm、三起點、剔空棒、600 s 預算、3 行程），見 README。並行種子時每個行程要設不同的 optimization.SEED（null 會讓搜尋開多執行緒，三顆互搶核心）。",
     "orbit_A": {
@@ -63,7 +63,8 @@
       "k_t": 0.0001,
       "C_t": 25000.0,
       "k_v": 0.002,
-      "C_v": 1500.0
+      "C_v": 1500.0,
+      "C_r": 100.0
     },
     "_comment_oracle": "SPLIT_LEADING＋ORACLE_TWOBURN（臂 C）：四臂比較 4 題排位賽題 5/5 種子比現行高 0.10–0.22 分，smoke／contest 打平，見 docs/research/ORACLE_PHASE2_20261029.md。oracle 在背景跟 DE 並行，K=10、WALL_SEC=600 用預設。",
     "strategy": {
@@ -72,7 +73,7 @@
       "SPLIT_LEADING": true,
       "ORACLE_TWOBURN": true,
       "SPLIT_WORKERS": 1,
-      "SPLIT_WALL_BUDGET_SEC": 497.3264572919579
+      "SPLIT_WALL_BUDGET_SEC": 478.33269699988887
     },
     "optimization": {
       "MAX_BURNS": [
@@ -85,81 +86,78 @@
       "MAX_EARLY_STOP": 40,
       "TOL": 0.02,
       "SEED": null
-    },
-    "local": {
-      "gmat_console_path": "/Users/corn/Documents/GMAT R2026a/bin/GmatConsole"
     }
   },
   "burns": [
     [
-      0.2479777689839508,
-      0.0003362520597949149,
-      -0.0009967067442968652
+      0.24797776900503152,
+      0.0003362557844939786,
+      -0.0009967005606221979
     ],
     [
-      0.04699289944513988,
-      -6.834375062377966e-05,
-      0.0008428138359195126
+      0.04699291340873072,
+      -6.833853069958495e-05,
+      0.0008428179912937454
     ],
     [
-      0.24797554695931381,
-      0.0002307203559308712,
-      -0.0014680867484386652
+      0.2479755470406944,
+      0.0002307451583212596,
+      -0.0014680690074622181
     ],
     [
-      0.09638354404062907,
-      -0.00017984362366426653,
-      0.001184314159215049
+      0.09638353015865189,
+      -0.00017983998391881946,
+      0.0011843181105652303
     ]
   ],
   "times": [
-    2873.4824031748612,
-    100.0000000001035,
-    13075.180188896802,
+    2873.4826258935873,
     100.0,
-    3824.328256194931
+    13075.18008169857,
+    100.00000000000001,
+    3824.328138603587
   ],
   "mission_info": {
     "x": [
-      2873.4824031748612,
-      100.0000000001035,
-      13075.180188896802,
+      2873.4826258935873,
       100.0,
-      3824.328256194931,
-      -0.007823331477049427,
-      -0.24785633506308466,
-      0.0003362346436868044,
-      0.0024102553672092544,
-      -0.04693861815963038,
-      -6.632209700460664e-05,
-      -0.006663879035179648,
-      -0.24789033089140797,
-      0.0002386778313953474,
-      0.005390761016068694,
-      -0.09623997047479302,
-      -0.00017402375464228267
+      13075.18008169857,
+      100.00000000000001,
+      3824.328138603587,
+      -0.007823277966660689,
+      -0.24785633674830426,
+      0.00033623836852215354,
+      0.002410263454512984,
+      -0.046938631798513146,
+      -6.631685411297131e-05,
+      -0.006663886383838138,
+      -0.24789033066913166,
+      0.00023870291632394858,
+      0.005390759935528216,
+      -0.09623995668176469,
+      -0.00017401971195022276
     ],
     "num_burns": 4,
-    "score": 86.7847417567084,
-    "miss_km": 3.4950000002878343,
-    "total_dv_mps": 639.3514941049468,
-    "T_team": 19972.990848266698,
+    "score": 86.78474175670294,
+    "miss_km": 3.4949999953287696,
+    "total_dv_mps": 639.3514942947592,
+    "T_team": 19972.990846195746,
     "penalty_count": 0,
     "over_dv_count": 0,
     "total_dv_over": false,
     "disqualified": false,
     "dq_reasons": [],
-    "official_score": 86.7847417567084,
+    "official_score": 86.78474175670294,
     "dc_converged": true,
     "aim_point": [
-      9995.692330208785,
-      -4.434856770341412,
-      -0.03342474891079023
+      9995.692331266584,
+      -4.434859103902113,
+      -0.033425339140796914
     ],
-    "final_burn_dv_mps": 96.39098767825017,
+    "final_burn_dv_mps": 96.39097383910273,
     "earth_safe": true,
-    "min_arc_radius_km": 6988.058477665485
+    "min_arc_radius_km": 6988.058477655392
   },
   "verification": "python_only",
-  "artifact_id": "2007c8b6e699c30d6433ddd6e974e9750f8f784e3957188361fb09ed778882a5"
+  "artifact_id": "e0c8680de6829009838273175dfc4682ccf6e78065d4c72f24f2679476dde199"
 }

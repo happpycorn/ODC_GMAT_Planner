@@ -1,6 +1,18 @@
 # 專案狀態
 
-最後更新：2026-11-06
+最後更新：2026-11-08
+
+## 11-08 重瞄準改瞄 3.5 km 圈（軟凍結破例，使用者同意）
+
+距離 ≤ 5 km 就拿滿 50 分，舊版重瞄準卻一律修到正中心，把求解刻意偏移瞄準省下的油吐回去。改成只修到
+`strategy.RETARGET_AIM_KM`（預設 = 求解的 `MISS_TOLERANCE_SOFT` = 3.5 km）的圈上，原方案已在圈內就不改棒；設 0 回到舊版。
+GMAT 實測：佔位題重瞄準 86.780719 → **86.784288**（+0.0036）、test_1107 74.876282 → 74.879110（+0.0028）。
+取捨：模型跟官方對不上 1.5–5 km 時（曆元／太空船參數填錯，[MARGIN_SENSITIVITY](docs/research/MARGIN_SENSITIVITY_20261030.md) §3），
+舊版還能攔到、新版不一定；所以 CONTEST_DAY 步驟 1 照題目填曆元與太空船參數更重要。
+同時試了單棒餘裕 2 → 1 m/s：只多 0.00002–0.0005 分，預設不改。GUI 排位賽頁分數改顯示 6 位小數。
+佔位題已知答案已更新（[ranking_placeholder_86.78](docs/solutions/ranking_placeholder_86.78/README.md)）。
+
+注意：`odc/pipeline/stages.py`、`odc/config/validator.py` 在 mission.json 的版本檢查清單裡，**11-08 以前存的 mission.json 不能再拿去重瞄準**，要重新求解。
 
 TASA／淡江大學「第一屆軌道設計競賽」的太空船攔截任務規劃工具；初賽第二名。下一場是 **2026-11-09 決賽的排位賽（10:45–11:45，60 分鐘）**，
 目標前二進金牌賽（[策略](docs/final/FINAL_STRATEGY.md)）。全天流程看 [DAY_OVERVIEW](docs/final/DAY_OVERVIEW.md)，排位賽當天照 [CONTEST_DAY](docs/ranking/CONTEST_DAY.md) 做，賽前照 [PRE_CONTEST](docs/ranking/PRE_CONTEST.md)。

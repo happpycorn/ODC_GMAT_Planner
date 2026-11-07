@@ -14,7 +14,7 @@
   ```bash
   uv run python odc.py new-config rehearsal --gmat-console "/Users/corn/Documents/GMAT R2026a/bin/GmatConsole"
   ```
-- [ ] 對答案：佔位題應該跟 [已知答案](../solutions/ranking_placeholder_86.78/README.md) 同分（求解 86.7847、重瞄準 86.7807）。
+- [ ] 對答案：佔位題應該跟 [已知答案](../solutions/ranking_placeholder_86.78/README.md) 同分（求解 86.7847、重瞄準 86.7843；11-08 前的版本瞄正中心，重瞄準是 86.7807）。
 - [ ] **清場**（彩排完才做）：彩排的 `rank-1` 留著，當天步驟 5 會報錯；`ranking.json` 留著，`new-config` 不會覆蓋。整批搬去封存：
   ```bash
   A=~/Documents/Program/ODC_archive_pre1109/rehearsal_$(date +%m%d_%H%M)/ODC_Program; mkdir -p "$A/outputs" "$A/configs_local"

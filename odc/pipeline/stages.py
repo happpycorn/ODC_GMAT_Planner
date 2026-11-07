@@ -475,7 +475,8 @@ def run_retarget_stage(config, burns, times, mission_info, optimizer, *, args, r
         max_dv_mps=optimizer.MAX_DV * 1000.0, min_interval_sec=optimizer.MIN_COAST_TIME,
         max_total_dv_mps=optimizer.MAX_TOTAL_DV_MPS, t_max_sec=optimizer.T_max,
         min_radius_km=optimizer.MIN_PERIAPSIS, score_fn=optimizer.legality_fields,
-        gravity_degree=optimizer.GRAVITY_DEGREE)
+        gravity_degree=optimizer.GRAVITY_DEGREE,
+        aim_km=(cfg.get("strategy") or {}).get("RETARGET_AIM_KM", optimizer.MISS_TOLERANCE_SOFT))
     manifest["timings_sec"]["retarget"] = time.perf_counter() - started
 
     orig = res["original"]
@@ -494,8 +495,10 @@ def run_retarget_stage(config, burns, times, mission_info, optimizer, *, args, r
                      f"官方分數估計 {rl['official_score'] if rl['official_score'] is not None else '失格'}")
         lines.append(f"  第 {res['retarget_idx']} 棒 {bc['old_mps']:,.3f} → {bc['new_mps']:,.3f} m/s"
                      f"（向量修正 {bc['vector_change_mps']:,.3f} m/s，總 Δv {bc['total_dv_change_mps']:+,.3f} m/s）；"
-                     f"DC {res['dc'].get('iterations')} 次迭代；最近點時刻比原預定 "
-                     f"{rt['t_team_sec'] - rep['t_plan_sec']:+,.2f} s")
+                     + (f"原方案已在 {res['aim']['aim_km']:g} km 瞄準圈內（B 平面 {res['aim']['b0_radius_km']:.3f} km），沒改棒；"
+                        if res.get("aim", {}).get("dc_skipped") else
+                        f"DC {res['dc'].get('iterations')} 次迭代、瞄準圈 {res.get('aim', {}).get('aim_km', 0):g} km；")
+                     + f"最近點時刻比原預定 {rt['t_team_sec'] - rep['t_plan_sec']:+,.2f} s")
         if rl["penalty_count"]:
             lines.append(f"  ⚠️ 機動間隔違規 {rl['penalty_count']} 次（每次 −10 分；重瞄準不改點火時刻，原方案就有）")
     log.info("\n".join(lines))
@@ -548,7 +551,8 @@ def run_retarget_stage(config, burns, times, mission_info, optimizer, *, args, r
 
     if res["accepted"]:
         d_after = res["retargeted"]["d_min_km"]
-        if d_after > 1.0:
+        # 刻意停在瞄準圈上（retarget 模組說明第 2 點）不用警告；超出圈外才代表沒照計畫壓下來
+        if d_after > max(1.0, res.get("aim", {}).get("aim_km", 0.0) + 0.25):
             # B 平面是在預定時刻線性化：相對速度低（百 m/s 級）時最近點會偏離預定時刻、d_min 壓不到 0
             log.warning(f"⚠️ 重瞄準後 d_min {d_after:,.3f} km，離 5 km 只剩 {5.0 - d_after:,.3f} km 餘裕；"
                         "太空船參數不確定時可能不夠（研究報告 §3：B 長時間停在低軌時散布可達數 km）。")

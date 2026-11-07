@@ -9,7 +9,11 @@ Python 端用 J2–J4 搜尋拆棒，排位賽官方驗證開 EGM96 20×20、潮
 
 流程（全部串行，同一時間只有一個 GMAT 行程）：
 1. 原方案全攝動重播（密集報表）→ d_min、預定攔截時刻的相對速度 → B 平面基底。
-2. B 平面 DC 改第 idx 棒。
+2. B 平面 DC 改第 idx 棒，只修到距 A aim_km 的圈上（2026-11-07）：原方案在 B 平面的落點 b0
+   已在圈內就不改棒（省掉整個 DC）；在圈外就瞄 b0 往圓心拉到圈上那一點，不瞄正中心。
+   距離 ≤ 5 km 就拿滿 50 分，瞄正中心等於把求解刻意偏移瞄準省下的油吐回去（排位賽佔位題
+   多花 0.58 m/s、−0.004 分）。aim_km 預設跟求解的 MISS_TOLERANCE_SOFT 一樣留 1.5 km 餘裕；
+   設 0 回到舊版瞄正中心。
 3. 新方案全攝動重播 → d_min、最近點時刻 t_cpa、攔截前最低高度。
 4. 最後一段滑行改成停在 t_cpa（沿相對速度的落差只差幾秒，不花 Δv 修；停在最近點才讓
    繳交腳本自己報的 MissDistance 等於 d_min）。
@@ -33,6 +37,7 @@ from odc.scoring.scorer import assess_legality
 from odc.gmat.script_generator import full_perturbation_script
 
 MISS_KM = 5.0          # 規則：Δr ≤ 5 km 算攔截成功
+AIM_KM = 3.5           # 預設瞄準圈半徑（= MISS_KM − 1.5，跟求解的 MISS_TOLERANCE_SOFT 一樣）
 EXT_SEC = 600.0        # 預定攔截時刻後再多傳 10 分鐘，最近點可能晚到（hyper_far 晚 62 s）
 MAX_STEP = 60.0        # 重播報表每步一列；步長限 60 s 讓 Hermite 內插夠準
 STOP_ALT_KM = 50.0     # B 掉到這個高度就停（攔截後常鑽進大氣，MSISE 會讓積分器卡死）
@@ -194,12 +199,13 @@ def replay(console, orbit_A, orbit_B, burns, times, env, folder, tag, gravity_de
 
 
 def run_bplane_dc(console, orbit_A, orbit_B, burns, times, env, idx, bplane, folder, tag,
-                  gravity_degree):
+                  gravity_degree, target=(0.0, 0.0)):
     summary = (Path(folder) / f"{tag}.summary").resolve()
     summary.parent.mkdir(parents=True, exist_ok=True)
     summary.unlink(missing_ok=True)
     txt = full_perturbation_script(orbit_A, orbit_B, burns, times, env, gravity_degree=gravity_degree,
-                                   retarget_idx=idx, bplane=bplane, summary_path=str(summary),
+                                   retarget_idx=idx, bplane=bplane, bplane_target=target,
+                                   summary_path=str(summary),
                                    max_step=MAX_STEP, stop_alt_km=STOP_ALT_KM)
     out = run_gmat(console, txt, folder, tag)
     m = re.search(r"Targeting Completed in (\d+) iterations", out["stdout"])
@@ -215,7 +221,7 @@ def run_bplane_dc(console, orbit_A, orbit_B, burns, times, env, idx, bplane, fol
         res["error"] = _tail(out)
         return res
     dr = np.array(vals[3:])
-    resid = [float(dr @ np.array(e)) for e in bplane]
+    resid = [float(dr @ np.array(e)) - float(g) for e, g in zip(bplane, target)]
     res.update(burn_kms=vals[:3], dr_plan_km=vals[3:], bplane_residual_km=resid)
     said_no = "did not converge" in out["stdout"].lower()
     res["converged"] = (not said_no) and max(abs(r) for r in resid) < BPLANE_TOL_KM
@@ -228,12 +234,13 @@ def run_bplane_dc(console, orbit_A, orbit_B, burns, times, env, idx, bplane, fol
 # ---------------------------------------------------------------- 主流程
 def retarget_full_perturbation(*, config, burns, times, idx, env, console, folder,
                                max_dv_mps, min_interval_sec, max_total_dv_mps, t_max_sec,
-                               min_radius_km, score_fn, gravity_degree=4, runner=None):
+                               min_radius_km, score_fn, gravity_degree=4, aim_km=AIM_KM,
+                               runner=None):
     """在全攝動下 B 平面重瞄準第 idx 棒並重新判定。回傳 dict（全部可 JSON 化）。
 
     score_fn(leg, miss_km, t_team) → legality_fields 那種 dict（含 official_score），由呼叫端
     用 optimizer.legality_fields 提供，計分參數就跟求解時一樣。runner 是測試用的替身，
-    簽名同 {"replay": replay, "dc": run_bplane_dc}。"""
+    簽名同 {"replay": replay, "dc": run_bplane_dc}。aim_km 是瞄準圈半徑（km，見模組說明第 2 點）。"""
     runner = runner or {"replay": replay, "dc": run_bplane_dc}
     orbit_A, orbit_B = config["orbit_A"], config["orbit_B"]
     n = len(burns)
@@ -271,16 +278,33 @@ def retarget_full_perturbation(*, config, burns, times, idx, env, console, folde
         return res
     res["bplane_basis"] = basis
 
-    dc = runner["dc"](console, orbit_A, orbit_B, burns0, times0, env, idx, basis, folder,
-                      f"bplane_dc_b{idx}", gravity_degree)
-    res["dc"] = dc
-    if not dc["converged"]:
-        res["reasons"].append(f"B 平面 DC 沒有收斂：{dc.get('error', '')}".strip())
-        return res
-    new_burns = [list(b) for b in burns0]
-    new_burns[idx] = [round(float(c), BURN_DECIMALS) for c in dc["burn_kms"]]
-    after = runner["replay"](console, orbit_A, orbit_B, new_burns, times0, env, folder,
-                             "retargeted_replay", gravity_degree)
+    # 原方案在 B 平面的落點；圈內不改棒，圈外拉到圈上（模組說明第 2 點）
+    aim_km = max(0.0, min(float(aim_km), MISS_KM))
+    dr0 = np.asarray(before["dr_plan_km"], dtype=float)
+    b0 = [float(dr0 @ np.array(e)) for e in basis]
+    r0 = math.hypot(*b0)
+    inside = aim_km > 0.0 and r0 <= aim_km and before["d_min_km"] <= aim_km
+    target = [0.0, 0.0] if inside or r0 < 1e-12 else [c * min(1.0, aim_km / r0) for c in b0]
+    res["aim"] = {"aim_km": aim_km, "b0_km": b0, "b0_radius_km": r0, "target_km": target,
+                  "dc_skipped": inside}
+
+    if inside:
+        dc = {"tag": f"bplane_dc_b{idx}", "skipped": True, "converged": True, "iterations": 0,
+              "burn_kms": list(burns0[idx]), "bplane_residual_km": [0.0, 0.0]}
+        res["dc"] = dc
+        new_burns = [list(b) for b in burns0]
+        after = before                   # 同一組棒、同一組滑行：重播結果就是原方案那份
+    else:
+        dc = runner["dc"](console, orbit_A, orbit_B, burns0, times0, env, idx, basis, folder,
+                          f"bplane_dc_b{idx}", gravity_degree, target=target)
+        res["dc"] = dc
+        if not dc["converged"]:
+            res["reasons"].append(f"B 平面 DC 沒有收斂：{dc.get('error', '')}".strip())
+            return res
+        new_burns = [list(b) for b in burns0]
+        new_burns[idx] = [round(float(c), BURN_DECIMALS) for c in dc["burn_kms"]]
+        after = runner["replay"](console, orbit_A, orbit_B, new_burns, times0, env, folder,
+                                 "retargeted_replay", gravity_degree)
     res["retargeted_replay"] = after
     if "error" in after:
         err = after["error"].strip().splitlines()

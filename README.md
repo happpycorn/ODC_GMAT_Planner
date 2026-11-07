@@ -110,6 +110,7 @@ uv run python odc.py solve configs/local/trial.json --no-gmat
 |---|---|---|
 | `GRAVITY_DEGREE` | 2（範本 4） | Python 與 GMAT 同步套用的 zonal 階數：0 點質量、2–4 為 J2–J4。排位賽設計用 4，官方驗證的全攝動靠重瞄準補 |
 | `MISS_TOLERANCE_KM` | 5 | 末棒 Lambert 可瞄在 A 周圍多遠內的最省油點。實際瞄約 3.5 km，留 1.5 km 給攝動 |
+| `RETARGET_AIM_KM` | 同上（3.5） | 全攝動重瞄準只把落點修到 A 周圍這個半徑的圈上；原方案已在圈內就不改棒。0 = 瞄正中心（11-08 前的做法，每題多花約 0.1–0.6 m/s） |
 | `AUTO_SPLIT_LEGALIZE` | `true` | 贏家有棒超標時自動拆成合法多棒 |
 | `MAX_DV_MARGIN_MPS` | 2.0 | 拆棒時每棒上限往內縮多少（250 → 248 m/s） |
 | `SPLIT_LEADING` | `false` | 拆棒階段也拆超標的前導棒；可拆上限 = `SPLIT_AWARE_MAX_FACTOR`（預設 3）× 單棒上限 |

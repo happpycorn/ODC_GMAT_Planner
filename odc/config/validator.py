@@ -286,6 +286,10 @@ def _validate_strategy(strategy_cfg, errors: list):
                 "「分數差多少以內算打平」的門檻，設得太大等於讓平手判定去覆蓋真實的"
                 "分數差距，方向是錯的。想賭官方比到小數點後兩位就設 0.005 左右")
 
+    if "RETARGET_AIM_KM" in strategy_cfg:
+        v = strategy_cfg["RETARGET_AIM_KM"]
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 5:
+            errors.append(f"strategy.RETARGET_AIM_KM 必須是 0–5 的數字（km，0 = 瞄正中心），但收到 {v!r}")
     if "TIEBREAK_POLISH" in strategy_cfg and not isinstance(strategy_cfg["TIEBREAK_POLISH"], bool):
         errors.append("strategy.TIEBREAK_POLISH 必須是 true/false，但收到 "
                       f"{strategy_cfg['TIEBREAK_POLISH']!r}")

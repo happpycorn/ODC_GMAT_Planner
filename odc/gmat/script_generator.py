@@ -128,7 +128,7 @@ DENSE_REPORT_COLUMNS = (["SC_Human.ElapsedSecs"]
 
 def full_perturbation_script(orbit_A, orbit_B, burns, times, env, *, gravity_degree=4,
                              report_path=None, retarget_idx=None, bplane=None,
-                             summary_path=None, vary_bound_kms=2.0,
+                             bplane_target=(0.0, 0.0), summary_path=None, vary_bound_kms=2.0,
                              ext_sec=600.0, max_step=60.0, stop_alt_km=50.0):
     """全攝動重瞄準用的兩種 GMAT 腳本（回傳腳本文字，不寫檔）。
 
@@ -136,7 +136,8 @@ def full_perturbation_script(orbit_A, orbit_B, burns, times, env, *, gravity_deg
     max_step 秒，讓 Python 端用 Hermite 內插找最近點），預定攔截時刻之後再多傳 ext_sec 秒
     （最近點可能晚到）。
     retarget_idx 給定：B 平面 DC 版。Vary 第 retarget_idx 棒的 VNB 三分量，只 Achieve
-    「預定攔截時刻相對位置在 bplane 兩個單位向量上的投影 = 0」（垂直於相對速度的兩個分量）；
+    「預定攔截時刻相對位置在 bplane 兩個單位向量上的投影 = bplane_target（km）」（垂直於相對
+    速度的兩個分量；預設 (0, 0) 是瞄正中心）；
     沿相對速度的分量只會讓最近點早到或晚到幾秒，不花 Δv 去修。收斂後把該棒三分量和相對
     位置寫到 summary_path。不用「預定時刻位置對齊」：那在 hyper_far 會多花 272 m/s、
     把最後一棒推到 361 m/s（docs/research/PERTURBATION_GAP_20261019.md §4）。
@@ -205,9 +206,9 @@ def full_perturbation_script(orbit_A, orbit_B, burns, times, env, *, gravity_deg
     L.append(prop(times[-1]))
     if dc:
         L += [f"  GMAT d{c} = SC_Human.EarthMJ2000Eq.{c} - SC_Alien.EarthMJ2000Eq.{c};" for c in "XYZ"]
-        for name, e in zip(("p1", "p2"), bplane):
+        for name, e, goal in zip(("p1", "p2"), bplane, bplane_target):
             L.append(f"  GMAT {name} = dX*({float(e[0])!r}) + dY*({float(e[1])!r}) + dZ*({float(e[2])!r});")
-            L.append(f"  Achieve DC({name} = 0, {{Tolerance = 0.02}});")
+            L.append(f"  Achieve DC({name} = {float(goal)!r}, {{Tolerance = 0.02}});")
         k = retarget_idx
         L += ["EndTarget;",
               f"Report RS BurnB{k}.Element1 BurnB{k}.Element2 BurnB{k}.Element3 dX dY dZ;"]

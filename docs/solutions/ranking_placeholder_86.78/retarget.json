@@ -2,41 +2,41 @@
   "schema_version": 1,
   "stage": "retarget",
   "provenance": {
-    "git_commit": "209953c607eb6168f265ff9efe25bd1807b68855",
+    "git_commit": "dee73cb2ddff3945706d5d87cab8bcf5335c9e47",
     "python": "3.12.12",
     "files": {
       "odc/physics/core_math.py": "f278bb91983d42ea2164b5f32f7ed41f1d5f3f5e55454bda462c5d28e45d7db2",
       "odc/physics/propagator.py": "613a605508c5f9e20326333abad85ba483e1fb969987bb51385b8d93f37a1e69",
-      "odc/scoring/scorer.py": "328f1e98ed9c405cdc6a7e3f6dfdb7dc8a8ecc9a907585b755f28c60b125dd77",
-      "odc/search/optimizer.py": "fad0ab9fecedc3481e7930deb327e1585b1f850f9c1736c8a09ce5b38b95a489",
+      "odc/scoring/scorer.py": "22e0187318c05d80c73c5c1e7b2fda261f53569c9fd70104a2b76fab9832551a",
+      "odc/search/optimizer.py": "3d9e20ef32b87df6e39204c8752938ae408ae3b7589596a6e02ca01ff5fd0cea",
       "odc/search/fitness.py": "869925155129c96589025e00a04f732c0d6af0f76cf21f2f386e8c5296bdc1bd",
       "odc/search/ranking.py": "c18e61a8895ac4a2931b7ad1dd55bb8005ffdf5bf2722260db47b0ce0952191c",
       "odc/search/revs.py": "a395104463e1afd2bb4ebba248e70a62e13cc3bb916159e902e49bc1b2ce1cfe",
       "odc/search/replay.py": "179d34abcd7acf0c88ce5ae85ee31c27dfa8ac8aac4979c11e4430f4e47543ec",
       "odc/search/seeds.py": "c0a867a6109dc997f0c685d4a35ba84293c18a863fcc8bb983343543895b16e1",
-      "odc/search/mission_eval.py": "d21028c8ed01db6bdf9cb1e5bfe296d7b5f143d28474c6de6d6032b3c01e8ea3",
-      "odc/split/burn_splitter.py": "b8b2e5927c996788fac75f4d1e31bff267166b077ac8cdee35294fd652126eba",
-      "odc/config/validator.py": "7521279cf9bc65afca0f92281d3c4c4a5d5b04c3c93c8f0d879c04de0103d281",
+      "odc/search/mission_eval.py": "09f10dabccea0449714c2645779d4bd54b2e76315820a4f144b0a50c866de528",
+      "odc/split/burn_splitter.py": "b2c010b15eb4ef16a7f0a64f59c7e81c3b04091d353165a5a43019e4649a24ee",
+      "odc/config/validator.py": "e26f5e6862386e7b8f1b26178d855c8b9cd674f75eebbabc195a1bcef040d906",
       "uv.lock": "57650664982b28eaa921e68e653c2076d034d6440e7f862999d28a8543040b01",
-      "odc/config/defaults.py": "c925c1926b959b4c8ee597ebef109209c8d72826570a70ac63a142cefe2baa29",
+      "odc/config/defaults.py": "b0d7c465a3c5e529aebdaaaf173077f887b2084516c72599956191645a17c869",
       "odc/gmat/verification.py": "2738fffbef3a38497002d997bedcd1e357b9fb8a5bef924da9eefd876e30816a",
-      "odc/pipeline/report.py": "38b4e839936ad130ff1f8937564c5b639c0cb9771c5eb6554f9b48c82b2fc4d2",
+      "odc/pipeline/report.py": "c289df8904e96d9ddb8fec88f53653109439090dcee61813a7dc1174c9bdcead",
       "odc/pipeline/primer_stage.py": "21553ee4bb4414b6673ea365fb026cdd384725b737866445fd2938839251e0a9",
       "odc/pipeline/legalize.py": "7b998df4c978ad803875af24daae8952c6e4ec377895e9c1dcf77cc2732eb9f3",
       "odc/pipeline/checkpoints.py": "7cf2b0e1a313a81f5acc1b53da0df5a7a7298002ab684513eaa14033e8a8e145",
       "odc/pipeline/solve.py": "a027fb57976775cbb3e35aafe5f133be22294d8c0e3d0e74d3f37709161cc68d",
-      "odc/pipeline/stages.py": "47992afb754d361ac438f321a116d69e772f6304253f9c379ec50c38a479e189",
-      "odc/gmat/script_generator.py": "ab8edb14fdc4e13394ddd9ad1d6a49270a51e1413ed428464bd766eab5e62a23",
+      "odc/pipeline/stages.py": "374243ee5063cded38f9dd82e5357b5a2a8f51e41efbb0c6516e5fe6d315fb45",
+      "odc/gmat/script_generator.py": "fadf72ef7ce32db8f3685491e51911ca6fa7a000b2cb3a47b3f3a54199fd961b",
       "odc/pipeline/artifacts.py": "3bd2c9904ac81c0f08f838bf6a4b5ae13f50f28884d600cdaa9b6775b7bfe101",
       "odc/config/gmat_env.py": "0ef553fac583d022f8e90ee26e95230bd117113b03dd5554f19536e6668b4b19",
-      "odc/gmat/retarget.py": "0486b078e471e1dc7af15d6fde2669f5c33c23fef5675334907c6902cf1830bc"
+      "odc/gmat/retarget.py": "eb27254a6c2adf8b68f81ab3132175f99370a864de59ffd227326029abdc460d"
     }
   },
-  "saved_at": "2026-10-30T18:39:24",
+  "saved_at": "2026-11-07T22:41:50",
   "source": {
-    "path": "/Users/corn/Documents/Program/ODC_Program/outputs/runs/rehearsal-rr/mission.json",
-    "sha256": "487ff575c919df5ec64782fd6865cea6513ee785c879e99eb88bb5b8a9767ae4",
-    "artifact_id": "2007c8b6e699c30d6433ddd6e974e9750f8f784e3957188361fb09ed778882a5"
+    "path": "/Users/corn/Documents/Program/ODC_Program/outputs/runs/final-placeholder-solve/mission.json",
+    "sha256": "7c9e2f738e78fb8051f443fdf7b819db92d600eab4d2b43abe48bb1a761f21ea",
+    "artifact_id": "e0c8680de6829009838273175dfc4682ccf6e78065d4c72f24f2679476dde199"
   },
   "gmat_env": {
     "force_model": "ranking_full",
@@ -63,7 +63,7 @@
   },
   "gmat_console": "/Users/corn/Documents/GMAT R2026a/bin/GmatConsole",
   "status": "accepted",
-  "submission_script": "/Users/corn/Documents/Program/ODC_Program/outputs/runs/rehearsal-rr-rt/output_submit.txt",
+  "submission_script": "/Users/corn/Documents/Program/ODC_Program/outputs/runs/final-placeholder-rt/output_submit.txt",
   "result": {
     "retarget_idx": 3,
     "accepted": true,
@@ -92,33 +92,33 @@
         ]
       ],
       "times": [
-        2873.4824,
+        2873.48263,
         100.0,
-        13075.18019,
+        13075.18008,
         100.0,
-        3824.32826
+        3824.32814
       ],
       "replay": {
         "tag": "original_replay",
-        "wall_sec": 1.37,
+        "wall_sec": 2.77,
         "returncode": 0,
-        "d_min_km": 3.7845625111335686,
-        "t_cpa_sec": 19973.287850416822,
-        "t_plan_sec": 19972.99085,
-        "d_at_plan_km": 4.0943846427501445,
+        "d_min_km": 3.7841903266457857,
+        "t_cpa_sec": 19973.287849788183,
+        "t_plan_sec": 19972.990850000002,
+        "d_at_plan_km": 4.0941916677737975,
         "dr_plan_km": [
-          -3.323479949771354,
-          -0.9090998502787819,
-          2.211787532399785
+          -3.32347915068749,
+          -0.9082282151627776,
+          2.2117896049570778
         ],
         "dv_rel_plan_kms": [
-          0.003427748835638943,
-          -2.3790659661830196,
-          -4.683423208961592
+          0.0034273704755329953,
+          -2.3790659658156272,
+          -4.683423208963845
         ],
-        "min_radius_before_intercept_km": 6988.280146513062,
+        "min_radius_before_intercept_km": 6988.28014649908,
         "stopped_early": false,
-        "n_rows": 380
+        "n_rows": 376
       },
       "legality": {
         "penalty_count": 0,
@@ -145,58 +145,71 @@
     },
     "bplane_basis": [
       [
-        -0.999998962054994,
-        -0.0014407945498559006,
+        -0.9999989622841204,
+        -0.0014406355133247456,
         0.0
       ],
       [
-        -0.0012845612856634222,
-        0.891563583779467,
-        -0.4528937248192082
+        -0.0012844194944377563,
+        0.891563584053977,
+        -0.45289372468095584
       ]
     ],
+    "aim": {
+      "aim_km": 3.5,
+      "b0_km": [
+        3.324784127681367,
+        -1.807180093638603
+      ],
+      "b0_radius_km": 3.784189396228151,
+      "target_km": [
+        3.0750956753072614,
+        -1.6714624098993602
+      ],
+      "dc_skipped": false
+    },
     "dc": {
       "tag": "bplane_dc_b3",
-      "wall_sec": 1.31,
+      "wall_sec": 2.54,
       "returncode": 0,
       "iterations": 2,
       "converged": true,
       "burn_kms": [
-        0.09696865060239179,
-        -0.0002046311683339078,
-        -0.0008803258828874638
+        0.09642744411936939,
+        -0.00018166460623992,
+        0.001029264632340896
       ],
       "dr_plan_km": [
-        -0.0003860778906528139,
-        1.120371712598719,
-        2.209381657334139
+        -3.074003014424306,
+        -0.7557474645421447,
+        2.211608559328138
       ],
       "bplane_residual_km": [
-        -0.0012281479673997603,
-        -0.0017319731469293297
+        -7.094188172462879e-06,
+        -9.836800256346478e-06
       ]
     },
     "retargeted_replay": {
       "tag": "retargeted_replay",
-      "wall_sec": 1.37,
+      "wall_sec": 2.62,
       "returncode": 0,
-      "d_min_km": 0.004249098784437241,
-      "t_cpa_sec": 19973.461850416475,
-      "t_plan_sec": 19972.99085,
-      "d_at_plan_km": 2.4769207363579526,
+      "d_min_km": 3.5000846465128004,
+      "t_cpa_sec": 19973.302849788153,
+      "t_plan_sec": 19972.990850000002,
+      "d_at_plan_km": 3.8617242096136395,
       "dr_plan_km": [
-        -9.185595263261348e-05,
-        1.1197124195526813,
-        2.2093846254697227
+        -3.0742617473551945,
+        -0.7554012669087253,
+        2.211605187599579
       ],
       "dv_rel_plan_kms": [
-        0.004156027280899033,
-        -2.3805430877978644,
-        -4.683405906461899
+        0.003481643997581854,
+        -2.379176764185522,
+        -4.683421882974111
       ],
-      "min_radius_before_intercept_km": 6988.280146513062,
+      "min_radius_before_intercept_km": 6988.28014649908,
       "stopped_early": false,
-      "n_rows": 380
+      "n_rows": 376
     },
     "retargeted": {
       "burns": [
@@ -216,25 +229,25 @@
           -0.0014681
         ],
         [
-          0.0969687,
-          -0.0002046,
-          -0.0008803
+          0.0964274,
+          -0.0001817,
+          0.0010293
         ]
       ],
       "times": [
-        2873.4824,
+        2873.48263,
         100.0,
-        13075.18019,
+        13075.18008,
         100.0,
-        3824.79926
+        3824.64014
       ],
-      "t_team_sec": 19973.46185,
-      "d_min_km": 0.004249098784437241,
+      "t_team_sec": 19973.30285,
+      "d_min_km": 3.5000846465128004,
       "legality": {
         "penalty_count": 0,
         "over_dv_legs": [],
         "over_dv_count": 0,
-        "total_dv_mps": 639.9334023458954,
+        "total_dv_mps": 639.3935554037013,
         "total_dv_over": false,
         "disqualified": false,
         "dq_reasons": [],
@@ -242,42 +255,42 @@
           247.98003105375238,
           47.000506668971134,
           247.9799531017578,
-          96.97291152141406
+          96.43306457921992
         ],
         "headroom_mps": [
           2.019968946247616,
           202.99949333102887,
           2.0200468982422137,
-          153.02708847858594
+          153.56693542078008
         ],
-        "official_score": 86.780719413606
+        "official_score": 86.78428792222505
       },
       "burn_change": {
         "old_mps": 96.3909433856729,
-        "new_mps": 96.97291152141406,
-        "vector_change_mps": 2.146077174753976,
-        "total_dv_change_mps": 0.5819681357411355
+        "new_mps": 96.43306457921992,
+        "vector_change_mps": 0.16110810035500991,
+        "total_dv_change_mps": 0.042121193547018265
       }
     },
     "fixed_script_verification": {
-      "t_team_sec": 19973.46185,
-      "miss_km": 0.004247096855,
+      "t_team_sec": 19973.30285,
+      "miss_km": 3.500083176,
       "intercept_success": true,
-      "final_burn_dv_mps": 96.97291152,
+      "final_burn_dv_mps": 96.43306458,
       "final_burn_legal": true,
       "targeter_converged": false,
-      "report_path": "/Users/corn/Documents/Program/ODC_Program/outputs/runs/rehearsal-rr-rt/gmat_fixed/GMAT_InterceptReport.txt",
+      "report_path": "/Users/corn/Documents/Program/ODC_Program/outputs/runs/final-placeholder-rt/gmat_fixed/GMAT_InterceptReport.txt",
       "final_burn_vnb": [
-        0.0969687,
-        -0.0002046,
-        -0.0008803
+        0.0964274,
+        -0.0001817,
+        0.0010293
       ],
       "earth_safe": true,
-      "min_radius_before_intercept_km": 6988.279359557364,
-      "min_radius_time_sec": 2875.357400524444,
+      "min_radius_before_intercept_km": 6988.279359542806,
+      "min_radius_time_sec": 2875.357630293365,
       "min_periapsis_km": 6478.137,
       "radius_acceptance_km": 6478.1359999999995,
-      "radius_report_path": "/Users/corn/Documents/Program/ODC_Program/outputs/runs/rehearsal-rr-rt/gmat_fixed/GMAT_RadiusReport.txt",
+      "radius_report_path": "/Users/corn/Documents/Program/ODC_Program/outputs/runs/final-placeholder-rt/gmat_fixed/GMAT_RadiusReport.txt",
       "checks_passed": true
     }
   }

@@ -166,6 +166,13 @@ class GeneratorTest(unittest.TestCase):
         achieves = [ln for ln in lines if "Achieve DC(" in ln]
         self.assertEqual([a.split("(")[1].split(" ")[0] for a in achieves], ["p1", "p2"])
         self.assertNotIn("Achieve DC(dX", txt)
+        self.assertTrue(all("= 0.0, {Tolerance" in a for a in achieves))       # 預設瞄正中心
+        off = full_perturbation_script(ORBIT_A, ORBIT_B, [list(b) for b in BURNS], TIMES, env,
+                                       retarget_idx=1, bplane=basis, bplane_target=(3.25, -1.5),
+                                       summary_path="/tmp/x.summary")
+        self.assertEqual([ln.strip() for ln in off.splitlines() if "Achieve DC(" in ln],
+                         ["Achieve DC(p1 = 3.25, {Tolerance = 0.02});",
+                          "Achieve DC(p2 = -1.5, {Tolerance = 0.02});"])
         self.assertTrue(all("SC_Human.Earth.Altitude = 50" in ln for ln in lines if ln.startswith("Propagate")))
         self.assertIn("EGM96.cof", txt)
         self.assertIn("Report RS BurnB1.Element1 BurnB1.Element2 BurnB1.Element3 dX dY dZ;", txt)
@@ -231,8 +238,8 @@ def fake_runner(d_before=3.9, d_after=0.2, t_shift=1.5, dc_burn=None, converged=
                 "dv_rel_plan_kms": [0.0, 2.0, 0.5], "min_radius_before_intercept_km": min_radius,
                 "stopped_early": stopped, "n_rows": 10}
 
-    def dc(console, oa, ob, burns, times, env, idx, basis, folder, tag, deg):
-        calls.append(("dc", idx, [list(b) for b in burns]))
+    def dc(console, oa, ob, burns, times, env, idx, basis, folder, tag, deg, target=(0.0, 0.0)):
+        calls.append(("dc", idx, [list(b) for b in burns], list(target)))
         out = {"tag": tag, "converged": converged, "iterations": 3}
         if converged:
             out.update(burn_kms=list(dc_burn if dc_burn is not None else
@@ -324,6 +331,37 @@ class DecisionTest(unittest.TestCase):
         res = self.decide(fake_runner(t_shift=5.0)[0], t_max_sec=3201.0)
         self.assertFalse(res["accepted"])
         self.assertTrue(any("T_max" in r for r in res["reasons"]))
+
+    def test_ring_target_pulls_b0_onto_aim_circle(self):
+        # 原方案 B 平面落點 3.9 km（在 e1 方向）> 3.5 km：瞄圈上同方向那點，不瞄正中心
+        runner, calls = fake_runner(d_before=3.9)
+        res = self.decide(runner)
+        self.assertTrue(res["accepted"], res["reasons"])
+        self.assertFalse(res["aim"]["dc_skipped"])
+        tgt = calls[1][3]
+        self.assertAlmostEqual(math.hypot(*tgt), 3.5, places=9)
+        b0 = res["aim"]["b0_km"]
+        self.assertAlmostEqual(tgt[0] * b0[1] - tgt[1] * b0[0], 0.0, places=9)   # 同方向
+        self.assertGreater(tgt[0] * b0[0] + tgt[1] * b0[1], 0.0)
+
+    def test_inside_aim_circle_skips_dc(self):
+        runner, calls = fake_runner(d_before=3.0, t_shift=-2.0)
+        res = self.decide(runner)
+        self.assertTrue(res["accepted"], res["reasons"])
+        self.assertEqual([c[0] for c in calls], ["replay"])        # 沒跑 DC、也不重播第二次
+        self.assertTrue(res["aim"]["dc_skipped"])
+        r = res["retargeted"]
+        self.assertEqual(r["burns"], [list(b) for b in self.burns])
+        self.assertEqual(r["burn_change"]["total_dv_change_mps"], 0.0)
+        self.assertEqual(r["times"][-1], 2500.0)                   # 原方案重播 t_cpa = t_plan
+        self.assertAlmostEqual(r["d_min_km"], 3.0)
+
+    def test_aim_zero_restores_center_targeting(self):
+        runner, calls = fake_runner(d_before=3.0)
+        res = self.decide(runner, aim_km=0.0)
+        self.assertTrue(res["accepted"], res["reasons"])
+        self.assertEqual([c[0] for c in calls], ["replay", "dc", "replay"])
+        self.assertEqual(calls[1][3], [0.0, 0.0])
 
     def test_interval_penalty_is_reported_not_disqualifying(self):
         res = self.decide(fake_runner()[0], min_interval_sec=500.0)
