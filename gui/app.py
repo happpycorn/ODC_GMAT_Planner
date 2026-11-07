@@ -46,6 +46,9 @@ NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 ELEMENTS = ("SMA", "ECC", "INC", "RAAN", "AOP", "TA")
 # 範本（configs/shared/ranking_round.json）的佔位值；當天還是這些數字代表忘了換
 PLACEHOLDER_RULES = {"T_MAX_SEC": 40000.0, "k_t": 0.0001, "C_t": 25000.0, "k_v": 0.002, "C_v": 1500.0}
+# 沒填 GMAT_EPOCH／GMAT_SPACECRAFT 時繳交腳本裡的預設值（odc/config/gmat_env.py）
+SUBMIT_DEFAULTS = {"DateFormat": "TAIModJulian", "Epoch": "21545", "DryMass": "850", "Cd": "2.2", "Cr": "1.8",
+                   "DragArea": "6", "SRPArea": "8"}
 
 
 class UserError(Exception):
@@ -417,6 +420,16 @@ def checklist(rt, name):
     alt = v["min_radius_before_intercept_km"] - EARTH_R_KM
     left = c["T_MAX_SEC"] - T
     placeholder = [k for k, val in PLACEHOLDER_RULES.items() if c.get(k) == val]
+    # 11-07 彩排漏填曆元與太空船參數，官方設定下差 23 km；這裡讀繳交腳本實際寫進去的值
+    sp = RUNS / rt / "output_submit.txt"
+    script = sp.read_text(encoding="utf-8", errors="replace") if sp.exists() else ""
+    env = {}
+    for k in SUBMIT_DEFAULTS:
+        m = re.search(r"SC_Human\." + k + r" = '?([^';]*)", script)
+        if m:
+            env[k] = m.group(1).strip()
+    env_default = [k for k, val in SUBMIT_DEFAULTS.items() if env.get(k) == val]
+    env_label = "曆元與太空船參數照題目 Script（不是預設值）"
     items = [
         ("狀態 accepted、失格 False、間隔違規 0",
          r["status"] == "accepted" and not g["disqualified"] and g["penalty_count"] == 0,
@@ -430,10 +443,16 @@ def checklist(rt, name):
         ("攔截前最低高度 > 100 km", alt > 100, f"{alt:.0f} km"),
         ("T_MAX_SEC、k_t/C_t/k_v/C_v 不是範本佔位值", not placeholder,
          "還是佔位值：" + "、".join(placeholder) if placeholder else "都已換過（數字對不對仍要人工對官方）"),
+        (env_label, bool(env) and "Epoch" not in env_default,
+         ("、".join(f"{k} {v}" for k, v in env.items()) or "讀不到 output_submit.txt")
+         + ("｜Epoch 還是預設 21545：回步驟 1 補曆元與太空船參數，只重跑步驟 6" if "Epoch" in env_default
+            else "｜跟題目 Script 逐項核對" if env else "")),
         ("verify 印了 ✅ GMAT 獨立驗證通過", bool(vd_ok), "、".join(vd_ok) if vd_ok else ("沒有通過的 verify：" + ("、".join(vds) or "還沒跑"))),
     ]
-    # 彩排用佔位題時，佔位值那項只提醒、不擋存檔；當天的 ranking 一定要擋
-    rows = [{"label": a, "ok": bool(b), "detail": d, "blocking": not (a.startswith("T_MAX_SEC") and name != "ranking")}
+    # 彩排用佔位題時，佔位值那項只提醒、不擋存檔；當天的 ranking 一定要擋。
+    # 曆元那項只提醒：題目真的沒給曆元時預設值是對的，由下面「已逐字元核對」那格人工確認
+    rows = [{"label": a, "ok": bool(b), "detail": d,
+             "blocking": not ((a.startswith("T_MAX_SEC") and name != "ranking") or a == env_label)}
             for a, b, d in items]
     return {"rt": rt, "score": g["official_score"], "verify_dirs": vd_ok, "items": rows,
             "all_ok": all(r["ok"] or not r["blocking"] for r in rows)}

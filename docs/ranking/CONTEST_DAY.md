@@ -134,7 +134,8 @@ uv run python odc.py verify outputs/runs/rank-1-rt/output_submit.txt --config co
 R=outputs/runs/rank-1-rt C=configs/local/ranking.json python3 -c "
 import json,os;r=json.load(open(os.environ['R']+'/retarget.json'));c=json.load(open(os.environ['C']))['rules'];x=r['result'];g=x['retargeted']['legality'];v=x['fixed_script_verification'];b=g['burn_dv_mps'];T=x['retargeted']['t_team_sec']
 print('狀態',r['status'],'| 失格',g['disqualified'],g['dq_reasons'],'| 間隔違規',g['penalty_count']);print('棒數',len(b),'| 最大單棒 %.3f m/s（上限 %g）'%(max(b),c['MAX_DV_MPS']),'| 總Δv %.2f m/s（上限 %g）'%(g['total_dv_mps'],c.get('MAX_TOTAL_DV_MPS',0)))
-print('全攝動 d_min %.3f km | GMAT 固定版 Δr %.3f km 命中 %s'%(x['retargeted']['d_min_km'],v['miss_km'],v['intercept_success']));print('T_team %.1f s，離 T_max 還有 %.0f s | 攔截前最低高度 %.0f km'%(T,c['T_MAX_SEC']-T,v['min_radius_before_intercept_km']-6378.137));print('官方分數估計 %.4f'%g['official_score'])"
+print('全攝動 d_min %.3f km | GMAT 固定版 Δr %.3f km 命中 %s'%(x['retargeted']['d_min_km'],v['miss_km'],v['intercept_success']));print('T_team %.1f s，離 T_max 還有 %.0f s | 攔截前最低高度 %.0f km'%(T,c['T_MAX_SEC']-T,v['min_radius_before_intercept_km']-6378.137));print('官方分數估計 %.4f'%g['official_score'])
+import re;s=open(os.environ['R']+'/output_submit.txt').read();print('繳交腳本 SC_Human：'+'、'.join(k+' '+m.group(1) for k in ('DateFormat','Epoch','DryMass','Cd','Cr','DragArea','SRPArea') for m in [re.search(r'SC_Human\.'+k+r\" = '?([^';]*)\",s)] if m))"
 ```
 
 隊友 A 唸、主控對，**全部打勾才存 USB**：
@@ -146,6 +147,7 @@ print('全攝動 d_min %.3f km | GMAT 固定版 Δr %.3f km 命中 %s'%(x['retar
 - [ ] 離 T_max ≥ 300 s
 - [ ] 攔截前最低高度 > 100 km
 - [ ] `T_MAX_SEC`、`k_t/C_t/k_v/C_v` 是今天的官方值，不是範本的 40000／0.0001／25000／0.002／1500
+- [ ] 繳交腳本的 Epoch、DateFormat、DryMass、Cd、Cr、DragArea、SRPArea 跟題目 Script 一樣（不是預設的 `21545`／`TAIModJulian`／850／2.2／1.8／6／8）。不一樣就回步驟 1 補 `GMAT_EPOCH`、`GMAT_SPACECRAFT`，**只重跑步驟 6**，不用重新求解（11-07 彩排漏填，官方設定下差 23 km、少約 10 分）
 - [ ] 步驟 6 的 `verify` 印了 `✅`
 
 存成帶分數的檔名，例如 `rank1_86.78_output_submit.txt`。

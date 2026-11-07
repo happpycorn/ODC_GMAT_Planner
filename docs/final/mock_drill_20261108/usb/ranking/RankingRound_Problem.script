@@ -1,0 +1,86 @@
+%General Mission Analysis Tool(GMAT) Script
+%
+% 2026 Orbit Design Contest - Ranking Round problem (MOCK, for rehearsal)
+% Initial states of SC_Alien and SC_Human at the mission epoch.
+% Coordinate system: EarthMJ2000Eq, km and km/s.
+% Both spacecraft share the physical parameters below.
+
+%----------------------------------------
+%---------- Spacecraft
+%----------------------------------------
+
+Create Spacecraft SC_Alien;
+SC_Alien.DateFormat = UTCGregorian;
+SC_Alien.Epoch = '09 Nov 2026 02:45:00.000';
+SC_Alien.CoordinateSystem = EarthMJ2000Eq;
+SC_Alien.DisplayStateType = Cartesian;
+SC_Alien.X = -2596.742341;
+SC_Alien.Y = 142406.192273;
+SC_Alien.Z = -88367.596044;
+SC_Alien.VX = -0.719533493;
+SC_Alien.VY = -2.670275699;
+SC_Alien.VZ = 1.995103309;
+SC_Alien.DryMass = 620;
+SC_Alien.Cd = 2.2;
+SC_Alien.Cr = 1.5;
+SC_Alien.DragArea = 3.5;
+SC_Alien.SRPArea = 5;
+SC_Alien.OrbitColor = Red;
+
+Create Spacecraft SC_Human;
+SC_Human.DateFormat = UTCGregorian;
+SC_Human.Epoch = '09 Nov 2026 02:45:00.000';
+SC_Human.CoordinateSystem = EarthMJ2000Eq;
+SC_Human.DisplayStateType = Cartesian;
+SC_Human.X = -4413.132679;
+SC_Human.Y = -4616.055731;
+SC_Human.Z = 2665.361976;
+SC_Human.VX = 5.227011949;
+SC_Human.VY = -5.452766513;
+SC_Human.VZ = -0.782810927;
+SC_Human.DryMass = 620;
+SC_Human.Cd = 2.2;
+SC_Human.Cr = 1.5;
+SC_Human.DragArea = 3.5;
+SC_Human.SRPArea = 5;
+SC_Human.OrbitColor = Green;
+
+%----------------------------------------
+%---------- ForceModels / Propagators
+%----------------------------------------
+
+% Point mass here so the script runs anywhere. The official verification
+% uses the full model in the rules (EGM96 20x20, tides, NRLMSISE00 drag,
+% Sun/Moon, SRP, relativity).
+Create ForceModel ProblemProp_ForceModel;
+ProblemProp_ForceModel.CentralBody = Earth;
+ProblemProp_ForceModel.PrimaryBodies = {Earth};
+ProblemProp_ForceModel.Drag = None;
+ProblemProp_ForceModel.SRP = Off;
+ProblemProp_ForceModel.GravityField.Earth.Degree = 0;
+ProblemProp_ForceModel.GravityField.Earth.Order = 0;
+
+Create Propagator ProblemProp;
+ProblemProp.FM = ProblemProp_ForceModel;
+ProblemProp.Type = RungeKutta89;
+ProblemProp.InitialStepSize = 60;
+ProblemProp.Accuracy = 1e-12;
+ProblemProp.MinStep = 0.001;
+ProblemProp.MaxStep = 2700;
+
+%----------------------------------------
+%---------- Subscribers
+%----------------------------------------
+
+Create ReportFile ProblemReport;
+ProblemReport.Filename = 'RankingRound_Problem_Report.txt';
+ProblemReport.Precision = 16;
+ProblemReport.WriteHeaders = true;
+ProblemReport.Add = {SC_Alien.UTCGregorian, SC_Alien.Earth.RMAG, SC_Human.Earth.RMAG};
+
+%----------------------------------------
+%---------- Mission Sequence
+%----------------------------------------
+
+BeginMissionSequence;
+Propagate Synchronized ProblemProp(SC_Alien, SC_Human) {SC_Alien.ElapsedSecs = 3600};

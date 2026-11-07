@@ -56,6 +56,11 @@ open -e day/announced.json
 - 都讀不了：`.venv/bin/python copilot.py final manual --out day/initial.json`，手動輸入 12 個數字。
 
 **3. 角色選擇器**
+
+角色選擇器只吃 JSON。USB 檔是 CSV、GMAT 報表或純文字時先轉檔（`--names`／`--order` 跟 parse 一樣加；經緯高轉出來的 `day/initial.json` 已經是 JSON，不用轉）：
+```bash
+.venv/bin/python ../gui/drl_state_to_json.py day/<USB檔> day/initial_state.json
+```
 ```bash
 .venv/bin/python tools/role_select.py day/<初始狀態.json> --rules day/announced.json --workers 4 --budget-sec 150
 ```
