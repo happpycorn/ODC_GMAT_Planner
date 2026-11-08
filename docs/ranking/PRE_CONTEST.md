@@ -1,6 +1,6 @@
 # 排位賽賽前準備
 
-當天流程在 [CONTEST_DAY](CONTEST_DAY.md)。
+當天流程在 [CONTEST_DAY](CONTEST_DAY.md)。11-09 前一晚按 [TONIGHT_20261109](../final/TONIGHT_20261109.md) 的順序做，清場改照 [CLEANUP_20261109](../final/CLEANUP_20261109.md)（下面的清場指令仍可用，CLEANUP 多了金牌賽與 AI 程式的部分）。
 
 ## 盡快
 

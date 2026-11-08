@@ -1,6 +1,19 @@
 # 專案狀態
 
-最後更新：2026-11-08
+最後更新：2026-11-09 01:20
+
+## 11-09 賽前一晚：主辦新規定與清場
+
+主辦 11-08 晚上兩封信改變當天做法（細節在 [DAY_OVERVIEW](docs/final/DAY_OVERVIEW.md)）：
+**排位賽與四強賽都禁止網路和生成式 AI（含離線模型）**，自備筆電開賽前開飛航模式給工作人員確認、全程巡查；
+主辦桌電只有 GMAT R2026a＋題目檔、沒有 Python，**題目檔要自己用 USB 從桌電拷到 Mac**；報到 08:30 台南會展中心，要帶附照片證件正本＋識別證。
+程式不用改（我們的程式沒有任何 AI 呼叫，`uv run --offline` 跑得動、GMAT verify 不需網路）。
+11-09 01:30 在未 commit 的工作樹上測：`uv run --offline python odc.py test --quick -q` 24/24（170 s）；金牌賽 `test_final_copilot.py`＋`test_dv_recover.py` 48 passed（261 s）。
+
+- 新文件：[TONIGHT_20261109](docs/final/TONIGHT_20261109.md)（今晚清單）、[CLEANUP_20261109](docs/final/CLEANUP_20261109.md)（賽前清場：git、檔案、USB、關 AI 程式、飛航模式）。
+- 改過：DAY_OVERVIEW（報到、完整議程、電腦規定）、[CONTEST_DAY](docs/ranking/CONTEST_DAY.md)（新增步驟 0、隊友 B 改跑主辦桌電）、FINAL_STRATEGY 官方資訊、PRE_CONTEST。
+- 還沒做：11-07 金牌賽 GUI 改動與 `docs/final/mock_drill_close_20261107/` 仍未 commit；`outputs/runs/`、`configs/local/` 還有 11-06～11-08 的彩排檔，照 CLEANUP 清；
+  [QUESTIONS_FOR_ORGANIZER](docs/ranking/QUESTIONS_FOR_ORGANIZER.md) 從沒寄出，第 1–3 題現場問。
 
 ## 11-08 重瞄準改瞄 3.5 km 圈（軟凍結破例，使用者同意）
 
