@@ -96,3 +96,10 @@
 ```
 
 再把 `day/initial_state.json` 給 role_select。`final new --initial` 吃 CSV 沒問題，不用轉。11-07 已補進 CONTEST_DAY_FINAL 步驟 3（只改手冊，沒動程式）。
+
+**每回合狀態檔也一樣（11-07 彩排第 2 回合發現）**：`advise`、`announce` 的 `--state` 沒有 `--names`，也不記得 `new` 時給的船名。
+主辦每回合的檔案用工具認不出的船名時，每回合都要先用同一支 `drl_state_to_json.py` 加 `--names` 轉成 JSON，再給 `--state`。
+
+**11-07 改版後**：陷阱 9、11 和上面這兩個缺口都由新流程處理——公告頁直接填船名（session 記住，之後每回合不用 `--names`），
+初始狀態手打成 `day/initial.json`（JSON，角色選擇器直接吃），每回合 `announce --state` 從狀態檔反推 Δv，同一份檔不用再給 `advise`。
+見 [MEDAL_UX_20261107](../MEDAL_UX_20261107.md)。

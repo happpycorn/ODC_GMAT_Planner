@@ -8,7 +8,9 @@ GUI 壞掉時照抄到終端機一樣能做。
 """
 import argparse
 import codecs
+import hashlib
 import json
+import math
 import os
 import re
 import shlex
@@ -16,17 +18,20 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+from datetime import datetime
 
 ROOT = Path(__file__).resolve().parent.parent
 GUI_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(GUI_DIR))
 import gmat_path  # noqa: E402
+from medal_orbits import SIDES, epoch_utc, norm, orbit_summary, propagate, utc_text  # noqa: E402
 
 WINDOWS = os.name == "nt"
 DRL = Path(os.environ.get("ODC_DRL_DIR", ROOT / "medal")).resolve()
@@ -40,6 +45,8 @@ DRL_PYTHON = DRL / ".venv" / ("Scripts/python.exe" if WINDOWS else "bin/python")
 DRLPY = [str(DRL_PYTHON)] if WINDOWS else [".venv/bin/python"]
 RUNS = ROOT / "outputs" / "runs"
 DAY = Path(os.environ.get("ODC_DAY_DIR", DRL / "day")).resolve()  # 測 GUI 時改到別處，比賽當天用預設
+DAY_BASE = DAY.parent  # 金牌賽頁可以換設定檔（資料夾）名稱，都放在這一層
+DAY_DEFAULT = DAY.name
 DAY_ARG = os.path.relpath(DAY, DRL) if DAY.is_relative_to(DRL) else str(DAY)
 
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -434,12 +441,12 @@ def checklist(rt, name):
         ("狀態 accepted、失格 False、間隔違規 0",
          r["status"] == "accepted" and not g["disqualified"] and g["penalty_count"] == 0,
          f"狀態 {r['status']}｜失格 {g['disqualified']} {g['dq_reasons']}｜間隔違規 {g['penalty_count']}"),
-        (f"最大單棒 ≤ {cap:g} m/s", max_burn <= cap, f"{len(burns)} 棒，最大 {max_burn:.3f} m/s"),
-        (f"總 Δv ≤ {total_cap:g} m/s", (not total_cap) or g["total_dv_mps"] <= total_cap, f"{g['total_dv_mps']:.2f} m/s"),
+        (f"最大單棒 ≤ {cap:g} m/s", max_burn <= cap, f"{len(burns)} 棒，最大 {max_burn:.5f} m/s"),
+        (f"總 Δv ≤ {total_cap:g} m/s", (not total_cap) or g["total_dv_mps"] <= total_cap, f"{g['total_dv_mps']:.4f} m/s"),
         ("d_min 與 GMAT Δr 都 < 4 km、命中 True",
          x["retargeted"]["d_min_km"] < 4 and v["miss_km"] < 4 and bool(v["intercept_success"]),
          f"全攝動 d_min {x['retargeted']['d_min_km']:.3f} km｜GMAT Δr {v['miss_km']:.3f} km｜命中 {v['intercept_success']}"),
-        ("離 T_max ≥ 300 s", left >= 300, f"T_team {T:.1f} s，還剩 {left:.0f} s"),
+        ("離 T_max ≥ 300 s", left >= 300, f"T_team {T:.3f} s，還剩 {left:.0f} s"),
         ("攔截前最低高度 > 100 km", alt > 100, f"{alt:.0f} km"),
         ("T_MAX_SEC、k_t/C_t/k_v/C_v 不是範本佔位值", not placeholder,
          "還是佔位值：" + "、".join(placeholder) if placeholder else "都已換過（數字對不對仍要人工對官方）"),
@@ -490,7 +497,8 @@ def ranking_overview(name):
             else:
                 item["passed"] = verify_passed(d.name)
             runs.append(item)
-    return {"config": cfg, "runs": runs, "gmat": GMAT, "gmat_ok": Path(GMAT).is_file(), "gmat_source": GMAT_SOURCE}
+    choices = sorted(f.stem for f in (ROOT / "configs" / "local").glob("*.json") if f.stem != "config" and NAME_RE.match(f.stem))
+    return {"config": cfg, "config_choices": choices, "runs": runs, "gmat": GMAT, "gmat_ok": Path(GMAT).is_file(), "gmat_source": GMAT_SOURCE}
 
 
 def removable_drives():
@@ -582,6 +590,250 @@ def medal_files():
             for p in sorted(DAY.iterdir(), key=lambda p: p.stat().st_mtime) if p.is_file()]
 
 
+MEDAL_LOCK = threading.Lock()
+
+
+def read_medal_session():
+    # CLI 直接寫 session；輪詢恰好遇到寫入中時，短暫重讀，避免把半份 JSON 當成壞檔。
+    for attempt in range(4):
+        try:
+            return read_json(DAY / "session.json")
+        except (OSError, ValueError) as exc:
+            if attempt == 3:
+                raise UserError("整場紀錄暫時讀不到。請等工作輸出完成後重新整理；仍不行就到備援工具檢查 session.json 與備份檔。") from exc
+            time.sleep(0.02)
+
+
+def medal_names(body=None):
+    body = body or {}
+    names = str(body.get("names") or "").strip()
+    if names:
+        return names
+    return ",".join(f"{side}={str((body.get(side) or {}).get('name') or '').strip()}"
+                    for side, _ in SIDES if str((body.get(side) or {}).get("name") or "").strip())
+
+
+def medal_epoch_command(cmd):
+    """initial.json 的 epoch 已正規化成 ISO，CLI 直接讀；保留這個函式只為了不動呼叫端。"""
+    return cmd
+
+
+def write_announce_form(body):
+    """公告原值留底、換單位、二體念回；確認警告前不動任何檔案。"""
+    errors, warnings, state, summaries, epochs = {}, [], {}, {}, {}
+
+    def number(value, field, label):
+        try:
+            return num(value, label)
+        except UserError:
+            errors[field] = f"{label}要填數字，請回頭核對投影片。"
+            return 0.0
+
+    def unit(value, field, choices):
+        if value not in choices:
+            errors[field] = "這個單位無法辨認，請重新選擇。"
+            return next(iter(choices.values()))
+        return choices[value]
+
+    dv = number(body.get("dv_lim"), "dv_lim", "ΔV_lim") * unit(body.get("dv_unit", "m/s"), "dv_unit", {"m/s": 1, "km/s": 1000})
+    radius = number(body.get("rcap"), "rcap", "R_cap") * unit(body.get("rcap_unit", "km"), "rcap_unit", {"km": 1, "m": 0.001})
+    window = number(body.get("tround"), "tround", "T_round") * unit(body.get("time_unit", "sec"), "time_unit", {"sec": 1, "min": 60, "hour": 3600})
+    bounds = []
+    for field, label in (("lo", "安全空域下限"), ("hi", "安全空域上限")):
+        val = number(body.get(field), field, label)
+        factor, offset = unit(body.get(f"{field}_unit", body.get("safe_unit", "sma")), f"{field}_unit",
+                              {"sma": (1, 0), "alt_km": (1, EARTH_R_KM), "alt_m": (0.001, EARTH_R_KM)})
+        bounds.append(val * factor + offset)
+    if bounds[0] >= bounds[1]:
+        errors["lo"] = errors["hi"] = "安全空域下限要小於上限，請核對投影片。"
+    if bounds[0] < EARTH_R_KM:
+        errors["lo"] = "換算後的下限低於地表，請核對數字與高度／半長軸單位。"
+    for field, val, label in (("dv_lim", dv, "ΔV_lim"), ("rcap", radius, "R_cap"), ("tround", window, "T_round")):
+        if not math.isfinite(val):
+            errors[field] = f"{label}換算後太大，請核對數字與單位。"
+        if val <= 0:
+            errors.setdefault(field, f"{label}要大於零，請核對投影片。")
+    for side, label in SIDES:
+        raw = body.get(side) or {}
+        r_factor = unit(raw.get("r_unit", "km"), f"{side}.r_unit", {"km": 1, "m": 0.001})
+        v_factor = unit(raw.get("v_unit", "km/s"), f"{side}.v_unit", {"km/s": 1, "m/s": 0.001})
+        r = [number(raw.get(key), f"{side}.{key}", f"{label} {key}") * r_factor for key in ("X", "Y", "Z")]
+        v = [number(raw.get(key), f"{side}.{key}", f"{label} {key}") * v_factor for key in ("VX", "VY", "VZ")]
+        if not all(math.isfinite(val) for val in r + v):
+            errors[f"{side}.X"] = f"{label}換算後的數字太大，請核對位置、速度與單位。"
+        original_epoch = str(raw["epoch"]) if raw.get("epoch") is not None else ""
+        try:
+            epochs[side] = epoch_utc(original_epoch)
+        except (ValueError, OverflowError):
+            epochs[side] = None
+            errors[f"{side}.epoch"] = f"{label}時間看不懂。請填 GMAT 日期、ISO 日期，或 GMAT UTCModJulian 數字。"
+        # initial.json 存正規化的 UTC（ISO），medal 的解析器原生就讀得懂；原字串留在 announce_input.json
+        state[side] = {"r_km": r, "v_kms": v}
+        if epochs.get(side) is not None:
+            state[side]["epoch"] = utc_text(epochs[side])
+        try:
+            summaries[side] = {**orbit_summary(r, v), "epoch_utc": utc_text(epochs[side])}
+            if any(summaries[side][key] is None for key in ("radius_km", "speed_kms", "perigee_alt_km")):
+                errors[f"{side}.X"] = f"{label}軌道無法用這些數字計算，請核對位置、速度與單位。"
+        except (OverflowError, ValueError, ZeroDivisionError):
+            errors[f"{side}.X"] = f"{label}軌道算不出來，請核對位置、速度與單位。"
+    if (epochs["pursuer"] is None) != (epochs["evader"] is None):
+        for side, _ in SIDES:
+            errors.setdefault(f"{side}.epoch", "只有一艘填時間。請兩艘都填，或兩艘都留空。")
+    if errors:
+        return {"valid": False, "field_errors": errors, "error": "請先修正紅框，再按存檔。"}
+    for side, label in SIDES:
+        summary = summaries[side]
+        if not 6500 <= summary["radius_km"] <= 50000:
+            warnings.append(f"看起來{label}距地心 {summary['radius_km']:.3f} km 不在 6,500–50,000 km，可能是位置單位或小數點抄錯，請核對投影片。")
+        if not 1 <= summary["speed_kms"] <= 11:
+            warnings.append(f"看起來{label}速度 {summary['speed_kms']:.6f} km/s 不在 1–11 km/s，可能是速度單位或正負號抄錯，請核對投影片。")
+        if summary["perigee_alt_km"] < 0:
+            warnings.append(f"看起來{label}近地點高度 {summary['perigee_alt_km']:.3f} km 低於地表，可能是正負號或小數點抄錯，請核對投影片。")
+    delta = abs((epochs["pursuer"] - epochs["evader"]).total_seconds()) if epochs["pursuer"] else 0
+    alignment = "兩艘沒有填時間，工具會把這組數字當成同一時刻。"
+    if epochs["pursuer"]:
+        earlier = "追方" if epochs["pursuer"] < epochs["evader"] else "逃方"
+        alignment = f"較早那艘（{earlier}）會先推 {delta:g} 秒對齊。" if delta else "兩艘時間相同，不用先推算對齊。"
+    if delta > 86400:
+        warnings.append(f"看起來兩艘時間差 {delta / 3600:.2f} 小時，可能是日期抄錯，請核對投影片。")
+    if dv > 1000 or dv < 1:
+        warnings.append(f"看起來 ΔV_lim 是 {dv:g} m/s，可能是 m/s 與 km/s 選錯，請核對投影片。")
+    if window < 60 or window > 86400:
+        warnings.append(f"看起來 T_round 是 {window:g} 秒，可能是秒、分鐘或小時選錯，請核對投影片。")
+    if radius > 1000:
+        warnings.append(f"看起來 R_cap 是 {radius:g} km，可能是公尺與公里選錯，請核對投影片。")
+    rules = read_json(DRL / "configs" / "rulesets" / "final_official.json")
+    rules.update(max_dv_pursuer_mps=dv, max_dv_evader_mps=dv, capture_radius_km=radius,
+                 window_sec=window, safe_sma_km=bounds)
+    readback = {"rules": rules, "ships": summaries, "epoch_delta_sec": delta, "alignment": alignment,
+                "original": {key: value for key, value in body.items() if key not in ("confirm", "preview")}}
+    result = {"valid": True, "readback": readback, "warnings": warnings,
+              "needs_confirm": bool(warnings) and not body.get("confirm"), "saved": False}
+    if body.get("preview") or result["needs_confirm"]:
+        return result
+    with MEDAL_LOCK:
+        DAY.mkdir(parents=True, exist_ok=True)
+        for name in ("announced.json", "initial.json", "announce_input.json", "role_select.json"):
+            old = DAY / name
+            if old.exists():
+                shutil.copy2(old, DAY / f"{old.stem}.bak-{time.strftime('%H%M%S')}-{time.time_ns() % 1000000:06d}.json")
+        write_json(DAY / "announced.json", rules)
+        write_json(DAY / "initial.json", state)
+        write_json(DAY / "announce_input.json", readback["original"])
+        # 上一次選擇器的結果不屬於這次公告。
+        (DAY / "role_select.json").unlink(missing_ok=True)
+        write_json(DAY / "gui_readback.json", readback)
+    result.update(saved=True, initial_version=str((DAY / "initial.json").stat().st_mtime_ns))
+    return result
+
+
+def usb_compare(body):
+    initial, source = DAY / "initial.json", day_file(body.get("file"))
+    if not initial.exists():
+        raise UserError("還沒有手打初始狀態。請先在「抄公告與選角色」填好並存檔，再放 USB 檔。")
+    if not source.is_file():
+        raise UserError("找不到這份 USB 檔，請再拖放一次。")
+    saved_input = read_json(DAY / "announce_input.json") if (DAY / "announce_input.json").exists() else {}
+    names = medal_names(body) or medal_names(saved_input)
+    values, dates, logs = {}, {}, {}
+    # drl_state_to_json 對齊雙船後不保留 epoch；從同次解析的「共同 epoch」取回。
+    with tempfile.TemporaryDirectory(prefix="gui-usb-", dir=DAY) as tmp:
+        for label, path in (("manual", initial), ("usb", source)):
+            target = Path(tmp) / f"{label}.json"
+            cmd = DRLPY + [str(GUI_DIR / "drl_state_to_json.py"), str(path), str(target)]
+            if names:
+                cmd += ["--names", names]
+            try:
+                proc = subprocess.run(medal_epoch_command(cmd), cwd=DRL, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=40)
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                raise UserError(f"USB 比對工具沒有完成：{exc}。請核對金牌賽環境後再試。") from exc
+            logs[label] = proc.stdout + proc.stderr
+            if proc.returncode:
+                raise UserError(f"{'手打資料' if label == 'manual' else 'USB 檔'}解析失敗，請核對船名與檔案：\n{logs[label]}")
+            values[label] = read_json(target)
+            match = re.search(r"^共同 epoch：(.+)$", proc.stdout, re.MULTILINE)
+            dates[label] = epoch_utc(match.group(1)) if match else None
+    present_dates = [val for val in dates.values() if val]
+    common = max(present_dates) if present_dates else None
+    time_known = (dates["manual"] is None) == (dates["usb"] is None)
+    usb_state = json.loads(json.dumps(values["usb"]))
+    for side, _ in SIDES:
+        if dates["usb"]:
+            usb_state[side]["epoch"] = utc_text(dates["usb"])
+    for label in values:
+        if common and dates[label]:
+            dt = (common - dates[label]).total_seconds()
+            for side, _ in SIDES:
+                ship = values[label][side]
+                try:
+                    ship["r_km"], ship["v_kms"] = propagate(ship["r_km"], ship["v_kms"], dt)
+                except (ValueError, OverflowError, ZeroDivisionError) as exc:
+                    raise UserError(f"兩份檔案無法對齊時間：{exc}。請核對投影片與 USB 檔。") from exc
+    rows = []
+    for side, label in SIDES:
+        for key, axes, tolerance, unit in (("r_km", ("X", "Y", "Z"), 0.001, "km"),
+                                          ("v_kms", ("VX", "VY", "VZ"), 1e-6, "km/s")):
+            for i, axis in enumerate(axes):
+                manual, usb = values["manual"][side][key][i], values["usb"][side][key][i]
+                diff = usb - manual
+                rows.append({"side": side, "label": f"{label} {axis}", "unit": unit, "manual": manual,
+                             "usb": usb, "diff": diff, "match": time_known and abs(diff) < tolerance})
+        both = dates["manual"] is not None and dates["usb"] is not None
+        diff = (dates["usb"] - dates["manual"]).total_seconds() if both else None
+        rows.append({"side": side, "label": f"{label}對齊時間", "unit": "秒", "manual": utc_text(dates["manual"]),
+                     "usb": utc_text(dates["usb"]), "diff": diff,
+                     "match": abs(diff) < 1 if both else dates["manual"] == dates["usb"]})
+    all_match = all(row["match"] for row in rows)
+    adopted = False
+    if body.get("adopt"):
+        with MEDAL_LOCK:
+            shutil.copy2(initial, DAY / f"initial.bak-{time.strftime('%H%M%S')}.json")
+            write_json(initial, usb_state)
+            (DAY / "gui_readback.json").unlink(missing_ok=True)
+            (DAY / "role_select.json").unlink(missing_ok=True)
+        adopted = True
+    baseline = (f"各檔先把兩艘對齊到該檔較晚時間，再把位置與速度推到 {utc_text(common)} 比對。"
+                "時間列核對各檔原本的對齊時間；USB 採用時保留 USB 自己的對齊時間。") if common else "兩份檔都沒有時間，直接比對位置與速度，請另向主辦核對時間。"
+    if not time_known:
+        baseline = "其中一份沒有時間，無法確認兩份位置與速度是同一時刻，先列為不一致。請向主辦核對時間；採用 USB 時保留 USB 自己的時間資料。"
+    return {"rows": rows, "all_match": all_match, "baseline": baseline, "adopted": adopted,
+            "message": "已改用 USB 檔，角色選擇器要重跑" if adopted else
+                       "USB 檔跟手打的一致" if all_match else "USB 檔跟手打的不一樣，請核對紅色各列，再決定採用哪份。",
+            "initial_version": str(initial.stat().st_mtime_ns), "output": logs}
+
+
+def medal_submitted(body):
+    with MEDAL_LOCK:
+        if not (DAY / "session.json").exists():
+            raise UserError("還沒有整場紀錄，請先選角色並建立。")
+        session = read_json(DAY / "session.json")
+        round_no = session.get("round")
+        if session.get("finished") or body.get("round") != round_no:
+            raise UserError("目前回合已經改變，請重新整理後核對回合再交出。")
+        rec = next((row for row in session.get("rounds", []) if row.get("round") == round_no), {})
+        expected = (rec.get("submission") or {}).get("line")
+        if not expected or body.get("line") != expected:
+            raise UserError("提交行和目前建議不一樣。請重新整理，照畫面最新的提交行核對後再按已交出。")
+        entries = read_json(DAY / "submissions.json") if (DAY / "submissions.json").exists() else []
+        existing = next((row for row in entries if row.get("round") == round_no), None)
+        if existing:
+            return {"submission": existing}
+        estimated = body.get("remaining_sec") is None
+        if estimated:
+            advice_jobs = [job for job in list(JOBS.values()) if getattr(job, "medal_round", None) == round_no
+                           and job.key == "medal.round.advise"]
+            # 正常 GUI 一定帶 localStorage 算出的秒數；單獨呼叫 API 時以建議工作起點估算。
+            remaining = 600 - (time.time() - advice_jobs[-1].started) if advice_jobs else 600.0
+        else:
+            remaining = num(body.get("remaining_sec"), "倒數剩餘秒數")
+        entry = {"round": round_no, "line": expected, "local_time": datetime.now().astimezone().isoformat(timespec="seconds"),
+                 "remaining_sec": remaining, "remaining_estimated": estimated}
+        entries.append(entry)
+        write_json(DAY / "submissions.json", entries)
+        return {"submission": entry}
+
+
 def write_rules(body):
     tpl = read_json(DRL / "configs" / "rulesets" / "final_official.json")
     dvp, dve = num(body.get("dv_p"), "追方 ΔV_lim"), num(body.get("dv_e", body.get("dv_p")), "逃方 ΔV_lim")
@@ -644,6 +896,8 @@ def name_args(body):
 
 def medal_command(body):
     act = body.get("action")
+    if act == "initial_parse":
+        return "念回初始狀態", DRLPY + ["copilot.py", "final", "parse", f"{DAY_ARG}/initial.json"] + name_args(body)
     if act == "parse":
         # 跟 final parse 印一樣的摘要，另存成 JSON：role_select 只吃 JSON，USB 檔不一定是
         return "解析狀態檔", DRLPY + [str(GUI_DIR / "drl_state_to_json.py"), day_rel(body.get("file")),
@@ -664,13 +918,21 @@ def medal_command(body):
         role = body.get("role")
         if role not in ("pursuer", "evader"):
             raise UserError("角色要選追方或躲方")
+        for job in list(JOBS.values()):
+            if job.ended is None and job.key in ("medal.advise", "medal.announce", "medal.round.advise", "medal.round.announce", "medal.new", "medal.setup.new"):
+                raise UserError("回合工作還在執行，請先在輸出框按停止，等它停止後再重建整場紀錄。")
+        initial_arg = day_rel(body.get("file"))
         sess = DAY / "session.json"
         if sess.exists():
             if not body.get("overwrite"):
                 raise UserError("day/session.json 已經存在。真的要重建就勾「覆蓋」，舊檔會備份")
             sess.rename(DAY / f"session.bak-{time.strftime('%H%M%S')}.json")
+        if (DAY / "submissions.json").exists():
+            shutil.copy2(DAY / "submissions.json", DAY / f"submissions.bak-{time.strftime('%H%M%S')}.json")
+        write_json(DAY / "submissions.json", [])
+        write_json(DAY / "gui_session.json", {"id": str(time.time_ns()), "names": body.get("names") or ""})
         return f"建 session（{'追方' if role == 'pursuer' else '躲方'}）", DRLPY + [
-            "copilot.py", "final", "new", "--rules", f"{DAY_ARG}/announced.json", "--initial", day_rel(body.get("file")),
+            "copilot.py", "final", "new", "--rules", f"{DAY_ARG}/announced.json", "--initial", initial_arg,
             "--role", role, "--out", f"{DAY_ARG}/session.json"] + name_args(body)
     if act == "advise":
         cmd = DRLPY + ["copilot.py", "final", "advise", f"{DAY_ARG}/session.json"]
@@ -680,17 +942,21 @@ def medal_command(body):
             cmd.append("--fast")
         return "本回合建議 advise", cmd
     if act == "announce":
-        cmd = DRLPY + ["copilot.py", "final", "announce", f"{DAY_ARG}/session.json",
-                       "--opponent-dv"] + [num_text(v, "對手 Δv") for v in body.get("opp", [])]
-        if len(body.get("opp", [])) != 3:
-            raise UserError("對手 Δv 要填 X Y Z 三個數")
+        cmd = DRLPY + ["copilot.py", "final", "announce", f"{DAY_ARG}/session.json"]
+        opp = body.get("opp") or []
+        if not body.get("file") or any(str(v).strip() for v in opp):
+            if len(opp) != 3 or any(not str(v).strip() for v in opp):
+                raise UserError("只有 Δv 時要填 X、Y、Z 三個數；有狀態檔時可以全部留空。請補齊後再試。")
+            cmd += ["--opponent-dv"] + [num_text(v, "對手 Δv") for v in opp]
         if any(str(v).strip() for v in body.get("our", [])):
             if len(body["our"]) != 3:
                 raise UserError("我方 Δv 要填 X Y Z 三個數")
             cmd += ["--our-dv"] + [num_text(v, "我方 Δv") for v in body["our"]]
         if body.get("file"):
             cmd += ["--state", day_rel(body["file"])]
-        return "記錄公告 announce", cmd
+        if body.get("force"):
+            cmd += ["--force"]
+        return "核對回合結束狀態", cmd + name_args(body)
     if act == "show":
         return "整場摘要 show", DRLPY + ["copilot.py", "final", "show", f"{DAY_ARG}/session.json"]
     raise UserError(f"不認得的動作：{act}")
@@ -709,31 +975,134 @@ def parse_advise(text):
         m = re.search(r"a = ([-\d.]+)", out["after"])
         if m:
             out["a_after"] = float(m.group(1))
+    # CLI 最後一行才是應交值；保留原有鍵，另記替代值與各軸供 GUI 恢復。
+    for line in text.splitlines():
+        if line.strip().startswith("提交："):
+            out["submit"] = line.strip()
+    out["used_alternative"] = bool(re.search(r"已找到通過重驗的替代|已換成替代|以下提交行使用替代", text))
+    if out.get("submit"):
+        pieces = out["submit"].split("：", 1)[-1].split(",")
+        try:
+            out["dv_mps"] = [float(val) for val in pieces[-3:]]
+        except ValueError:
+            pass
     return out
 
 
+def set_medal_day(name):
+    """切換金牌賽設定檔（一個資料夾，跟排位賽切設定檔同一套用法）。資料夾不用先存在，第一次寫檔時才建立。"""
+    global DAY, DAY_ARG
+    name = str(name).strip()
+    if not NAME_RE.match(name):
+        raise UserError("名稱只能用英文、數字、. _ -。")
+    target = (DAY_BASE / name).resolve()
+    if target != DAY:
+        with JOBS_LOCK:
+            busy = [j.title for j in JOBS.values() if j.key.startswith("medal.") and j.ended is None]
+        if busy:
+            raise UserError("金牌賽還有工作在跑（" + "、".join(busy) + "），等它跑完或按停止再切換。")
+        DAY = target
+        DAY_ARG = os.path.relpath(DAY, DRL) if DAY.is_relative_to(DRL) else str(DAY)
+    return {"day_name": DAY.name, "day_path": str(DAY), "day_exists": DAY.exists()}
+
+
 def medal_overview():
-    sess, rounds = None, []
+    sess, rounds, s, latest_announcement = None, [], {}, None
     p = DAY / "session.json"
     if p.exists():
-        s = read_json(p)
+        s = read_medal_session()
         for rec in s.get("rounds", []):
             sub, ann = rec.get("submission") or {}, rec.get("announcement") or {}
             rounds.append({"round": rec.get("round"), "line": sub.get("line"),
                            "passed": (sub.get("recheck") or {}).get("passed"),
                            "our_dv": sub.get("dv_mps"), "announced": bool(ann),
                            "opp_dv": ann.get("opponent_dv_mps"), "our_dv_ann": ann.get("our_dv_mps"),
-                           "consistency": (rec.get("consistency") or {}).get("status")})
+                           "consistency": (rec.get("consistency") or {}).get("status"),
+                           "announcement": ann, "round_result": rec.get("round_result")})
+            if ann:
+                actual, submitted = ann.get("our_dv_mps"), sub.get("dv_mps")
+                difference = [a - b for a, b in zip(actual, submitted)] if actual is not None and submitted is not None else None
+                latest_announcement = {"round": rec.get("round"), "source": ann.get("source"),
+                                       "opponent_dv_mps": ann.get("opponent_dv_mps"), "our_dv_mps": actual,
+                                       "typed_opponent_dv_mps": ann.get("typed_opponent_dv_mps"),
+                                       "warnings": ann.get("warnings") or [], "dt_sec": ann.get("dt_sec"),
+                                       "recovery": ann.get("recovery"), "our_difference_mps": difference,
+                                       "our_matches_submission": max(map(abs, difference)) <= 0.05 if difference else None,
+                                       "round_result": rec.get("round_result") or {}}
         sess = {"role": s.get("role"), "round": s.get("round"), "rounds_total": s.get("rules", {}).get("rounds"),
-                "safe_sma_km": s.get("rules", {}).get("safe_sma_km")}
+                "safe_sma_km": s.get("rules", {}).get("safe_sma_km"), "finished": s.get("finished"),
+                "names": s.get("names"), "order": s.get("order")}
     rs = None
     if (DAY / "role_select.json").exists():
         try:
             rs = read_json(DAY / "role_select.json")
         except (OSError, ValueError):
             rs = None
-    return {"rules": read_rules(), "files": medal_files(), "session": sess, "rounds": rounds,
-            "role_select": rs, "drl": str(DRL), "drl_python": str(DRL_PYTHON), "drl_ok": DRL_PYTHON.exists()}
+    distance, evader_a, in_zone = None, None, None
+    current = s.get("current_state") or {}
+    try:
+        distance = norm([a - b for a, b in zip(current["pursuer"]["r_km"], current["evader"]["r_km"])])
+        evader_a = orbit_summary(current["evader"]["r_km"], current["evader"]["v_kms"])["sma_km"]
+        bounds = s.get("rules", {}).get("safe_sma_km")
+        in_zone = bounds[0] <= evader_a <= bounds[1] if bounds and evader_a is not None else None
+    except (KeyError, TypeError, ValueError, OverflowError):
+        pass
+    submissions = read_json(DAY / "submissions.json") if (DAY / "submissions.json").exists() else []
+    gui_session = read_json(DAY / "gui_session.json") if (DAY / "gui_session.json").exists() else {}
+    session_id = None
+    if sess:
+        session_id = gui_session.get("id") or hashlib.sha256(json.dumps([s.get("initial"), s.get("role")], sort_keys=True).encode()).hexdigest()[:20]
+    initial_version = str((DAY / "initial.json").stat().st_mtime_ns) if (DAY / "initial.json").exists() else None
+    active = [{**job.info(), "medal_round": getattr(job, "medal_round", None),
+               "medal_session_id": getattr(job, "medal_session_id", None)}
+              for job in list(JOBS.values()) if job.key.startswith("medal.")]
+    phase, advice = "setup", {}
+    cur = next((rec for rec in s.get("rounds", []) if rec.get("round") == s.get("round")), {})
+    logged = next((row for row in submissions if row.get("round") == s.get("round")), None)
+    if sess:
+        if s.get("finished") or s.get("round", 1) > (sess.get("rounds_total") or 6):
+            phase = "E"
+        elif logged and not cur.get("announcement"):
+            phase = "D"
+        elif cur.get("submission"):
+            phase = "C"
+        elif cur.get("announcement"):
+            phase = "A"
+        else:
+            phase = "B"
+        sub, agent = cur.get("submission") or {}, (cur.get("advice") or {}).get("agent_info") or {}
+        if sub:
+            recheck = sub.get("recheck") or {}
+            advice = {"submit": "提交：" + sub.get("line", ""), "dv_mps": sub.get("dv_mps"),
+                      "recheck": "重驗：" + ("通過" if recheck.get("passed") else "未通過"),
+                      "cert": "安全證書：" + ("成立" if agent.get("certificate") else "未成立"),
+                      "used_alternative": False}
+            try:
+                evader = (cur.get("start_state") or current)["evader"]
+                velocity = [val + dv / 1000 for val, dv in zip(evader["v_kms"], sub["dv_mps"])] if s.get("role") == "evader" else evader["v_kms"]
+                advice["a_after"] = orbit_summary(evader["r_km"], velocity)["sma_km"]
+            except (KeyError, TypeError, ValueError, OverflowError):
+                pass
+        matching = [job for job in active if job["key"] == "medal.round.advise"
+                    and job["medal_round"] == s.get("round") and job["medal_session_id"] in (None, session_id)]
+        if matching:
+            job = matching[-1]
+            if job["running"]:
+                phase = "B"
+            elif job["rc"] == 0 and not logged:
+                advice.update(parse_advise("\n".join(job["lines"])))
+    readback = read_json(DAY / "gui_readback.json") if (DAY / "gui_readback.json").exists() else None
+    return {"day_name": DAY.name, "day_default": DAY_DEFAULT, "day_path": str(DAY), "day_exists": DAY.exists(),
+            "day_rel": os.path.relpath(DAY, ROOT) if DAY.is_relative_to(ROOT) else str(DAY),
+            "day_choices": sorted(p.name for p in DAY_BASE.iterdir() if p.is_dir() and NAME_RE.match(p.name)
+                                  and ((p / "announced.json").exists() or (p / "session.json").exists())),
+            "rules": read_rules(), "files": medal_files(), "session": sess, "rounds": rounds,
+            "role_select": rs, "drl": str(DRL), "drl_python": str(DRL_PYTHON), "drl_ok": DRL_PYTHON.exists(),
+            "finished": s.get("finished"), "names": s.get("names"), "latest_announcement": latest_announcement,
+            "distance_km": distance, "evader_sma_km": evader_a, "in_zone": in_zone, "submissions": submissions,
+            "phase": phase, "advice": advice, "submitted": logged, "jobs": active,
+            "session_id": session_id,
+            "initial_version": initial_version, "readback": readback}
 
 
 # ---------------------------------------------------------------- HTTP
@@ -814,6 +1183,48 @@ class Handler(BaseHTTPRequestHandler):
             return {}
         if path == "/api/medal/overview":
             return medal_overview()
+        if path == "/api/medal/day" and method == "POST":
+            return set_medal_day(json.loads(self.body()).get("name", ""))
+        if path == "/api/medal/announce_form" and method == "POST":
+            return write_announce_form(json.loads(self.body()))
+        if path == "/api/medal/usb_compare" and method == "POST":
+            return usb_compare(json.loads(self.body()))
+        if path == "/api/medal/submitted" and method == "POST":
+            return medal_submitted(json.loads(self.body()))
+        if path == "/api/medal/setup" and method == "POST":
+            body = json.loads(self.body())
+            if body.get("action") not in ("initial_parse", "role_select", "new"):
+                raise UserError("這個開賽動作無法辨認，請回到「抄公告與選角色」重試。")
+            keys = {"initial_parse": "medal.initial_parse", "role_select": "medal.setup.role_select", "new": "medal.setup.new"}
+            DAY.mkdir(parents=True, exist_ok=True)
+            with MEDAL_LOCK:
+                title, cmd = medal_command(body)
+                job = start_job(keys[body["action"]], title, medal_epoch_command(cmd), DRL)
+            return {"job": job.info()}
+        if path == "/api/medal/round" and method == "POST":
+            body = json.loads(self.body())
+            if body.get("action") not in ("advise", "announce", "show"):
+                raise UserError("這個回合動作無法辨認，請重新整理後重試。")
+            if not (DAY / "session.json").exists():
+                raise UserError("還沒有整場紀錄，請先到「抄公告與選角色」選角色。")
+            with MEDAL_LOCK:
+                session = read_json(DAY / "session.json")
+                if body.get("round") is not None and body["round"] != session.get("round"):
+                    raise UserError("回合已經改變，請重新整理後再試。")
+                if session.get("finished") and body["action"] != "show":
+                    raise UserError(f"比賽已在第 {session['finished'].get('round')} 回合結束。請查看整場摘要，以主辦公告為準。")
+                submitted = read_json(DAY / "submissions.json") if (DAY / "submissions.json").exists() else []
+                if body["action"] == "advise" and any(row.get("round") == session.get("round") for row in submitted):
+                    raise UserError("這回合已交出，請等主辦的回合結束狀態檔，再繼續下一回合。")
+                for old in list(JOBS.values()):
+                    if old.ended is None and old.key in ("medal.round.advise", "medal.round.announce"):
+                        raise UserError("上一個回合工作還在跑，請等輸出完成後再試。")
+                title, cmd = medal_command(body)
+                job = start_job(f"medal.round.{body['action']}", title, medal_epoch_command(cmd), DRL)
+                job.medal_round = session.get("round")
+                meta = read_json(DAY / "gui_session.json") if (DAY / "gui_session.json").exists() else {}
+                job.medal_session_id = meta.get("id")
+            return {"job": job.info()}
         if path == "/api/medal/rules" and method == "POST":
             return write_rules(json.loads(self.body()))
         if path == "/api/medal/manual" and method == "POST":

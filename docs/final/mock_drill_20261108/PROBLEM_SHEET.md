@@ -54,12 +54,17 @@ SC_Alien 通過近地點後，第一次離開**高度 60,000 km** 時任務結�
 | 安全空域 | 逃方第 6 回合結束時的半長軸，換算成高度（a − 6378.137 km）落在 **1,050 – 1,110 km** |
 | 力學 | 純二體 |
 
-### 二、初始狀態（USB 檔）
+### 二、初始狀態（投影片）
 
-檔案：[usb/medal/initial_state.csv](usb/medal/initial_state.csv)（EarthMJ2000Eq，km、km/s）。當天把它當成 USB 上拿到的檔，複製到 `medal/day/`。
+座標系 EarthMJ2000Eq。**位置 km、速度 m/s**（注意單位）。
 
-- **SC_Red 是追方，SC_Blue 是逃方。**
+| 船 | 角色 | Epoch（UTCGregorian） | X | Y | Z | VX | VY | VZ |
+|---|---|---|---|---|---|---|---|---|
+| SC_Red | 追方 | 09 Nov 2026 05:30:00.000 | 6581.049518 | 867.099028 | 1748.220537 | 182.551744 | 6531.956040 | -3913.692895 |
+| SC_Blue | 逃方 | 09 Nov 2026 07:00:00.000 | 6370.305748 | -494.318590 | 2548.864197 | 1860.380963 | 6572.138471 | -3358.832356 |
+
 - 兩艘的 epoch 不一樣，以晚的那艘為第 1 回合起點。
+- 主辦另外發了 USB 檔 [usb/medal/initial_state.csv](usb/medal/initial_state.csv)（km、km/s），內容跟投影片相同。先照投影片抄，再拿 USB 檔比對。
 
 ### 三、選角色
 
@@ -67,11 +72,17 @@ SC_Alien 通過近地點後，第一次離開**高度 60,000 km** 時任務結�
 
 ### 四、每回合怎麼玩
 
-一個人模擬時沒有對手，用 [OPPONENT_MOVES](OPPONENT_MOVES.md) 當主辦公告的對手 Δv：
+一個人模擬時沒有對手，用 [organizer.py](organizer.py) 當主辦：它照 [OPPONENT_MOVES](OPPONENT_MOVES.md) 的對手 Δv 和你們交的 Δv 推一回合，
+印出主辦公告、寫出回合末狀態檔（就是下一回合起點）。
 
-1. 照手冊 `advise`，手寫提交行。
-2. 寫好後才打開 OPPONENT_MOVES 對應回合那一列，那就是主辦公告的對手實際 Δv。
-3. `announce` 填對手 Δv 和你自己交的 Δv，**不加 `--state`**（這次沒有主辦發的每回合狀態檔，工具自己推）；下一回合 `advise` 也不加 `--state`。
+1. GUI「每回合」頁（或 CLI `advise`）拿到提交行，手寫，按「已交出」。
+2. 在 `medal/` 跑 organizer，把到目前為止每回合你們交的 Δv 依序列出（例：交完第 2 回合）：
+   ```bash
+   .venv/bin/python ../docs/final/mock_drill_20261108/organizer.py --role evader --our-dv=<第1回合X,Y,Z> --our-dv=<第2回合X,Y,Z> --out <day 資料夾>/round2_end.csv
+   ```
+   負數開頭要寫成 `--our-dv=-2.6180,...`（有等號），不然會被當成別的參數。
+3. 把寫出的 CSV 拖進 GUI（CLI：`announce day/session.json --state <檔>`）。**不用手打對手 Δv**；想練比對就把 organizer 印的對手 Δv 填進選填欄。
+4. 用 GUI 測試時，`ODC_DAY_DIR` 指到暫存資料夾，不要弄髒 `medal/day/`。
 
 ---
 

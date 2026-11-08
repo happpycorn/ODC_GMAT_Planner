@@ -2,8 +2,11 @@
 
 使用方式見 ``python final_copilot.py --help``；也可用 ``python copilot.py final ...``。
 所有位置、速度分別採 EarthMJ2000Eq 的 km、km/s；提交的 Δv 用 m/s。
+每回合先 advise；收到主辦的回合末檔後 announce --state，反推雙方實際 Δv 並記住下一回合起點。
 """
 import argparse
+import datetime as dt
+import hashlib
 import json
 import math
 import os
@@ -23,15 +26,20 @@ from agents import make_agent
 from agents.final_common import (dsma_capacity, exact_miss, perigee_alt_km,
                                  round_context, zone_slack)
 from agents.final_evader import heuristic_candidates
-from game.core import Game, sma_official
-from game.initial_state import align_initial_states
-from game.official_io import StateImportError, manual_entry, read_official_state
+from game.core import OUTCOME_WINNER, Game, sma_official
+from game.dv_recover import elapsed_sec, recover_dv
+from game.initial_state import align_initial_states, parse_epoch
+from game.official_io import (StateImportError, manual_entry, parse_official_state,
+                             read_official_state)
 from game.rules import Rules, other
 from physics import EARTH_MU, RE_VAL, propagate
 from physics.frames import rsw_basis
 
 
 SIDES = ("pursuer", "evader")
+SIDE_LABELS = {"pursuer": "追方", "evader": "逃方"}
+OUTCOME_LABELS = {"capture": "攔截", "crash_pursuer": "追方撞地", "crash_evader": "逃方撞地",
+                 "escape": "逃方在安全空域內", "sma_out": "逃方在安全空域外", "timeout": "回合用盡"}
 DEFAULT_FORMAT_PATH = Path(__file__).resolve().parent / "configs" / "final_format.json"
 HEURISTIC_CLASSES = ("away", "normal+", "normal-", "radial+", "radial-", "zone")
 
@@ -161,8 +169,20 @@ def _state_record(parsed):
     return entry
 
 
-def _parse_state(path, names=None, order=None):
-    parsed = read_official_state(path, names=names, order=order)
+def _read_state_file(path):
+    """同一次讀取取得原始內容與 SHA256，避免反推與重複檔案檢查讀到不同版本。"""
+    try:
+        raw = Path(path).read_bytes()
+        return raw.decode("utf-8-sig"), hashlib.sha256(raw).hexdigest()
+    except FileNotFoundError as exc:
+        raise ValueError(f"找不到狀態檔 {str(path)!r}；請確認 USB 檔已複製、檔名與目前工作目錄") from exc
+    except (OSError, UnicodeError) as exc:
+        raise ValueError(f"無法讀取狀態檔 {str(path)!r}：{exc}；請確認檔案是 UTF-8 文字") from exc
+
+
+def _parse_state(path, names=None, order=None, *, content=None):
+    parsed = (read_official_state(path, names=names, order=order) if content is None else
+              parse_official_state(content, names=names, order=order))
     notes = list(parsed.get("notes", []))
     epochs = parsed.get("ship_epochs")
     if epochs and epochs.get("pursuer") is not None and epochs.get("evader") is not None:
@@ -178,6 +198,17 @@ def _parse_state(path, names=None, order=None):
     elif epochs and any(epochs.get(side) is not None for side in SIDES):
         raise ValueError("只有一艘有 epoch；請讓兩艘都提供 epoch，或都不提供，才能對齊回合起點")
     return _state_record(parsed), notes
+
+
+def _state_options(session, args):
+    """指令列可覆寫本次解析方式，未指定的項目沿用舊 session 的值。"""
+    names = _parse_names(args.names) if args.names is not None else session.get("names")
+    order = args.order if args.order is not None else session.get("order")
+    return names, order
+
+
+def _used_state(sha256, state, round_no, path):
+    return {"sha256": sha256, "epoch": state.get("epoch"), "round": round_no, "path": str(path)}
 
 
 def _state_from_manual():
@@ -481,14 +512,16 @@ def _print_state(parsed):
 def _cmd_new(args):
     rules = _rules_from_path(args.rules)
     names = _parse_names(args.names)
-    state, notes = _parse_state(args.initial, names=names, order=args.order)
+    content, sha256 = _read_state_file(args.initial)
+    state, notes = _parse_state(args.initial, names=names, order=args.order, content=content)
     config = _load_format(args.format)
     if config["dv_margin_mps"] >= rules.max_dv(args.role):
         raise ValueError("提交餘裕 dv_margin_mps 不得大於等於我方 ΔV_lim；請修改格式設定檔")
     session = {"version": 1, "rules": rules.to_dict(), "role": args.role,
                "format": config, "round": 1, "initial": state,
                "current_state": state, "predicted_state": None,
-               "rounds": [], "opponent_preferences": {}}
+               "rounds": [], "opponent_preferences": {}, "names": names, "order": args.order,
+               "used_states": [_used_state(sha256, state, 0, args.initial)]}
     _write_json(args.out, session)
     print(f"已建立 session：{args.out}；我方 {config['role_names'][args.role]}，第 1 回合")
     _print_state(state)
@@ -518,6 +551,10 @@ def _cmd_manual(args):
 
 def _cmd_advise(args):
     session = _read_json(args.session, "session")
+    if session.get("finished"):
+        finished = session["finished"]
+        outcome = OUTCOME_LABELS.get(finished["outcome"], finished["outcome"])
+        raise ValueError(f"比賽已在第 {finished['round']} 回合結束（{outcome}）；不用再交。")
     round_no = session["round"]
     rules = Rules.from_dict(dict(session["rules"]))
     if args.round is not None and args.round != round_no:
@@ -531,7 +568,9 @@ def _cmd_advise(args):
         state = _state_from_manual()
         notes = []
     elif args.state:
-        state, notes = _parse_state(args.state)
+        names, order = _state_options(session, args)
+        state, notes = _parse_state(args.state, names=names, order=order)
+        session.update(names=names, order=order)
     else:
         state = session["current_state"]
         notes = []
@@ -641,8 +680,165 @@ def _cmd_advise(args):
     return 0
 
 
+def _recovery_hints(start, observed, elapsed, recovery):
+    """回推失準時檢查船名對調與常見單位、座標系錯誤。"""
+    hints = []
+    direct = sum(row["position_residual_km"] for row in recovery.values())
+    swapped = sum(recover_dv(*_rv(start, side), *_rv(observed, other(side)), elapsed)
+                  ["position_residual_km"] for side in SIDES)
+    if swapped < 0.3 * direct:
+        hints.append(f"追方與逃方可能對調：對調後回推殘差合計 {swapped:.3f} km，"
+                     f"原本 {direct:.3f} km，明顯變小；請核對船名對應或用 --names 修正。")
+    for side in SIDES:
+        r0, v0 = _rv(start, side)
+        r1, v1 = _rv(observed, side)
+        if 900 < np.linalg.norm(r1) / max(1.0, np.linalg.norm(r0)) < 1100:
+            hints.append(f"{SIDE_LABELS[side]}的位置看起來是公尺；請除以 1000 改成 km。")
+        if 900 < np.linalg.norm(v1) / max(1e-12, np.linalg.norm(v0)) < 1100:
+            hints.append(f"{SIDE_LABELS[side]}的速度看起來是 m/s；請除以 1000 改成 km/s。")
+    if not hints and all(abs(np.linalg.norm(_rv(start, side)[0]) -
+                             np.linalg.norm(_rv(observed, side)[0])) < 2.0 for side in SIDES):
+        hints.append("|r| 接近但回推方向差很多：可能是 EarthFixed 未轉 EarthMJ2000Eq；請核對座標系。")
+    return hints
+
+
+def _announce_recovered(args, session, rec, rules, observed, notes, sha256, names, order,
+                        typed_opponent, typed_our):
+    """先完整核對，通過或明確強制採用後才寫回 session。"""
+    round_no = session["round"]
+    start = rec["start_state"]
+    elapsed, source = elapsed_sec(start, observed, rules.window_sec)
+    same_positions = all(np.linalg.norm(_rv(start, side)[0] - _rv(observed, side)[0]) < 1e-6
+                         for side in SIDES)
+    if abs(elapsed) <= 1.0 or (source != "epoch" and same_positions):
+        raise ValueError("這是本回合起點的狀態，不是回合末。請放主辦剛發的檔。")
+    warnings = []
+    if source != "T_round" and abs(elapsed - rules.window_sec) > 1.0:
+        warnings.append(f"檔案時間比回合起點晚 {elapsed:.1f} s，但 T_round 是 {rules.window_sec:.1f} s："
+                        f"T_round 抄錯，或主辦提早結束本回合（攔截／撞地）？已用 {elapsed:.1f} s 反推。")
+    recovery = {side: recover_dv(*_rv(start, side), *_rv(observed, side), elapsed) for side in SIDES}
+    actual = {side: np.asarray(recovery[side]["dv_mps"], dtype=float) for side in SIDES}
+    problems = []
+    for side in SIDES:
+        residual = recovery[side]["position_residual_km"]
+        size = float(np.linalg.norm(actual[side]))
+        label, cap = SIDE_LABELS[side], rules.max_dv(side)
+        if residual > 5.0:
+            problems.append(f"回推{label}回不到本回合起點（差 {residual:.3f} km）")
+        if size > cap + 0.5:
+            problems.append(f"{label}反推 Δv {size:.2f} m/s 超過上限 {cap:g} m/s")
+    if problems:
+        message = "／".join(problems) + ("：這份檔可能不是本回合結束的狀態、船名對調、單位錯，"
+                                      "或 T_round／ΔV_lim 抄錯。核對後再放一次；確定要用就加 --force。")
+        hints = _recovery_hints(start, observed, elapsed, recovery)
+        if not args.force:
+            raise ValueError("\n".join([message, *hints]))
+        warnings.extend([f"已用 --force 強制寫入。{message}", *hints])
+    for side in SIDES:
+        row = recovery[side]
+        if row["position_residual_km"] > 0.01:
+            warnings.append(f"{SIDE_LABELS[side]}回推位置殘差 {row['position_residual_km']:.6f} km，"
+                            "超過 0.01 km；請核對檔案精度、時間與力學模型。")
+        if row["lambert_diff_mps"] is not None and row["lambert_diff_mps"] > 0.01:
+            warnings.append(f"{SIDE_LABELS[side]}的 Lambert 交叉核對差 {row['lambert_diff_mps']:.6f} m/s，"
+                            "超過 0.01 m/s；請核對官方狀態。")
+
+    our_side, opponent = session["role"], other(session["role"])
+    submitted = np.asarray(rec["submission"]["dv_mps"], dtype=float)
+    delta = actual[our_side] - submitted
+    difference = float(np.linalg.norm(delta))
+    if difference > 0.05:
+        axis = int(np.argmax(np.abs(delta)))
+        warnings.append(f"主辦執行的我方 Δv 跟提交行差 {difference:.2f} m/s"
+                        f"（{'XYZ'[axis]} 軸 {delta[axis]:+.2f} m/s）。"
+                        "可能主辦抄錯或手寫錯，馬上找工作人員核對。")
+    if np.linalg.norm(actual[our_side]) < 0.01 and np.linalg.norm(submitted) > 0.0:
+        warnings.append("主辦當我們沒交（逾時）？馬上找工作人員。")
+    if typed_our is not None:
+        difference = float(np.linalg.norm(typed_our - actual[our_side]))
+        if difference > 0.05:
+            warnings.append(f"你打的我方 Δv 跟檔案反推差 {difference:.2f} m/s；以檔案反推值為準。")
+    if typed_opponent is not None:
+        difference = float(np.linalg.norm(typed_opponent - actual[opponent]))
+        if difference > 0.05:
+            warnings.append(f"你打的對手 Δv 跟檔案反推差 {difference:.2f} m/s；以檔案反推值為準。")
+
+    g = _game(session, start, round_no)
+    classified = _classify_opponent(g, opponent, actual[opponent])
+    result = g.play_round(actual["pursuer"], actual["evader"])
+    a = float(result["sma_evader_km"])
+    zone = rules.safe_sma_km
+    round_result = {"min_dist_km": float(result["window_min_dist_km"]),
+                    "t_min_sec": float(result["t_window_min"] - result["t"]),
+                    "outcome": result["outcome"], "evader_sma_km": a,
+                    "in_zone": bool(zone[0] <= a <= zone[1]) if zone is not None else None}
+    predicted = _full_coast_prediction(start, actual["pursuer"], actual["evader"], elapsed)
+    consistency = _compare_states(predicted, observed)
+    rec["announcement"] = {"source": "state", "opponent_dv_mps": actual[opponent],
+                           "our_dv_mps": actual[our_side], "typed_opponent_dv_mps": typed_opponent,
+                           "typed_our_dv_mps": typed_our, "opponent_class": classified,
+                           "dt_sec": elapsed, "dt_source": source, "recovery": recovery,
+                           "warnings": warnings, "state_path": str(args.state)}
+    rec["round_result"] = round_result
+    rec["consistency"] = consistency
+    rec["actual_prediction"] = predicted
+    rec["actual_trajectory"] = {"start_state": start, "dv_p_mps": actual["pursuer"],
+                                "dv_e_mps": actual["evader"], "T_sec": elapsed}
+    preferences = Counter(session.get("opponent_preferences", {}))
+    preferences[classified] += 1
+    session.update(current_state=observed, predicted_state=observed, round=round_no + 1,
+                   names=names, order=order, opponent_preferences=dict(preferences))
+    session.setdefault("used_states", []).append(_used_state(sha256, observed, round_no, args.state))
+    if result["outcome"] is not None:
+        session["finished"] = {"outcome": result["outcome"], "winner": OUTCOME_WINNER[result["outcome"]],
+                               "round": round_no}
+    _write_json(args.session, session)
+
+    print(f"反推：{'警告' if warnings else '通過'}")
+    print(f"第 {round_no} 回合；反推時間 {elapsed:.3f} s；時間來源 {source}")
+    for side in SIDES:
+        size = float(np.linalg.norm(actual[side]))
+        full = "；已推滿上限（可能被縮放）" if abs(size - rules.max_dv(side)) <= 0.01 else ""
+        numbers = ", ".join(f"{value:.4f}" for value in actual[side])
+        print(f"{SIDE_LABELS[side]}實際 Δv = ({numbers}) m/s；|Δv| = {size:.4f} m/s{full}")
+        row = recovery[side]
+        lambert = (f"{row['lambert_diff_mps']:.6f} m/s" if row["lambert_diff_mps"] is not None else
+                   "未交叉核對（超過半週期或無解）")
+        print(f"  回推位置殘差 {row['position_residual_km']:.6f} km；Lambert 差 {lambert}")
+    print(f"本回合最近距離 {round_result['min_dist_km']:.6f} km；"
+          f"發生於回合開始後 {round_result['t_min_sec']:.3f} 秒")
+    if start.get("epoch"):
+        instant = parse_epoch(start["epoch"]) + dt.timedelta(seconds=round_result["t_min_sec"])
+        print(f"最近距離 UTC 時刻：{instant.astimezone(dt.timezone.utc).isoformat()}")
+    print(f"是否攔截：{'是' if result['outcome'] == 'capture' else '否'}")
+    zone_text = (f"安全空域 [{zone[0]:.3f}, {zone[1]:.3f}] {'內' if round_result['in_zone'] else '外'}"
+                 if zone is not None else "安全空域未公告")
+    print(f"逃方 a = {a:.6f} km，{zone_text}")
+    _print_consistency(consistency)
+    for note in notes:
+        print(f"解析註記：{note}")
+    for warning in warnings:
+        print(f"警告：{warning}")
+    if session.get("finished"):
+        finished = session["finished"]
+        print(f"比賽應已結束：{OUTCOME_LABELS[finished['outcome']]}，"
+              f"{SIDE_LABELS[finished['winner']]}獲勝（以主辦公告為準）")
+    print(f"下一回合：{session['round']}")
+    return 0
+
+
 def _cmd_announce(args):
+    if args.state is None and args.opponent_dv is None:
+        raise ValueError("請給主辦的回合末狀態檔 --state（建議），或手打對手實際 Δv --opponent-dv X Y Z")
     session = _read_json(args.session, "session")
+    if args.state:
+        content, sha256 = _read_state_file(args.state)
+        for used in session.get("used_states", []):
+            if used["sha256"] == sha256:
+                raise ValueError(f"這份檔第 {used['round']} 回合已經用過了（{used['path']}）。"
+                                 "請放主辦剛發的回合末狀態檔。")
+        names, order = _state_options(session, args)
+        observed, notes = _parse_state(args.state, names=names, order=order, content=content)
     round_no = session["round"]
     rules = Rules.from_dict(dict(session["rules"]))
     if round_no > rules.rounds:
@@ -650,15 +846,18 @@ def _cmd_announce(args):
     rec = _round_record(session, round_no)
     if "submission" not in rec or "start_state" not in rec:
         raise ValueError(f"第 {round_no} 回合尚未 advise；請先產生並抄下提交行")
-    g = _game(session, rec["start_state"], round_no)
-    opponent = other(session["role"])
-    opp_dv = np.asarray(args.opponent_dv, dtype=float)
-    if not np.all(np.isfinite(opp_dv)):
+    opp_dv = np.asarray(args.opponent_dv, dtype=float) if args.opponent_dv is not None else None
+    if opp_dv is not None and not np.all(np.isfinite(opp_dv)):
         raise ValueError("對手公告 Δv 有非有限數字；請重新輸入三個 ECI m/s 數字")
-    submitted = np.asarray(rec["submission"]["dv_mps"], dtype=float)
     official_our = np.asarray(args.our_dv, dtype=float) if args.our_dv is not None else None
     if official_our is not None and not np.all(np.isfinite(official_our)):
         raise ValueError("我方公告 Δv 有非有限數字；請重新輸入三個 ECI m/s 數字")
+    if args.state:
+        return _announce_recovered(args, session, rec, rules, observed, notes, sha256, names, order,
+                                   opp_dv, official_our)
+    g = _game(session, rec["start_state"], round_no)
+    opponent = other(session["role"])
+    submitted = np.asarray(rec["submission"]["dv_mps"], dtype=float)
     classified = _classify_opponent(g, opponent, opp_dv)
     rec["announcement"] = {"opponent_dv_mps": opp_dv, "our_dv_mps": official_our,
                            "opponent_class": classified}
@@ -681,12 +880,6 @@ def _cmd_announce(args):
     session["current_state"] = predicted
     print(f"已記錄第 {round_no} 回合公告；對手 Δv 分類：{classified}；"
           f"累積偏好 {dict(preferences)}")
-    if args.state:
-        observed, notes = _parse_state(args.state)
-        _check_against_prediction(session, observed)
-        session["current_state"] = observed
-        for note in notes:
-            print(f"解析註記：{note}")
     _write_json(args.session, session)
     print(f"下一回合：{session['round']}；已將公告雙方 Δv 的二體預測寫入 session")
     return 0
@@ -711,14 +904,32 @@ def _cmd_show(args):
             print(f"  我方提交：{rec['submission']['line']}")
         if rec.get("announcement"):
             announcement = rec["announcement"]
+            if announcement.get("source") == "state":
+                print(f"  反推來源：{announcement['state_path']}；"
+                      f"{announcement['dt_sec']:.3f} s（{announcement['dt_source']}）")
+            else:
+                print("  公告來源：手動輸入 Δv")
             print(f"  我方公告 Δv：{announcement.get('our_dv_mps') or rec['submission']['dv_mps']} m/s；"
                   f"對手公告 Δv：{announcement['opponent_dv_mps']} m/s；"
                   f"分類 {announcement['opponent_class']}")
+        if rec.get("round_result"):
+            result = rec["round_result"]
+            outcome = OUTCOME_LABELS.get(result["outcome"], "尚未結束")
+            zone_text = "內" if result["in_zone"] else "外"
+            if result["in_zone"] is None:
+                zone_text = "未公告"
+            print(f"  回合結果：最近距離 {result['min_dist_km']:.6f} km，"
+                  f"回合開始後 {result['t_min_sec']:.3f} 秒；{outcome}；"
+                  f"逃方 a = {result['evader_sma_km']:.6f} km，安全空域{zone_text}")
         if rec.get("consistency"):
             result = rec["consistency"]
             print(f"  一致性檢查：{result['status']}；位置差 "
                   f"P {result['position_diff_km']['pursuer']:.6f} / "
                   f"E {result['position_diff_km']['evader']:.6f} km")
+    if session.get("finished"):
+        finished = session["finished"]
+        print(f"比賽應已在第 {finished['round']} 回合結束：{OUTCOME_LABELS[finished['outcome']]}，"
+              f"{SIDE_LABELS[finished['winner']]}獲勝（以主辦公告為準）")
     return 0
 
 
@@ -742,12 +953,19 @@ def main(argv=None):
     p.add_argument("--fast", action="store_true", help="用快速版 agent")
     p.add_argument("--seed", type=int, help="隨機種子；預設為回合數")
     p.add_argument("--manual", action="store_true", help="逐項輸入本回合雙方狀態")
+    p.add_argument("--names", help="船名對應；指定後寫回 session，未指定時沿用 session")
+    p.add_argument("--order", help="檔案內雙方順序；指定後寫回 session，未指定時沿用 session")
 
-    p = sub.add_parser("announce", help="記錄主辦公告的實際 Δv，預測下一回合起點")
-    p.add_argument("session")
-    p.add_argument("--opponent-dv", nargs=3, type=float, required=True, metavar=("X", "Y", "Z"))
-    p.add_argument("--our-dv", nargs=3, type=float, metavar=("X", "Y", "Z"))
-    p.add_argument("--state", help="主辦公告的回合末狀態檔，可立即核對")
+    p = sub.add_parser("announce", help="由主辦回合末狀態反推雙方 Δv，或記錄手動公告")
+    p.add_argument("session", help="new 建立的 session JSON")
+    p.add_argument("--opponent-dv", nargs=3, type=float, metavar=("X", "Y", "Z"),
+                   help="對手實際 Δv；有 --state 時僅供比對，單位 m/s")
+    p.add_argument("--our-dv", nargs=3, type=float, metavar=("X", "Y", "Z"),
+                   help="我方實際 Δv；有 --state 時僅供比對，單位 m/s")
+    p.add_argument("--state", help="主辦剛發的回合末狀態檔；反推後直接作為下一回合起點")
+    p.add_argument("--names", help="船名對應；指定後寫回 session，未指定時沿用 session")
+    p.add_argument("--order", help="檔案內雙方順序；指定後寫回 session，未指定時沿用 session")
+    p.add_argument("--force", action="store_true", help="強制採用殘差或 Δv 超限的狀態檔並列印警告")
 
     p = sub.add_parser("manual", help="手動輸入狀態並存為 JSON")
     p.add_argument("--out", required=True)

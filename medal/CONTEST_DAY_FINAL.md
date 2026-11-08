@@ -22,48 +22,15 @@
 
 ## 二、題目公告後的 10 分鐘
 
-| 時間 | 誰 | 做什麼 |
+**一個人做，GUI 為主**：瀏覽器開 GUI 的「金／銅牌賽 → 抄公告與選角色」。開始前先看「規則與時程」頁的設定檔名稱是 `day`（彩排時換過名字的話要切回來）。GUI 壞了才照下面的 CLI 做（每一步 GUI 都有對應指令）。
+
+| 時間 | 做什麼 | GUI |
 |---|---|---|
-| 0–2 分 | 記錄 | USB 檔複製到 `day/`，填規則檔 |
-| 2–3 分 | 主控 | parse 初始狀態 |
-| 3–6 分 | 主控 | 角色選擇器（約 2 分鐘；`--fast` 約 40 s） |
-| 6–9 分 | 全隊 | 看結果 |
-| 9–10 分 | 主控 | 決定角色、告知工作人員、建 session |
-
-**1. 規則檔**（只改四個數字）
-```bash
-mkdir -p day && cp configs/rulesets/final_official.json day/announced.json
-open -e day/announced.json
-```
-- `max_dv_pursuer_mps`、`max_dv_evader_mps` ← ΔV_lim（**m/s**）
-- `capture_radius_km` ← R_cap（km）
-- `window_sec` ← T_round（**秒**）
-- `safe_sma_km` ← `[lo, hi]`（**半長軸** km；給高度要加 6378.137）
-
-**2. 初始狀態**
-```bash
-.venv/bin/python copilot.py final parse day/<USB檔>
-```
-|r| 應約 6700–8000 km、|v| 約 7–8 km/s。船名認不出來加 `--names pursuer=<船名>,evader=<船名>` 或 `--order pursuer,evader`。
-
-- **經緯高**：先轉檔再 parse：
-  ```bash
-  .venv/bin/python tools/gmat_state_convert.py day/<經緯高.json> --out day/initial.json
-  ```
-  輸入 JSON 每艘寫 GMAT 欄位：`{"pursuer": {"DateFormat": "UTCGregorian", "Epoch": "09 Nov 2026 00:00:00.000",
-  "CoordinateSystem": "EarthFixed", "DisplayStateType": "SphericalAZFPA", "RMAG": ..., "RA": 經度, "DEC": 緯度,
-  "VMAG": ..., "AZI": ..., "FPA": ...}, "evader": {...}}`（FPA 水平 = 90°）。
-- 都讀不了：`.venv/bin/python copilot.py final manual --out day/initial.json`，手動輸入 12 個數字。
-
-**3. 角色選擇器**
-
-角色選擇器只吃 JSON。USB 檔是 CSV、GMAT 報表或純文字時先轉檔（`--names`／`--order` 跟 parse 一樣加；經緯高轉出來的 `day/initial.json` 已經是 JSON，不用轉）：
-```bash
-.venv/bin/python ../gui/drl_state_to_json.py day/<USB檔> day/initial_state.json
-```
-```bash
-.venv/bin/python tools/role_select.py day/<初始狀態.json> --rules day/announced.json --workers 4 --budget-sec 150
-```
+| 0–3 分 | 照投影片抄五項（四個數字＋雙方 epoch、r、v），單位用下拉選 | 一頁表單，按「存檔」；有警告就核對投影片再按「我確定」 |
+| 3 分 | 角色選擇器自動開跑（完整版約 150 s） | 存檔後自動開始；趕時間勾「快速版」 |
+| 3–6 分 | 對照「念回」卡看一次數字；有 USB 檔就拖進同一頁比對 | 不一致的格子會標紅，可按「以 USB 檔為準」 |
+| 6–9 分 | 看選擇器建議、依下面三條決定 | |
+| 9–10 分 | 告知工作人員、建 session | 按「我們選躲方」或「我們選追方」 |
 
 **預設選躲方。** 以下任一種才改選追方：
 
@@ -71,54 +38,102 @@ open -e day/announced.json
 2. 我方躲方對 capture_pursuer 勝率明顯低於 100%。
 3. 安全證書比例 < 90%。
 
+### CLI 備援
+
+**1. 規則檔**（四個數字）
+```bash
+mkdir -p day && cp configs/rulesets/final_official.json day/announced.json
+open -e day/announced.json
+```
+- `max_dv_pursuer_mps`、`max_dv_evader_mps` ← ΔV_lim（**m/s**；給 km/s 要乘 1000）
+- `capture_radius_km` ← R_cap（km）
+- `window_sec` ← T_round（**秒**；給分鐘要乘 60）
+- `safe_sma_km` ← `[lo, hi]`（**半長軸** km；給高度要加 6378.137）
+
+**2. 初始狀態**（14 格：雙方 epoch、r km、v km/s）
+```bash
+cp configs/initial_template.json day/initial.json
+open -e day/initial.json
+.venv/bin/python copilot.py final parse day/initial.json
+```
+|r| 應約 6700–8000 km、|v| 約 7–8 km/s；兩艘 epoch 不同時會印「已用二體傳播 N 秒對齊」。
+
+- **有 USB 檔**：`.venv/bin/python copilot.py final parse day/<USB檔> --names pursuer=<船名>,evader=<船名>`，跟上面念回的數字比對。
+  要改用 USB 檔：`.venv/bin/python ../gui/drl_state_to_json.py day/<USB檔> day/initial.json --names pursuer=<船名>,evader=<船名>`。
+- **經緯高**：`.venv/bin/python tools/gmat_state_convert.py day/<經緯高.json> --out day/initial.json`
+  （輸入 JSON 每艘寫 GMAT 欄位：`{"pursuer": {"DateFormat": "UTCGregorian", "Epoch": "09 Nov 2026 00:00:00.000",
+  "CoordinateSystem": "EarthFixed", "DisplayStateType": "SphericalAZFPA", "RMAG": ..., "RA": 經度, "DEC": 緯度,
+  "VMAG": ..., "AZI": ..., "FPA": ...}, "evader": {...}}`，FPA 水平 = 90°）。
+- 範本也壞了：`.venv/bin/python copilot.py final manual --out day/initial.json`（沒有 epoch 欄位，兩艘 epoch 不同時不能用）。
+
+**3. 角色選擇器**
+```bash
+.venv/bin/python tools/role_select.py day/initial.json --rules day/announced.json --workers 4 --budget-sec 150
+```
+
 **4. 建 session**
 ```bash
-.venv/bin/python copilot.py final new --rules day/announced.json --initial day/<初始狀態.json> --role evader --out day/session.json
+.venv/bin/python copilot.py final new --rules day/announced.json --initial day/initial.json --role evader --out day/session.json --names pursuer=<船名>,evader=<船名>
 ```
-追方用 `--role pursuer`。兩艘 epoch 不同時會印傳播秒數，要跟公告對得上。
+追方用 `--role pursuer`。船名是 `--names` 給的，**session 會記住**，之後每回合讀狀態檔自動套用，不用再給。
 
 ---
 
 ## 三、每回合流程（10 分鐘 × 6）
 
-| 時間 | 誰 | 做什麼 |
+GUI「每回合」頁只有一條路，畫面上永遠只有下一步：
+
+| 時間 | 做什麼 | GUI |
 |---|---|---|
-| 0–2 分 | 記錄 | 回合起點狀態檔複製到 `day/` |
-| 2–6 分 | 主控＋驗證 | `advise`，看三件事 |
-| 6–8 分 | 記錄 | 手寫提交行；驗證唸數字核對 |
-| 8–9 分 | 記錄 | 交出，留抄本 |
-| 公告後 | 主控 | `announce` |
+| 0–1 分 | 主辦發下上一回合結束的狀態檔 → 拖進頁面（第 1 回合沒有這步） | 自動反推雙方 Δv、核對、記錄；倒數自動開始 |
+| 1–4 分 | 建議自動跑 | 6 分鐘還沒出來會自動改快速版 |
+| 4–7 分 | 照大字提交行手寫；再把紙上寫的打進「照紙上打一次」框 | 不一樣的字元標紅；X／Y／Z 正號綠、負號紅 |
+| 7–8 分 | 交出，按「已交出」 | 8:30 倒數轉紅、9:00 跳「現在就交」 |
 
-**advise**
-```bash
-.venv/bin/python copilot.py final advise day/session.json --state day/<本回合狀態檔>
-```
-第 1 回合不加 `--state`。讀不了改 `--manual`；趕時間加 `--fast`。
+主辦有唸或秀出對手 Δv 時，可以在放檔前填進「選填」三格，只拿來比對；以檔案反推值為準。
 
-**交之前看三件事**
+**交之前看三件事**（GUI 已經判好，❌ 時提交行會自動換成該交的那行）
 1. `重驗：通過`。沒通過就交工具最後一行給的替代值。
 2. 躲方：`安全證書：成立`；最後一回合 `提交值推完 a = ...` 在 [lo, hi] 內。追方：照交。
-3. `一致性檢查：通過`（第 2 回合起）。「疑似錯誤」→ 核對單位、角色有沒有對調、座標系、時間；仍以官方狀態為準。
+3. `反推：通過`（第 2 回合起）。警告時看下表。
 
-**提交行**：照抄 `提交：` 後面那串，例如 `逃方, 3, 135.3134, -46.4445, -204.9590`。抄完用「手寫核對」那行逐個對正負號。
+### 放檔後的訊息
 
-**announce**
+| 訊息 | 意思 | 做什麼 |
+|---|---|---|
+| 這份檔第 N 回合已經用過了 | 放到舊檔 | 放主辦剛發的那份 |
+| 這是本回合起點的狀態，不是回合末 | 放錯檔 | 同上 |
+| 回不到本回合起點／超過上限 | 檔不是本回合結束、船名對調、單位錯，或 T_round／ΔV_lim 抄錯 | 核對後再放；確定要用加 `--force`（GUI 有按鈕） |
+| 主辦執行的我方 Δv 跟提交行差 … | 主辦抄錯或我們手寫錯 | 馬上找工作人員核對 |
+| 檔案時間比回合起點晚 … 但 T_round 是 … | T_round 抄錯，或主辦提早結束本回合 | 看主辦公告；工具已用檔案時間反推 |
+| 比賽應已結束 | 依檔案推算本回合已攔截／撞地 | 以主辦公告為準 |
+| 你打的對手 Δv 跟檔案反推差 … | 手打值抄錯，或主辦唸錯 | 以檔案為準，不用處理 |
+
+### CLI 備援：每回合兩行
+
 ```bash
-.venv/bin/python copilot.py final announce day/session.json --opponent-dv <X> <Y> <Z> --our-dv <X> <Y> <Z> --state day/<下一回合狀態檔>
+.venv/bin/python copilot.py final advise day/session.json
 ```
-填主辦公告的實際 Δv；`--state` 沒有可省略。
+照抄最後一行 `提交：...`，用「手寫核對」那行逐個對正負號。交出後，主辦發下回合末狀態檔：
+```bash
+.venv/bin/python copilot.py final announce day/session.json --state day/<回合末狀態檔>
+```
+每份狀態檔只給這一次；下一回合 `advise` 不用 `--state`。要比對手打的對手 Δv 加 `--opponent-dv X Y Z`。
+**沒有狀態檔、只有公告 Δv**：`announce day/session.json --opponent-dv X Y Z`（舊用法，工具自己推下一回合起點）。
 
 整場摘要：`.venv/bin/python copilot.py final show day/session.json`
 
 ---
 
-## 四、分工
+## 四、一個人做三個人的事
 
-| 角色 | 工作 |
+| 原本 | 現在 |
 |---|---|
-| 主控 | 操作 Mac、決定採用 |
-| 記錄 | 複製 USB 檔、填規則檔、手寫提交行、留抄本 |
-| 驗證 | 唸數字核對、看重驗與一致性檢查、第 6 分鐘提醒時間 |
+| 複製 USB 檔 | 拖進 GUI，自動複製到 `day/` |
+| 手寫提交行、留抄本 | 仍要手寫；GUI 記下每回合提交行與交出時刻（`day/submissions.json`） |
+| 唸數字核對 | 公告用「念回」卡；提交行用「照紙上打一次」 |
+| 看重驗、一致性 | GUI 自動判斷，沒過時直接換成該交的那行 |
+| 提醒時間 | 倒數＋8:30 轉紅＋9:00「現在就交」 |
 
 ---
 
@@ -144,10 +159,11 @@ open -e day/announced.json
 
 | 狀況 | 做法 |
 |---|---|
-| `parse` 讀不了 | 看錯誤訊息；加 `--names`／`--order`；再不行用 `final manual` |
+| 狀態檔船名認不出 | GUI 會問哪個是追方；CLI 加 `--names pursuer=<船名>,evader=<船名>`（之後 session 會記住） |
+| `parse` 讀不了 | 看錯誤訊息；加 `--names`／`--order`；再不行照範本手打 `day/initial.json` |
 | 數字像公尺或 m/s | 換單位重填 |
 | 經緯高狀態 | 用 `tools/gmat_state_convert.py` 轉；找不到 GMAT 就加 `--gmat-console "/Users/corn/Documents/GMAT R2026a/bin/GmatConsole"` |
 | 重驗未通過 | 交工具最後一行 |
 | 工具當掉 | 重開終端機重跑同一指令；不行就換備機（session 檔用 USB 帶過去） |
-| 對手 Δv 被縮放 | 正常，`announce` 填公告值 |
+| 對手 Δv 被縮放 | 正常；反推值就是實際執行值 |
 | 時間不夠 | `advise --fast`；最壞情況躲方照上一回合方向推、追方不推，但一定要交 |

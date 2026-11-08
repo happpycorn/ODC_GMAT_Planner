@@ -203,6 +203,58 @@ pre.out { margin: 0; background: var(--code-bg); color: var(--code-ink); font: 1
   .orbit { grid-template-columns: 26px repeat(3, minmax(0, 1fr)); }
   .phases { grid-template-columns: repeat(2, 1fr); }
 }
+/* 一個人的金牌賽；樣式只套用這個分頁。 */
+#tab-medal .medal-big { height: 40px; padding: 0 20px; font-size: 14.5px; font-weight: 600; }
+#tab-medal .note .actions { margin-top: var(--s3); }
+#tab-medal .note .actions .btn { margin-left: 0; }
+#tab-medal .medal-round-head { position: sticky; top: 56px; z-index: 5; padding: 14px 20px; box-shadow: 0 4px 16px #0001; }
+#tab-medal .medal-round-head .timer-row { gap: var(--s3); }
+#tab-medal .medal-round-head h1 { font-size: 18px; margin-right: auto; }
+#tab-medal .timer { font-size: 36px; line-height: 1.1; min-width: 0; }
+#tab-medal .medal-status { display: flex; flex-wrap: wrap; gap: 4px 20px; margin-top: 4px; font-size: 13px; font-variant-numeric: tabular-nums; }
+#tab-medal .medal-phases { grid-template-columns: repeat(4, 1fr); margin-top: 10px; }
+#tab-medal .medal-phases div { padding: 4px 8px; }
+#tab-medal .medal-timer-controls { margin-top: 0; }
+#tab-medal .medal-current { border: 1.5px solid var(--accent); padding: 20px 22px; }
+#tab-medal .medal-current h2 { font-size: 17px; margin-bottom: 10px; }
+#tab-medal .drop { margin-top: 14px; }
+#tab-medal .round-drop { padding: 28px 20px; font-size: 15px; }
+#tab-medal .submit-line { font-size: clamp(20px, 2.2vw, 28px); padding: 14px 18px; }
+#tab-medal .submit-line { word-break: normal; }
+#tab-medal .submit-line .tok { white-space: nowrap; }  /* 只在逗號後換行，數字不拆開 */
+#tab-medal .axis-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+#tab-medal .axis { border-radius: 8px; padding: 8px 12px; font-size: 12px; background: var(--ok-soft); color: var(--ok); }
+#tab-medal .axis.negative { background: var(--bad-soft); color: var(--bad); }
+#tab-medal .axis b { display: block; font: 700 clamp(17px, 1.7vw, 22px)/1.4 ui-monospace, Menlo, monospace; overflow-wrap: anywhere; }
+#tab-medal .paper-input { height: 40px; font: 15px ui-monospace, Menlo, monospace; }
+#tab-medal .char-bad { color: var(--bad); background: var(--bad-soft); text-decoration: underline; font-weight: 700; }
+#tab-medal .paper-diff { white-space: pre-wrap; overflow-wrap: anywhere; font: 15px ui-monospace, Menlo, monospace; padding: 10px 0; }
+#tab-medal .ship-block { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 20px; }
+#tab-medal .ship-block h2 { font-size: 16px; margin-bottom: 10px; }
+#tab-medal .vector-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+#tab-medal .field-error { font-size: 12px; color: var(--bad); }
+#tab-medal .field-error:empty { display: none; }
+#tab-medal .readback table { table-layout: fixed; }
+#tab-medal .readback td { overflow-wrap: anywhere; font-size: 13.5px; }
+#tab-medal .readback td:nth-child(2) { font: 600 14.5px ui-monospace, Menlo, monospace; }
+#tab-medal .readback th:first-child { width: 23%; }
+#tab-medal .bad-row { background: var(--bad-soft); color: var(--bad); }
+#tab-medal .scroll-table { overflow-x: auto; }
+#tab-medal .medal-error { border: 1.5px solid var(--bad); padding: 16px 18px; background: var(--bad-soft); border-radius: 8px; }
+#tab-medal .medal-error pre { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+#tab-medal .backup-step { margin: 30px 0; border-top: 2px solid var(--line); padding-top: 20px; }
+#tab-medal .medal-current .result-title { font-size: 22px; }
+#tab-medal .medal-result { font-size: 17px; line-height: 1.6; font-weight: 600; }
+#medal-submit-now { position: fixed; inset: 0; background: #260c09ef; z-index: 100; display: grid; place-items: center; }
+#medal-submit-now[hidden] { display: none; }
+#medal-submit-now button { border: 0; background: transparent; color: white; font: 800 clamp(56px, 12vw, 160px)/1.3 -apple-system, sans-serif; cursor: pointer; padding: 30px; }
+#medal-submit-now span { display: block; font-size: 20px; font-weight: 500; margin-top: 24px; }
+@media (max-width: 880px) {
+  #tab-medal .medal-round-head { top: 96px; padding: 12px 14px; }
+  #tab-medal .timer { font-size: 30px; }
+  #tab-medal .medal-current { padding: 16px; }
+}
+@media (max-width: 560px) { #tab-medal .medal-phases { grid-template-columns: repeat(2, 1fr); } }
 </style>
 </head>
 <body>
@@ -234,11 +286,12 @@ pre.out { margin: 0; background: var(--code-bg); color: var(--code-ink); font: 1
       </div>
       <div class="card">
         <div class="card-title">設定檔</div>
-        <p class="card-desc">比賽當天用 <code>ranking</code>，彩排用 <code>rehearsal</code>。</p>
+        <p class="card-desc">這一場的題目與參數都存在設定檔裡。比賽當天用 <code>ranking</code>；彩排或想重來就換一個新名字（例如 <code>rehearsal</code>），舊的原樣留著，隨時可以切回去。</p>
         <div class="inline" style="margin-top:12px">
-          <label class="field"><span>設定檔名稱</span><input id="cfg-name" value="ranking"></label>
+          <label class="field"><span>設定檔名稱</span><input id="cfg-name" list="cfg-choices" autocomplete="off" value="ranking"><datalist id="cfg-choices"></datalist></label>
           <button class="btn" id="cfg-switch">切換</button>
         </div>
+        <div id="cfg-cur"></div>
         <div id="r0-gmat"></div>
       </div>
       <details class="more"><summary>三條原則與分工</summary><div class="body">
@@ -515,13 +568,19 @@ pre.out { margin: 0; background: var(--code-bg); color: var(--code-ink); font: 1
 <div class="layout" id="tab-medal" style="display:none">
   <nav class="nav" id="medal-nav"></nav>
   <main id="medal-main">
-
     <section data-step="m0">
-      <div class="page-head"><div>
-        <div class="eyebrow">金／銅牌賽</div><h1>規則與時程</h1>
-        <p class="lead">題目公告後有 10 分鐘分析，接著 6 回合、每回合 10 分鐘。</p>
-      </div></div>
+      <div class="page-head"><div><div class="eyebrow">金／銅牌賽 · 一個人照順序做</div><h1>規則與時程</h1>
+        <p class="lead">公告後先用 10 分鐘抄公告、選角色。每回合只做：放檔、抄一行、核對、交出。</p></div></div>
       <div id="m0-env"></div>
+      <div class="card">
+        <div class="card-title">設定檔</div>
+        <p class="card-desc">這一場的公告、狀態檔與整場紀錄都存在設定檔（一個資料夾）裡。比賽當天用 <code>day</code>；彩排或想重來就換一個新名字（例如 <code>drill2</code>），舊的原樣留著，隨時可以切回去。</p>
+        <div class="inline" style="margin-top:12px">
+          <label class="field"><span>設定檔名稱</span><input id="md-name" list="md-choices" autocomplete="off" value="day"><datalist id="md-choices"></datalist></label>
+          <button class="btn" id="md-switch">切換</button>
+        </div>
+        <div id="md-cur"></div>
+      </div>
       <div class="card">
         <div class="card-title">規則重點</div>
         <table class="t kv" style="margin-top:8px">
@@ -535,26 +594,82 @@ pre.out { margin: 0; background: var(--code-bg); color: var(--code-ink); font: 1
           <tr><th>角色</th><td>公告後 10 分鐘分析，排位較優的一方選</td></tr>
         </table>
       </div>
-      <div class="card">
-        <div class="card-title">公告後的 10 分鐘</div>
-        <table class="t kv" style="margin-top:8px">
-          <tr><th>0–2 分</th><td>記錄：USB 檔放進來、填規則（步驟 1、2）</td></tr>
-          <tr><th>2–3 分</th><td>主控：解析初始狀態（步驟 2）</td></tr>
-          <tr><th>3–6 分</th><td>主控：角色選擇器（步驟 3）</td></tr>
-          <tr><th>6–9 分</th><td>全隊：看結果</td></tr>
-          <tr><th>9–10 分</th><td>主控：決定角色、告知工作人員、建 session（步驟 4）</td></tr>
-        </table>
+
+      <div class="card"><div class="card-title">公告後的 10 分鐘</div>
+        <table class="t kv"><tr><th>0–3 分</th><td>在「抄公告與選角色」填規則、兩艘狀態與時間，按存檔。</td></tr>
+          <tr><th>3–6 分</th><td>工具自動解析、跑角色選擇器。你核對念回卡，有 USB 檔就拖進來比對。</td></tr>
+          <tr><th>6–9 分</th><td>看建議與手冊三條條件，決定我們選哪一方。</td></tr>
+          <tr><th>9–10 分</th><td>按角色按鈕建立整場紀錄，告訴工作人員，再前往第 1 回合。</td></tr></table>
+        <div class="actions"><button class="btn btn-primary medal-big" onclick="goMedal('ma')">開始抄公告</button></div>
       </div>
-      <details class="more"><summary>分工</summary><div class="body">
-        <table class="t kv">
-          <tr><th>主控</th><td>操作 Mac、決定採用</td></tr>
-          <tr><th>記錄</th><td>放 USB 檔、填規則、手寫提交行、留抄本</td></tr>
-          <tr><th>驗證</th><td>唸數字核對、看三項檢查、第 6 分鐘提醒時間</td></tr>
-        </table>
+      <details class="more"><summary>一個人怎麼核對與記錄</summary><div class="body">
+        <p>你負責照投影片填表、手寫提交行、交給工作人員。工具負責複製檔案、檢查單位與軌道、顯示大字提交行、提醒倒數、記下交出時間。</p>
+        <p>先對著念回卡核對公告；每回合在「照紙上打一次」打回手寫內容，特別看正負號。按「已交出」後保留紙本抄本。</p>
       </div></details>
     </section>
 
-    <section data-step="m1">
+    <section data-step="ma">
+      <div class="page-head"><div><div class="eyebrow">金／銅牌賽 · 步驟 2</div><h1>抄公告與選角色</h1>
+        <p class="lead">照投影片填下面這張表，先選好單位再存。重新整理會保留你填的內容。</p></div></div>
+      <form id="ma-form" novalidate class="card">
+        <div class="card-title">公告規則</div>
+        <div class="fields wide" id="ma-rules"></div>
+        <div id="ma-ships"></div>
+        <div class="actions"><button class="btn btn-primary medal-big" id="ma-save" type="submit">存檔，開始解析與選角色</button>
+          <label class="check"><input type="checkbox" id="ma-fast"> 快速版（趕時間時勾選）</label></div>
+        <div id="ma-errors" role="alert" aria-live="polite"></div>
+        <div id="ma-warnings" aria-live="polite"></div>
+      </form>
+      <div id="ma-readback"></div>
+      <details class="more"><summary>初始狀態解析輸出</summary><div class="body"><div data-job="medal.initial_parse"></div></div></details>
+      <div class="card"><div class="card-title">有 USB 初始檔就比對</div>
+        <p class="card-desc">先存好手打資料，再放主辦給的初始狀態檔。工具會把時間對齊後逐格比對。</p>
+        <label class="drop" id="ma-drop"><input type="file" id="ma-file">放入 USB 初始狀態檔，或<b>點這裡選檔</b></label>
+        <div id="ma-usb" aria-live="polite"></div>
+      </div>
+      <div class="card"><div class="card-title">看建議，再決定角色</div>
+        <div id="ma-pipeline" aria-live="polite"></div><div id="ma-role"></div>
+        <div class="actions"><button class="btn" id="ma-role-rerun">重跑角色選擇器</button></div>
+        <div data-job="medal.setup.role_select"></div>
+        <div class="actions"><button class="btn btn-primary medal-big" id="ma-evader">我們選躲方</button>
+          <button class="btn medal-big" id="ma-pursuer">我們選追方</button></div>
+        <div data-job="medal.setup.new"></div><div id="ma-created" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <section data-step="m5">
+      <div class="medal-round-head card">
+        <div class="timer-row"><h1 id="m5-title">每回合</h1><div class="actions medal-timer-controls"><button class="btn btn-sm" id="m5-minus1">−1 分</button><button class="btn btn-sm" id="m5-minus2">−2 分</button><button class="btn btn-sm" id="m5-treset">重設</button></div><div class="timer" id="m5-timer">10:00</div></div>
+        <div id="m5-status" class="medal-status"></div>
+        <div id="m5-day"></div>
+        <div class="phases medal-phases" id="m5-phases"><div><b>0–1 分</b>放檔</div><div><b>1–4 分</b>建議</div><div><b>4–7 分</b>抄寫核對</div><div><b>7–8 分</b>交出</div></div>
+      </div>
+      <div id="m5-verify"></div>
+      <div class="card medal-current" id="m5-action" aria-live="polite"></div>
+      <div data-job="medal.round.announce"></div><div data-job="medal.round.advise"></div><div data-job="medal.round.show"></div>
+      <details class="more"><summary>整場紀錄與指令備份</summary><div class="body"><div id="m5-rounds"></div>
+        <div class="actions"><button class="btn" id="m5-show">顯示整場摘要</button></div><div data-job="medal.show"></div></div></details>
+    </section>
+
+    <section data-step="m6">
+      <div class="page-head"><div><div class="eyebrow">金／銅牌賽 · 步驟 4</div><h1>故障應變</h1>
+        <p class="lead">先看錯誤框說的原因，再做下面對應的下一步。備援表單放在最下方。</p></div></div>
+      <div class="card"><table class="t"><tr><th>遇到的狀況</th><th>下一步</th></tr>
+        <tr><td>放錯檔、檔案用過了</td><td>按「換一份檔」，放主辦剛發的回合結束狀態檔。先核對檔名與時間。</td></tr>
+        <tr><td>船名認不出來或對調</td><td>在錯誤框填追方與逃方船名，按「用這個船名重試」。</td></tr>
+        <tr><td>反推超過上限、時間不符</td><td>先核對公告規則、檔案時間與角色。確認主辦就是給這份後，才按「確定用這份」。</td></tr>
+        <tr><td>我方實際推力和提交不同</td><td>拿紙本提交行去問工作人員，核對是否抄錯或被當成逾時。</td></tr>
+        <tr><td>沒有狀態檔</td><td>在每回合頁點「沒有狀態檔，只有 Δv」，填主辦公告的對手三軸推力。</td></tr>
+        <tr><td>建議太慢</td><td>倒數經過 6 分鐘會自動停止並改跑快速版。失敗時按「快速版」重試。</td></tr>
+        <tr><td>重驗沒過</td><td>若工具已換成替代值，就抄畫面最後的提交行；若仍顯示未通過，先看警告並重讀狀態。</td></tr>
+        <tr><td>工具當掉或 GUI 壞掉</td><td>按停止再重試。仍不行就把整個 day 資料夾帶去備機；完整指令在各輸出框上方，可貼到終端機執行。</td></tr>
+        <tr><td>抄公告表單不能用</td><td>展開下面「備援工具」，照舊填規則、解析狀態、跑選擇器、建立整場紀錄。</td></tr>
+      </table></div>
+      <details class="more"><summary>終端機備援：每回合兩條指令</summary><div class="body"><p>在 medal 資料夾執行；把「回合末檔」換成剛拿到的檔名。</p>
+        <pre class="out">.venv/bin/python copilot.py final advise day/session.json
+.venv/bin/python copilot.py final announce day/session.json --state day/回合末檔</pre></div></details>
+      <details class="more" id="medal-backup"><summary>備援工具</summary><div class="body">
+    <div class="backup-step" id="backup-m1">
       <div class="page-head"><div>
         <div class="eyebrow">金／銅牌賽 · 步驟 1</div><h1>填公告規則</h1>
         <p class="lead">只有這幾個數字會變。Δv 用 m/s、時間用秒；安全空域如果題目給的是高度，選「高度」會自動換成半長軸。</p>
@@ -576,9 +691,8 @@ pre.out { margin: 0; background: var(--code-bg); color: var(--code-ink); font: 1
         <div class="actions"><button class="btn btn-primary" id="m1-save">存規則檔</button></div>
         <div id="m1-msg"></div>
       </div>
-    </section>
-
-    <section data-step="m2">
+    </div>
+    <div class="backup-step" id="backup-m2">
       <div class="page-head"><div>
         <div class="eyebrow">金／銅牌賽 · 步驟 2</div><h1>初始狀態</h1>
         <p class="lead">把主辦 USB 上的狀態檔放進來並解析。|r| 應該在 6700–8000 km、|v| 在 7–8 km/s。解析成功會另存 <code>initial_state.json</code>，步驟 3、4 用它。</p>
@@ -611,9 +725,8 @@ pre.out { margin: 0; background: var(--code-bg); color: var(--code-ink); font: 1
         <div class="actions"><button class="btn" id="m2-conv">轉檔</button></div>
         <div data-job="medal.convert"></div>
       </div></details>
-    </section>
-
-    <section data-step="m3">
+    </div>
+    <div class="backup-step" id="backup-m3">
       <div class="page-head"><div>
         <div class="eyebrow">金／銅牌賽 · 步驟 3</div><h1>角色選擇器</h1>
         <p class="lead">用公告的題目自己跟自己對打，估計選追方或躲方的勝率。</p>
@@ -632,9 +745,8 @@ pre.out { margin: 0; background: var(--code-bg); color: var(--code-ink); font: 1
         <ol><li>題目特徵說「6 發都推滿也到不了安全空域」</li>
         <li>我方躲方對 capture_pursuer 的勝率明顯低於 100%</li>
         <li>安全證書比例 &lt; 90%</li></ol></div>
-    </section>
-
-    <section data-step="m4">
+    </div>
+    <div class="backup-step" id="backup-m4">
       <div class="page-head"><div>
         <div class="eyebrow">金／銅牌賽 · 步驟 4</div><h1>建 session</h1>
         <p class="lead">決定角色、告知工作人員之後，建立整場紀錄。兩艘的 epoch 不同時會印出傳播秒數，要跟公告對得上。</p>
@@ -654,85 +766,12 @@ pre.out { margin: 0; background: var(--code-bg); color: var(--code-ink); font: 1
         </div>
         <div data-job="medal.new"></div>
       </div>
-    </section>
-
-    <section data-step="m5">
-      <div class="page-head"><div>
-        <div class="eyebrow">金／銅牌賽 · 步驟 5</div><h1 id="m5-title">每回合</h1>
-        <p class="lead">取得建議 → 手寫提交行 → 交出 → 主辦公告後記錄雙方實際 Δv。</p>
-      </div></div>
-      <div class="card">
-        <div class="timer-row">
-          <div class="timer" id="m5-timer">10:00</div>
-          <button class="btn btn-primary" id="m5-tstart">本回合開始計時</button>
-          <button class="btn" id="m5-treset">歸零</button>
-        </div>
-        <div class="phases" id="m5-phases">
-          <div><b>0–2 分</b>放狀態檔</div><div><b>2–6 分</b>取得建議、看檢查</div><div><b>6–8 分</b>手寫、唸數字核對</div><div><b>8–9 分</b>交出</div><div><b>公告後</b>記錄公告</div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title">A. 取得建議</div>
-        <p class="card-desc">第 1 回合不用選狀態檔。之後每回合把主辦給的回合起點狀態檔放進來再選它。</p>
-        <label class="drop" id="m5-drop" style="margin-top:16px"><input type="file" id="m5-file">把本回合狀態檔拖到這裡，或<b>點這裡選檔案</b></label>
-        <div class="fields wide" style="margin-top:16px">
-          <label class="field"><span>本回合起點狀態檔</span><select class="dayfile" id="m5-sel" data-none="不給（第 1 回合）"></select></label>
-        </div>
-        <div class="actions">
-          <button class="btn btn-primary" id="m5-go">取得建議</button>
-          <label class="check"><input type="checkbox" id="m5-fast"> 快速版（趕時間用）</label>
-        </div>
-        <div id="m5-advice"></div>
-        <div data-job="medal.advise"></div>
-      </div>
-      <div class="card">
-        <div class="card-title">B. 記錄公告</div>
-        <p class="card-desc">填主辦公告的<b>實際</b> Δv（m/s）。對手被縮放是正常的，照公告值填。我方已自動帶入提交值，公告不同就改。</p>
-        <div style="margin-top:16px">
-          <div class="dv-row" id="m5-opp"></div>
-          <div class="dv-row" id="m5-our"></div>
-        </div>
-        <div class="fields wide" style="margin-top:16px">
-          <label class="field"><span>下一回合起點狀態檔 <em>有給就選，可立刻核對</em></span><select class="dayfile" id="m5-nsel" data-none="不給"></select></label>
-        </div>
-        <div class="actions"><button class="btn btn-primary" id="m5-ann">記錄公告</button></div>
-        <div data-job="medal.announce"></div>
-      </div>
-      <div class="card">
-        <div class="card-title">整場紀錄</div>
-        <div id="m5-rounds" style="margin-top:8px"></div>
-        <div class="actions"><button class="btn" id="m5-show">印整場摘要</button></div>
-        <div data-job="medal.show"></div>
-      </div>
-    </section>
-
-    <section data-step="m6">
-      <div class="page-head"><div>
-        <div class="eyebrow">金／銅牌賽</div><h1>故障應變</h1>
-      </div></div>
-      <div class="card">
-        <table class="t">
-          <tr><th style="width:190px">狀況</th><th>做法</th></tr>
-          <tr><td><b>解析讀不了</b></td><td>看錯誤訊息；填船名對應或檔案順序；再不行用手動輸入</td></tr>
-          <tr><td><b>數字像公尺或 m/s</b></td><td>換單位重填</td></tr>
-          <tr><td><b>經緯高狀態</b></td><td>步驟 2 的「先轉檔」</td></tr>
-          <tr><td><b>重驗未通過</b></td><td>交工具給的那一行（畫面上的提交行就是）</td></tr>
-          <tr><td><b>一致性檢查疑似錯誤</b></td><td>核對單位、角色有沒有對調、座標系、時間；仍以官方狀態為準</td></tr>
-          <tr><td><b>工具當掉</b></td><td>按停止再跑一次；不行就換備機（day/session.json 用 USB 帶過去）</td></tr>
-          <tr><td><b>時間不夠</b></td><td>勾快速版；最壞情況躲方照上一回合方向推、追方不推，但一定要交</td></tr>
-          <tr><td><b>GUI 壞掉</b></td><td>輸出框上方有完整指令，複製到終端機；或照紙本手冊 CONTEST_DAY_FINAL.md</td></tr>
-        </table>
-      </div>
-      <div class="card">
-        <div class="card-title">戰術</div>
-        <ul>
-          <li><b>躲方</b>：照工具交。不要手動改成每回合推同一個方向。</li>
-          <li><b>追方</b>：抓不到會算證書的躲方；機會在對手犯錯（閃法太直覺、最後 a 不在安全空域）。照工具交。</li>
-        </ul>
-      </div>
+    </div>
+      </div></details>
     </section>
   </main>
 </div>
+<div id="medal-submit-now" role="alert" hidden><button type="button">現在就交<span>點一下關閉提醒，照目前提交行交給工作人員</span></button></div>
 
 <!-- ================================================================ 所有工作 -->
 <div id="tab-jobs" style="display:none">
@@ -776,8 +815,8 @@ function store(k, v) { try { if (v === undefined) return localStorage.getItem(k)
 const RANK_STEPS = [["r0", "總覽", "★", "開始"], ["r1", "抄題目", "1", "設定"], ["r2", "T_max", "2"], ["r3", "計分參數", "3"], ["r4", "體檢", "4"],
   ["r5", "求解", "5", "求解與驗證"], ["r6", "重瞄準＋重驗", "6"], ["r7", "失格清單＋存 USB", "7"], ["r8", "繳交", "8", "繳交"], ["r9", "加碼／保底", "9"],
   ["r10", "出狀況怎麼辦", "?", "參考"]];
-const MEDAL_STEPS = [["m0", "規則與時程", "★", "開始"], ["m1", "填規則", "1", "公告後 10 分鐘"], ["m2", "初始狀態", "2"], ["m3", "角色選擇器", "3"],
-  ["m4", "建 session", "4"], ["m5", "每回合", "5", "比賽中"], ["m6", "故障應變", "?", "參考"]];
+const MEDAL_STEPS = [["m0", "規則與時程", "1", "金／銅牌賽"], ["ma", "抄公告與選角色", "2"], ["m5", "每回合", "3"], ["m6", "故障應變", "4"]];
+if (["m1", "m2", "m3", "m4"].includes(store("odc.medalstep"))) store("odc.medalstep", "ma");
 
 function buildNav(navId, mainId, steps, keyName) {
   const nav = $(navId);
@@ -897,6 +936,15 @@ setInterval(tickClock, 1000);
 // ---------------------------------------------------------------- 排位賽
 let R = {config: {exists: false}, runs: []};
 const cfgName = () => store("odc.cfg") || "ranking";
+// 排位賽與金牌賽的設定檔卡片共用：名稱檢查、下拉選單、「目前」一行與沒切回比賽用名稱的提醒
+const CFG_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/, CFG_NAME_MSG = "名稱只能用英文、數字、. _ -。";
+function renderCfgCard(p, {name, choices, path, exists, missing, contest, isContest}) {
+  const input = $(`#${p}-name`);
+  if (document.activeElement !== input) input.value = name || "";
+  $(`#${p}-choices`).innerHTML = (choices || []).map(n => `<option value="${esc(n)}">`).join("");
+  $(`#${p}-cur`).innerHTML = `<p class="card-desc" style="margin-top:8px">目前：<code>${esc(path || "")}</code>${exists ? "" : `（還沒建立，${missing}）`}</p>` +
+    (isContest ? "" : `<div class="note warn">現在用的不是比賽當天的 <code>${esc(contest)}</code>，比賽當天記得切回來。</div>`);
+}
 const SC = [["DRY_MASS_KG", "乾質量", "kg"], ["CD", "Cd", ""], ["CR", "Cr", ""], ["DRAG_AREA_M2", "阻力面積", "m²"], ["SRP_AREA_M2", "SRP 面積", "m²"]];
 const EL = ["SMA", "ECC", "INC", "RAAN", "AOP", "TA"];
 const ELU = {SMA: "SMA km", ECC: "ECC", INC: "INC °", RAAN: "RAAN °", AOP: "AOP °", TA: "TA °"};
@@ -928,7 +976,8 @@ function compareGrids() {
 async function refreshRank() {
   const r = await api(`/api/ranking/overview?name=${encodeURIComponent(cfgName())}`);
   R = r; const c = r.config;
-  $("#cfg-name").value = cfgName();
+  renderCfgCard("cfg", {name: cfgName(), choices: r.config_choices, path: c.path, exists: c.exists, missing: "到步驟 1 建立",
+    contest: "ranking", isContest: /^ranking(-s1|-fast)?$/.test(cfgName())});
   // 步驟狀態
   setDot("r1", c.exists && !c.placeholder_orbit ? (c.warnings.length ? "warn" : "ok") : "");
   setDot("r2", c.exists && c.rules && c.rules.T_MAX_SEC !== 40000 ? "ok" : "");
@@ -961,7 +1010,7 @@ async function refreshRank() {
     : x.disqualified === false ? `<span class="tag ok">合法</span>` : `<span class="tag">${esc(x.status || "—")}</span>`;
   $("#r0-runs").innerHTML = r.runs.length ? `<table class="t" style="margin-top:8px"><tr><th>目錄</th><th>種類</th><th>狀態</th><th>分數</th></tr>` +
     r.runs.slice().reverse().map(x => `<tr><td class="mono">${esc(x.name)}</td><td>${kind[x.kind]}</td><td>${state(x)}</td>
-      <td style="font-variant-numeric:tabular-nums">${x.score !== undefined ? fmt(x.score, 4) : "—"}</td></tr>`).join("") + "</table>"
+      <td style="font-variant-numeric:tabular-nums">${x.score !== undefined ? fmt(x.score, 6) : "—"}</td></tr>`).join("") + "</table>"
     : `<p class="empty">還沒有任何執行結果。</p>`;
   fillRankForms();
 }
@@ -994,9 +1043,9 @@ function fillRankForms() {
   }
   // 步驟 6、7 下拉
   const solves = R.runs.filter(x => x.kind === "solve" && x.score !== undefined).reverse();
-  setOptions("#r6-run", solves.map(x => [x.name, `${x.name}（${fmt(x.score, 4)}${x.disqualified ? "，失格" : ""}）`]));
+  setOptions("#r6-run", solves.map(x => [x.name, `${x.name}（${fmt(x.score, 6)}${x.disqualified ? "，失格" : ""}）`]));
   const rts = R.runs.filter(x => x.kind === "rt").reverse();
-  const rtOpts = rts.map(x => [x.name, `${x.name}（${x.status || "未完成"}${x.score !== undefined ? "，" + fmt(x.score, 4) : ""}）`]);
+  const rtOpts = rts.map(x => [x.name, `${x.name}（${x.status || "未完成"}${x.score !== undefined ? "，" + fmt(x.score, 6) : ""}）`]);
   setOptions("#r6-rtsel", rtOpts); setOptions("#r7-rt", rtOpts.filter((_, i) => rts[i].status));
 }
 function setOptions(sel, opts, noneLabel) {
@@ -1007,7 +1056,8 @@ function setOptions(sel, opts, noneLabel) {
 }
 
 $("#cfg-switch").onclick = () => {
-  const n = $("#cfg-name").value.trim(); if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(n)) return toast("名稱只能用英文、數字、. _ -");
+  const n = $("#cfg-name").value.trim(); if (!CFG_NAME_RE.test(n)) return toast(CFG_NAME_MSG);
+  if (n === cfgName()) return toast("已經在用 " + n, true);
   store("odc.cfg", n); fillRankForms.loaded = null; delete $("#r5-run").dataset.touched; refreshRank(); toast("已切換到 " + n, true);
 };
 $("#r1-save").onclick = async () => {
@@ -1060,8 +1110,8 @@ async function showSolveSummary(run) {
   if (rc === 3 || s.no_legal_route) h += `<div class="note bad">結束碼 3：找不到合法路線。看「出狀況怎麼辦」。</div>`;
   else if (rc !== null && rc !== 0 && !jobs[id].stopped) h += `<div class="note bad">求解失敗（結束碼 ${rc}），看下面的輸出。</div>`;
   if (s.score !== undefined) {
-    h += `<div class="stats">${stat("分數", fmt(s.score, 4), true)}${stat("失格", s.disqualified ? "是" : "否")}${stat("棒數", s.num_burns)}
-      ${stat("總 Δv (m/s)", fmt(s.total_dv, 1))}${stat("T (s)", fmt(s.T_team, 0))}</div>`;
+    h += `<div class="stats">${stat("分數", fmt(s.score, 6), true)}${stat("失格", s.disqualified ? "是" : "否")}${stat("棒數", s.num_burns)}
+      ${stat("總 Δv (m/s)", fmt(s.total_dv, 4))}${stat("T (s)", fmt(s.T_team, 3))}</div>`;
     h += s.disqualified ? `<div class="note bad">失格：${esc((s.dq_reasons || []).join("；"))}。看「出狀況怎麼辦」。</div>`
       : `<div class="note ok row"><div>合法解，接著做步驟 6 重瞄準。</div><button class="btn btn-primary" onclick="goRank('r6')">前往步驟 6</button></div>`;
   }
@@ -1092,7 +1142,7 @@ async function loadChecklist() {
   const rt = $("#r7-rt").value; if (!rt) { $("#r7-list").innerHTML = `<p class="empty">還沒有重瞄準結果。</p>`; return; }
   const r = await api(`/api/ranking/checklist?rt=${encodeURIComponent(rt)}&name=${encodeURIComponent(cfgName())}`);
   const c = lastCheck = r.checklist;
-  $("#r7-list").innerHTML = `<div class="stats">${stat("官方分數估計", fmt(c.score, 4), true)}</div>` +
+  $("#r7-list").innerHTML = `<div class="stats">${stat("官方分數估計", fmt(c.score, 6), true)}</div>` +
     `<div class="checks">${c.items.map(i => checkRow(i.ok ? "ok" : i.blocking ? "bad" : "warn", i.label, i.detail)).join("")}</div>` +
     (c.all_ok ? "" : `<div class="note bad">有沒通過的項目：這份不能交，看「出狀況怎麼辦」。</div>`);
   $("#r7-tag").value = rt.replace(/-rt\d*$/, "").replace(/-/g, "");
@@ -1124,157 +1174,584 @@ $("#r9-s1").onclick = () => variant("s1");
 $("#r9-fast").onclick = () => variant("fast");
 
 // ---------------------------------------------------------------- 金／銅牌賽
-let M = {};
+let M = {}, medalRefreshing = false, setupLaunching = false, roundLaunching = false;
+let roundSignature = "", lastReadback = "", lastAnnouncement = "", fastSwitching = false;
 const XYZ = ["X", "Y", "Z", "VX", "VY", "VZ"];
-$("#m2-manual").innerHTML = ["pursuer", "evader"].map(s => `<div class="sub" style="margin-top:8px">${s === "pursuer" ? "追方" : "逃方"}</div><div class="fields">` +
-  XYZ.map(k => `<label class="field"><span>${k} <em>${k.startsWith("V") ? "km/s" : "km"}</em></span><input id="mm-${s}-${k}" inputmode="decimal"></label>`).join("") + "</div>").join("");
-$("#m5-opp").innerHTML = `<div class="lbl">對手實際 Δv</div>` + ["X", "Y", "Z"].map(k => `<label class="field"><span>${k} <em>m/s</em></span><input id="opp-${k}" inputmode="decimal"></label>`).join("");
-$("#m5-our").innerHTML = `<div class="lbl">我方實際 Δv</div>` + ["X", "Y", "Z"].map(k => `<label class="field"><span>${k} <em>m/s</em></span><input id="our-${k}" inputmode="decimal"></label>`).join("");
-
-async function refreshMedal() {
-  const r = await api("/api/medal/overview"); M = r;
-  $("#m0-env").innerHTML = r.drl_ok ? "" : `<div class="note bad" style="margin:0 0 16px">找不到 ${esc(r.drl_python)}，金牌賽工具跑不起來（在 medal/ 跑 uv sync，或重跑 setup.sh）。</div>`;
-  setDot("m1", r.rules ? "ok" : "");
-  setDot("m4", r.session ? "ok" : "");
-  if (r.rules) {
-    const x = r.rules;
-    $("#m1-cur").innerHTML = `<div class="note ok" style="margin:0 0 16px">已存規則檔：ΔV_lim 追 ${x.max_dv_pursuer_mps}／逃 ${x.max_dv_evader_mps} m/s、R_cap ${x.capture_radius_km} km、T_round ${x.window_sec} s、安全空域 a ∈ [${fmt(x.safe_sma_km?.[0], 3)}, ${fmt(x.safe_sma_km?.[1], 3)}] km、${x.rounds} 回合</div>`;
-    if (!refreshMedal.loaded) { refreshMedal.loaded = true;
-      $("#m1-dvp").value = x.max_dv_pursuer_mps; $("#m1-dve").value = x.max_dv_evader_mps; $("#m1-rcap").value = x.capture_radius_km;
-      $("#m1-tr").value = x.window_sec; $("#m1-lo").value = x.safe_sma_km?.[0] ?? ""; $("#m1-hi").value = x.safe_sma_km?.[1] ?? ""; }
-  } else $("#m1-cur").innerHTML = `<div class="note warn" style="margin:0 0 16px">還沒有規則檔。</div>`;
-  $("#m2-files").innerHTML = r.files.length ? r.files.slice().reverse().map(f => `<div class="f"><span>${esc(f.name)}</span><span class="sz">${(f.size / 1024).toFixed(1)} KB</span>
-    <button class="btn btn-sm" data-view="${esc(f.name)}">看內容</button></div>`).join("") : `<div class="f"><span class="empty" style="padding:0">day/ 還是空的</span></div>`;
-  const opts = r.files.filter(f => !/^(announced|session|role_select)(\.bak-\d+)?\.json$/.test(f.name) && !/^session\.bak/.test(f.name)).map(f => [f.name, f.name]).reverse();
-  $$("select.dayfile").forEach(el => setOptions("#" + el.id, opts, el.dataset.none));
-  // 角色選擇器只吃 JSON：有解析好的 initial_state.json 就預設選它
-  if (opts.some(([v]) => v === "initial_state.json")) for (const id of ["#m3-sel", "#m4-sel"]) if (!$(id).dataset.touched) $(id).value = "initial_state.json";
-  // 回合
-  const s = r.session;
-  if (s) {
-    const roleName = s.role === "pursuer" ? "追方" : "躲方";
-    const over = s.round > s.rounds_total;
-    $("#m5-title").textContent = over ? `${s.rounds_total} 回合已結束 · 我方${roleName}` : `第 ${s.round} / ${s.rounds_total} 回合 · 我方${roleName}`;
-    $("#m5-rounds").innerHTML = `<table class="t"><tr><th>回合</th><th>我方提交</th><th>重驗</th><th>公告</th><th>對手 Δv (m/s)</th><th>一致性</th></tr>` +
-      r.rounds.map(x => `<tr><td>${x.round}</td><td class="mono">${esc(x.line || "—")}</td><td>${x.passed === true ? stIcon("ok") : x.passed === false ? stIcon("bad") : "—"}</td>
-        <td>${x.announced ? `<span class="tag ok">已記錄</span>` : "—"}</td><td class="mono">${x.opp_dv ? x.opp_dv.map(v => fmt(v, 2)).join(", ") : "—"}</td>
-        <td>${x.consistency ? `<span class="tag ${x.consistency.includes("通過") ? "ok" : "bad"}">${esc(x.consistency)}</span>` : "—"}</td></tr>`).join("") + "</table>";
-    setDot("m5", over ? "ok" : "");
-    const cur = r.rounds.find(x => x.round === s.round);
-    if (cur?.our_dv && $("#our-X").dataset.round !== String(s.round)) {
-      ["X", "Y", "Z"].forEach((k, i) => $("#our-" + k).value = cur.our_dv[i]);
-      $("#our-X").dataset.round = String(s.round);
-    }
-  } else {
-    $("#m5-title").textContent = "每回合";
-    $("#m5-rounds").innerHTML = `<p class="empty">還沒有 session，先到步驟 4 建立。</p>`;
-  }
-  if (r.role_select) setDot("m3", "ok");
+const SIDES = [["pursuer", "追方"], ["evader", "逃方"]];
+const roleText = role => role === "pursuer" ? "追方" : role === "evader" ? "躲方" : "尚未選角色";
+function medalSaved(key, value) {
+  if (value !== undefined) return store(key, JSON.stringify(value));
+  try { return JSON.parse(store(key) || "null"); } catch (e) { return null; }
 }
-document.addEventListener("click", async e => {
-  const v = e.target.closest("[data-view]"); if (!v) return; e.preventDefault();
-  const r = await api(`/api/medal/file?name=${encodeURIComponent(v.dataset.view)}`);
-  const w = window.open("", "_blank"); if (w) { w.document.title = r.name; w.document.body.innerHTML = `<pre style="white-space:pre-wrap;font:13px Menlo,monospace">${esc(r.text)}</pre>`; }
-});
+// 金牌賽設定檔（一個資料夾）：記在瀏覽器，載入時同步給伺服器；換資料夾就重新載入頁面，草稿與進度各資料夾分開存
+const medalDay = store("odc.medal.day") || "";
+const daySuffix = medalDay ? `@${medalDay}` : "";
+const formKey = "odc.medal.announceForm.v1" + daySuffix, pipelineKey = "odc.medal.setupPipeline.v1" + daySuffix;
+let daySync = null;
+$("#md-switch").onclick = async () => {
+  const name = $("#md-name").value.trim();
+  if (!CFG_NAME_RE.test(name)) return toast(CFG_NAME_MSG);
+  if (name === M.day_name) return toast("已經在用 " + name, true);
+  await api("/api/medal/day", {name});
+  store("odc.medal.day", name); store("odc.medal.switched", name); location.reload();
+};
+function renderMedalDay() {
+  const other = M.day_name && M.day_default && M.day_name !== M.day_default;
+  renderCfgCard("md", {name: M.day_name, choices: M.day_choices, path: M.day_rel, exists: M.day_exists, missing: "存公告時會自動建立",
+    contest: M.day_default, isContest: !other});
+  $("#m5-day").innerHTML = other ? `<div class="medal-status" style="color:var(--warn)">設定檔：${esc(M.day_name)}（不是比賽當天的 ${esc(M.day_default)}）</div>` : "";
+  const switched = store("odc.medal.switched");
+  if (switched) { store("odc.medal.switched", ""); if (switched === M.day_name) toast("已切換到 " + switched, true); }
+}
+const unitOptions = choices => choices.map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
+function announceField(key, label, units) {
+  return `<label class="field"><span>${label}</span><div class="${units ? "group" : ""}"><input data-form="${key}" inputmode="decimal" aria-label="${label}">` +
+    (units ? `<select data-form="${units[0]}" aria-label="${label}的單位">${unitOptions(units[1])}</select>` : "") +
+    `</div><small class="field-error" data-error="${key}"></small></label>`;
+}
+const safeUnits = [["sma", "半長軸 km"], ["alt_km", "高度 km（＋6378.137）"], ["alt_m", "高度 m"]];
+$("#ma-rules").innerHTML = announceField("dv_lim", "ΔV_lim（雙方相同）", ["dv_unit", [["m/s", "m/s"], ["km/s", "km/s"]]]) +
+  announceField("rcap", "R_cap（攔截距離）", ["rcap_unit", [["km", "km"], ["m", "m"]]]) +
+  announceField("tround", "T_round（每回合滑行時間）", ["time_unit", [["sec", "秒"], ["min", "分鐘"], ["hour", "小時"]]]) +
+  announceField("lo", "安全空域下限", ["lo_unit", safeUnits]) + announceField("hi", "安全空域上限", ["hi_unit", safeUnits]);
+$("#ma-ships").innerHTML = SIDES.map(([side, label]) => `<div class="ship-block"><h2>${label}狀態</h2><div class="fields wide">` +
+  `<label class="field"><span>${label}船名（選填，照檔案拼寫）</span><input data-form="${side}.name" placeholder="例如 SC_Red"><small class="field-error" data-error="${side}.name"></small></label>` +
+  `<label class="field"><span>epoch（時間，兩艘都填或都留空）</span><input data-form="${side}.epoch" placeholder="09 Nov 2026 05:30:00.000"><small class="field-error" data-error="${side}.epoch"></small></label></div>` +
+  `<p class="hint">接受 GMAT 日期、ISO 8601，或 GMAT UTCModJulian 數字；未註明時區的時間視為 UTC。</p>` +
+  `<div class="inline" style="margin-top:12px"><label class="field"><span>位置單位</span><select data-form="${side}.r_unit">${unitOptions([["km", "km"], ["m", "m"]])}</select></label>` +
+  `<label class="field"><span>速度單位</span><select data-form="${side}.v_unit">${unitOptions([["km/s", "km/s"], ["m/s", "m/s"]])}</select></label></div>` +
+  `<div class="vector-grid">${XYZ.map(axis => announceField(`${side}.${axis}`, `${axis}（${axis.startsWith("V") ? "速度" : "位置"}）`)).join("")}</div>` +
+  `<label class="field" style="margin-top:12px"><span>貼上一整列（依序 X Y Z VX VY VZ，只要六個數）</span><input data-paste="${side}" placeholder="用空白、逗號或 tab 分隔"><small class="field-error" id="paste-${side}"></small></label></div>`).join("");
+function formBody() {
+  const body = {pursuer: {}, evader: {}, fast: $("#ma-fast").checked};
+  $$("#ma-form [data-form]").forEach(el => {
+    const [first, second] = el.dataset.form.split(".");
+    if (second) body[first][second] = el.value; else body[first] = el.value;
+  });
+  return body;
+}
+function restoreAnnounceForm() {
+  let saved;
+  try { saved = medalSaved(formKey); } catch (e) { saved = null; }
+  if (!saved) return;
+  $$("#ma-form [data-form]").forEach(el => {
+    const [a, b] = el.dataset.form.split("."); const value = b ? saved[a]?.[b] : saved[a];
+    if (value !== undefined) el.value = value;
+  });
+  $("#ma-fast").checked = !!saved.fast;
+}
+restoreAnnounceForm();
+function markFormErrors(errors = {}) {
+  $$("#ma-form [data-error]").forEach(el => el.textContent = errors[el.dataset.error] || "");
+  $$("#ma-form [data-form]").forEach(el => {
+    const error = errors[el.dataset.form]; el.classList.toggle("mismatch", !!error); el.setAttribute("aria-invalid", error ? "true" : "false");
+  });
+}
+let formRevision = 0, formPreviewTimeout;
+function rememberForm() {
+  medalSaved(formKey, formBody()); ++formRevision;
+  $("#ma-warnings").innerHTML = "";
+  clearTimeout(formPreviewTimeout);
+  const revision = formRevision;
+  formPreviewTimeout = setTimeout(async () => {
+    try {
+      const body = formBody();
+      // 空表還在抄時不逐格催填；填過的欄位仍即時驗證。
+      const r = await api("/api/medal/announce_form", {...body, preview: true});
+      if (revision !== formRevision) return;
+      const errors = r.field_errors || {};
+      for (const [key] of Object.entries(errors)) {
+        const [a, b] = key.split("."); if (!(b ? body[a]?.[b] : body[a])) delete errors[key];
+      }
+      markFormErrors(errors);
+      if (r.valid && r.warnings?.length) $("#ma-warnings").innerHTML = `<div class="note warn">${r.warnings.map(esc).join("<br>")}<p>核對後再按存檔，工具會請你確認。</p></div>`;
+    } catch (e) { /* 連線錯誤由 api 顯示。 */ }
+  }, 450);
+}
+$("#ma-form").addEventListener("input", rememberForm);
+$("#ma-form").addEventListener("change", rememberForm);
+$$("[data-paste]").forEach(el => el.addEventListener("input", () => {
+  const side = el.dataset.paste, tokens = el.value.trim().split(/[\s,，]+/).filter(Boolean), msg = $(`#paste-${side}`);
+  if (tokens.length !== 6) { msg.textContent = tokens.length > 6 ? "只要六個數，請移除時間或多出來的數字。" : "請貼六個數，依序是 X Y Z VX VY VZ。"; return; }
+  if (tokens.some(val => !Number.isFinite(Number(val)))) { msg.textContent = "有一格不是數字，請只貼六個數。"; return; }
+  XYZ.forEach((axis, i) => $(`[data-form="${side}.${axis}"]`).value = tokens[i]); msg.textContent = ""; rememberForm();
+}));
+function formNames() {
+  return SIDES.filter(([side]) => $(`[data-form="${side}.name"]`).value.trim()).map(([side]) => `${side}=${$(`[data-form="${side}.name"]`).value.trim()}`).join(",");
+}
+function renderReadback(readback) {
+  if (!readback) { $("#ma-readback").innerHTML = M.initial_version ? `<div class="note info">目前初始狀態已另行更新。請看 USB 比對結果，並重跑角色選擇器。</div>` : ""; return; }
+  const original = readback.original, rules = readback.rules;
+  const timeUnits = {sec: "秒", min: "分鐘", hour: "小時"}, safeText = {sma: "半長軸 km", alt_km: "高度 km", alt_m: "高度 m"};
+  const row = (label, converted, raw) => `<tr><th>${esc(label)}</th><td>${esc(converted)}</td><td>${esc(raw)}</td></tr>`;
+  let html = row("雙方 ΔV_lim", `${fmt(rules.max_dv_pursuer_mps, 3)} m/s`, `${original.dv_lim} ${original.dv_unit}`) +
+    row("R_cap", `${fmt(rules.capture_radius_km, 3)} km`, `${original.rcap} ${original.rcap_unit}`) +
+    row("T_round", `${fmt(rules.window_sec, 3)} 秒`, `${original.tround} ${timeUnits[original.time_unit] || "秒"}`) +
+    row("安全空域下限", `${fmt(rules.safe_sma_km[0], 3)} km`, `${original.lo} ${safeText[original.lo_unit || original.safe_unit || "sma"]}`) +
+    row("安全空域上限", `${fmt(rules.safe_sma_km[1], 3)} km`, `${original.hi} ${safeText[original.hi_unit || original.safe_unit || "sma"]}`);
+  for (const [side, label] of SIDES) {
+    const ship = readback.ships[side], raw = original[side];
+    html += row(`${label}時間（UTC）`, ship.epoch_utc || "未填", raw.epoch || "未填");
+    XYZ.forEach((axis, i) => html += row(`${label} ${axis}`, `${fmt(i < 3 ? ship.r_km[i] : ship.v_kms[i - 3], i < 3 ? 6 : 9)} ${i < 3 ? "km" : "km/s"}`, `${raw[axis]} ${i < 3 ? raw.r_unit : raw.v_unit}`));
+    html += row(`${label}距地心 |r|`, `${fmt(ship.radius_km, 3)} km`, "由位置計算") + row(`${label}速率 |v|`, `${fmt(ship.speed_kms, 6)} km/s`, "由速度計算") +
+      row(`${label}高度`, `${fmt(ship.altitude_km, 3)} km`, "距地心減地球半徑") + row(`${label}近地點高度`, `${fmt(ship.perigee_alt_km, 3)} km`, "二體軌道") +
+      row(`${label}半長軸 a`, ship.sma_km === null ? "無有限半長軸" : `${fmt(ship.sma_km, 3)} km`, "二體軌道") +
+      row(`${label}週期`, ship.period_min === null ? "無封閉週期" : `${fmt(ship.period_min, 3)} 分鐘`, "二體軌道");
+  }
+  $("#ma-readback").innerHTML = `<div class="card readback"><div class="card-title">念回卡：對照投影片再看一次</div><p class="note info">${esc(readback.alignment)} 兩艘時間差 ${fmt(readback.epoch_delta_sec, 3)} 秒。</p><div class="scroll-table"><table class="t"><tr><th>項目</th><th>換算後／工具算出</th><th>原始輸入</th></tr>${html}</table></div></div>`;
+}
+async function stopSetupJobs() {
+  const running = (M.jobs || []).filter(j => ["medal.initial_parse", "medal.setup.role_select"].includes(j.key) && j.running);
+  for (const j of running) {
+    await api("/api/job/stop", {id: j.id});
+    for (let i = 0; i < 30; i++) {
+      const r = await api(`/api/job?id=${j.id}`); if (!r.job.running) break;
+      await new Promise(resolve => setTimeout(resolve, 100));
+      if (i === 29) throw new Error("舊的角色選擇器還沒停止，請等輸出顯示已停止後再試。");
+    }
+  }
+}
+async function saveAnnouncement(body) {
+  const button = $("#ma-save"); button.disabled = true;
+  try {
+    await stopSetupJobs();
+    const r = await api("/api/medal/announce_form", body);
+    markFormErrors(r.field_errors);
+    $("#ma-errors").innerHTML = r.valid ? "" : `<div class="note bad">${esc(r.error)}</div>`;
+    if (!r.valid) return;
+    renderReadback(r.readback);
+    if (r.needs_confirm) {
+      $("#ma-warnings").innerHTML = `<div class="note warn">${r.warnings.map(esc).join("<br>")}<div class="actions"><button type="button" class="btn medal-big" id="ma-confirm">我確定，照這樣存</button></div></div>`;
+      const revision = formRevision;
+      $("#ma-confirm").onclick = () => { if (revision !== formRevision) return toast("欄位改過了，請重新按存檔核對。"); saveAnnouncement({...body, confirm: true}).catch(e => toast(e.message)); };
+      return;
+    }
+    $("#ma-warnings").innerHTML = r.warnings.length ? `<div class="note warn">已依確認的數字存檔。${r.warnings.map(esc).join("<br>")}</div>` : "";
+    medalSaved(pipelineKey, {version: r.initial_version, stage: "parse", started: Date.now() / 1000});
+    $("#ma-usb").innerHTML = ""; toast("公告已存，開始解析初始狀態。", true); await refreshMedal();
+  } finally { button.disabled = false; }
+}
+$("#ma-form").onsubmit = e => { e.preventDefault(); saveAnnouncement(formBody()).catch(e2 => toast(e2.message)); };
+function setupJob(key, pipeline) { return (M.jobs || []).filter(j => j.key === key && j.started >= pipeline.started - 0.05).at(-1); }
+async function ensureSetupPipeline() {
+  const pipeline = medalSaved(pipelineKey);
+  if (!pipeline) { $("#ma-pipeline").innerHTML = M.initial_version && !M.role_select ? `<p class="note info">初始狀態已存好。若剛改用 USB 檔，請按「重跑角色選擇器」。</p>` : ""; return; }
+  if (pipeline.stage === "done" || setupLaunching) return;
+  if (pipeline.version !== M.initial_version) { medalSaved(pipelineKey, null); return; }
+  const parsing = pipeline.stage === "parse", key = parsing ? "medal.initial_parse" : "medal.setup.role_select";
+  const job = setupJob(key, pipeline), el = $("#ma-pipeline");
+  if (job?.running) { el.innerHTML = `<div class="note info">${parsing ? "正在念回初始狀態。完成後會自動跑角色選擇器。" : "角色選擇器執行中，請先核對念回卡，有 USB 檔就放進來比對。"}</div>`; return; }
+  if (job && job.rc !== 0) {
+    el.innerHTML = `<div class="note bad">${parsing ? "解析" : "角色選擇器"}沒有完成。請看輸出原因，修正後按重試。<button class="btn" id="ma-pipeline-retry">重試</button></div>`;
+    $("#ma-pipeline-retry").onclick = () => { pipeline.started = Date.now() / 1000; medalSaved(pipelineKey, pipeline); refreshMedal(); }; return;
+  }
+  if (job?.rc === 0) {
+    if (parsing) { medalSaved(pipelineKey, {...pipeline, stage: "role", started: Date.now() / 1000}); }
+    else { medalSaved(pipelineKey, {...pipeline, stage: "done"}); el.innerHTML = `<div class="note ok">角色選擇器已完成。看下面的建議與條件，再選我們的角色。</div>`; }
+    return;
+  }
+  setupLaunching = true;
+  try {
+    el.innerHTML = `<div class="note info">${parsing ? "準備解析初始狀態…" : "正在啟動角色選擇器…"}</div>`;
+    await runCmd("/api/medal/setup", {action: parsing ? "initial_parse" : "role_select", key, file: "initial.json", names: formNames(), fast: $("#ma-fast").checked}, () => refreshMedal());
+  } finally { setupLaunching = false; }
+}
+async function rerunRole() {
+  if (!M.initial_version) return toast("先填公告並存檔，才能跑角色選擇器。");
+  await stopSetupJobs();
+  medalSaved(pipelineKey, {version: M.initial_version, stage: "role", started: Date.now() / 1000});
+  await refreshMedal();
+}
+$("#ma-role-rerun").onclick = () => rerunRole().catch(e => toast(e.message));
+function roleRecommendation() {
+  const rs = M.role_select, el = $("#ma-role");
+  if (!rs) { el.innerHTML = `<p class="empty">先存好公告，工具會自動跑選擇器。預設選躲方。</p>`; return; }
+  const recommended = rs.recommendation?.role;
+  const reachable = rs.initial?.zone_features?.reachable;
+  const winRate = rs.recommendation?.evader_vs_capture_rate;
+  const certRows = (rs.certificate_by_round || []).filter(row => Number.isFinite(row.rate));
+  const certMin = certRows.length ? Math.min(...certRows.map(row => row.rate)) : null;
+  const condition = (value, title, text) => checkRow(value === true ? "warn" : "na", `${title}（${value === true ? "成立" : value === false ? "不成立" : "待你判斷"}）`, text);
+  el.innerHTML = `<h2 style="margin-top:16px">建議角色：${recommended ? roleText(recommended) : "請看原始結果"}</h2><p>預設選躲方；下面任一條成立時，再考慮改選追方。</p>` +
+    condition(typeof reachable === "boolean" ? !reachable : null, "六發都推滿也到不了安全空域", typeof reachable === "boolean" ? (reachable ? "選擇器判斷仍可到達。" : "選擇器判斷無法到達。") : `沒有直接判斷欄位；題目特徵原值：${JSON.stringify(rs.initial?.zone_features || rs.initial || {})}`) +
+    condition(null, "我方躲方對最強追方，勝率明顯低於 100%", Number.isFinite(winRate) ? `實際勝率 ${(winRate * 100).toFixed(1)}%。手冊沒有定義「明顯」的門檻，請依這個原值判斷。` : `沒有對應勝率欄位；建議原值：${JSON.stringify(rs.recommendation || {})}`) +
+    condition(certMin === null ? null : certMin < 0.9, "安全證書比例低於 90%", certMin === null ? `沒有對應比例；原值：${JSON.stringify(rs.certificate_by_round || [])}` : `各回合比例：${certRows.map(row => `第 ${row.round} 回合 ${(row.rate * 100).toFixed(1)}%`).join("、")}。`) +
+    ((rs.warnings || []).length ? `<div class="note warn">${rs.warnings.map(esc).join("<br>")}</div>` : "");
+}
+async function chooseRole(role) {
+  if (!M.initial_version || !M.rules) return toast("先填公告並存檔，再選角色。");
+  if (M.session && !window.confirm("已經有 session，要備份後重建嗎？")) return;
+  const buttons = [$("#ma-evader"), $("#ma-pursuer")]; buttons.forEach(b => b.disabled = true);
+  try {
+    await runCmd("/api/medal/setup", {action: "new", key: "medal.setup.new", role, file: "initial.json", names: formNames(), overwrite: !!M.session}, async j => {
+      buttons.forEach(b => b.disabled = false); await refreshMedal();
+      if (j.rc !== 0) toast("建立沒有成功，請看輸出原因，修正後再選一次角色。");
+    });
+  } catch (e) { buttons.forEach(b => b.disabled = false); throw e; }
+}
+$("#ma-evader").onclick = () => chooseRole("evader").catch(e => toast(e.message));
+$("#ma-pursuer").onclick = () => chooseRole("pursuer").catch(e => toast(e.message));
+let lastUSBFile = "", usbBusy = false;
+async function compareUSB(file, adopt = false) {
+  if (usbBusy) return; usbBusy = true; lastUSBFile = file;
+  $("#ma-usb").innerHTML = `<div class="note info">正在解析 USB 檔並對齊時間，請等比對表出來。</div>`;
+  try {
+    if (adopt) { await stopSetupJobs(); medalSaved(pipelineKey, null); }
+    const r = await api("/api/medal/usb_compare", {file, names: formNames(), adopt});
+    $("#ma-usb").innerHTML = `<div class="note ${r.all_match || r.adopted ? "ok" : "warn"}"><b>${esc(r.message)}</b></div><p class="hint">${esc(r.baseline)}</p>` +
+      `<div class="scroll-table"><table class="t"><tr><th>項目</th><th>手打值</th><th>USB 值</th><th>USB 減手打</th><th>是否一致</th></tr>` +
+      r.rows.map(row => `<tr class="${row.match ? "" : "bad-row"}"><td>${esc(row.label)}（${esc(row.unit)}）</td><td>${esc(row.manual ?? "未填時間")}</td><td>${esc(row.usb ?? "未填時間")}</td><td>${row.diff === null ? "—" : esc(Number(row.diff).toPrecision(6))}</td><td>${row.match ? `${stIcon("ok")} 一致` : `${stIcon("bad")} 不一致`}</td></tr>`).join("") + `</table></div>` +
+      (r.adopted ? `<button class="btn btn-primary" id="ma-usb-rerun">重跑角色選擇器</button>` : !r.all_match ? `<div class="actions"><button class="btn" id="ma-adopt">以 USB 檔為準</button></div>` : "");
+    if ($("#ma-adopt")) $("#ma-adopt").onclick = () => compareUSB(lastUSBFile, true);
+    if ($("#ma-usb-rerun")) $("#ma-usb-rerun").onclick = () => rerunRole().catch(e => toast(e.message));
+    await refreshMedal();
+  } catch (e) { $("#ma-usb").innerHTML = `<div class="medal-error"><b>比對沒有完成，請核對船名與檔案後再放一次。</b><pre>${esc(e.message)}</pre></div>`; }
+  finally { usbBusy = false; }
+}
+function medalVisible() { return $("#tab-medal").style.display !== "none"; }
+function roundVisible() { return medalVisible() && $('[data-step="m5"]').classList.contains("on"); }
+const sessionKey = key => `odc.medal.${M.session_id || "none"}.${key}`;
+function roundAttempt(value) { return medalSaved(sessionKey("announceAttempt"), value); }
+function latestRoundJob(action) {
+  return (M.jobs || []).filter(j => j.key === `medal.round.${action}` && j.medal_round === M.session?.round &&
+    (!j.medal_session_id || j.medal_session_id === M.session_id)).at(-1);
+}
+function runningRoundJob(action) {
+  return (M.jobs || []).find(j => j.key === `medal.round.${action}` && j.running && (!j.medal_session_id || j.medal_session_id === M.session_id));
+}
+function roundClockNumber() {
+  const pending = medalSaved(sessionKey("pendingRound"));
+  return pending && pending > (M.session?.round || 0) ? pending : Math.min(M.session?.round || 1, M.session?.rounds_total || 6);
+}
+function roundStartTime(round = roundClockNumber()) { return Number(store(sessionKey(`round.${round}.start`))) || 0; }
+function startRoundTimer(round = roundClockNumber()) {
+  if (!roundStartTime(round)) store(sessionKey(`round.${round}.start`), String(Date.now()));
+  tickRoundTimer();
+}
+function countdownRemaining(round = roundClockNumber()) {
+  const entry = (M.submissions || []).find(row => row.round === round);
+  if (entry?.remaining_sec !== null && entry?.remaining_sec !== undefined) return entry.remaining_sec;
+  const start = roundStartTime(round); return start ? 600 - (Date.now() - start) / 1000 : 600;
+}
+function tickRoundTimer() {
+  if (!M.session) { $("#medal-submit-now").hidden = true; return; }
+  const number = roundClockNumber(), left = countdownRemaining(number), elapsed = 600 - left, start = roundStartTime(number);
+  const submitted = (M.submissions || []).some(row => row.round === number), timer = $("#m5-timer");
+  const seconds = Math.abs(Math.ceil(left)); timer.textContent = `${left < 0 ? "−" : ""}${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  timer.style.color = elapsed >= 510 ? "var(--bad)" : elapsed >= 420 ? "var(--warn)" : "";
+  const phase = elapsed < 60 ? 0 : elapsed < 240 ? 1 : elapsed < 420 ? 2 : 3;
+  $$("#m5-phases div").forEach((el, i) => el.classList.toggle("on", !!start && phase === i));
+  if (roundVisible() && start && !submitted && M.phase !== "E") {
+    if (elapsed >= 540 && !store(sessionKey(`round.${number}.dismiss`))) $("#medal-submit-now").hidden = false;
+  } else $("#medal-submit-now").hidden = true;
+  const job = latestRoundJob("advise");
+  if (start && !submitted && elapsed >= 360 && job?.running && !job.command.includes("--fast")) switchToFast(job);
+}
+$("#medal-submit-now button").onclick = () => { store(sessionKey(`round.${roundClockNumber()}.dismiss`), "1"); $("#medal-submit-now").hidden = true; };
+function adjustRoundTimer(seconds) {
+  if (!M.session) return toast("先建立整場紀錄，再開始計時。");
+  if ((M.submissions || []).some(row => row.round === roundClockNumber())) return toast("這回合已交出，倒數停在交出時刻。");
+  startRoundTimer(); store(sessionKey(`round.${roundClockNumber()}.start`), String(roundStartTime() - seconds * 1000)); tickRoundTimer();
+}
+$("#m5-minus1").onclick = () => adjustRoundTimer(60);
+$("#m5-minus2").onclick = () => adjustRoundTimer(120);
+$("#m5-treset").onclick = () => {
+  if (!M.session) return;
+  if ((M.submissions || []).some(row => row.round === roundClockNumber())) return toast("這回合已交出，倒數停在交出時刻。");
+  store(sessionKey(`round.${roundClockNumber()}.start`), String(Date.now()));
+  store(sessionKey(`round.${roundClockNumber()}.dismiss`), "");
+  $("#medal-submit-now").hidden = true; tickRoundTimer();
+};
+async function switchToFast(job) {
+  if (fastSwitching || store(sessionKey(`round.${M.session.round}.fastPending`))) return;
+  fastSwitching = true; store(sessionKey(`round.${M.session.round}.fastPending`), "1");
+  $("#m5-action").innerHTML = `<h2>取得建議</h2><div class="note warn">建議太慢，已改用快速版。正在停止原本的工作，接著自動重跑。</div>`;
+  try { await api("/api/job/stop", {id: job.id}); await refreshMedal(); }
+  catch (e) { store(sessionKey(`round.${M.session.round}.fastPending`), ""); toast(e.message); }
+  finally { fastSwitching = false; }
+}
+function vectorText(vector) { return Array.isArray(vector) ? vector.map(val => `${val >= 0 ? "+" : ""}${fmt(val, 3)}`).join("，") + " m/s" : "沒有資料"; }
+function renderAnnouncement() {
+  const ann = M.latest_announcement, el = $("#m5-verify");
+  const signature = JSON.stringify([M.session_id, ann]);
+  if (signature === lastAnnouncement) return; lastAnnouncement = signature;
+  if (!ann) { el.innerHTML = ""; return; }
+  const result = ann.round_result || {}, good = !(ann.warnings || []).length && ann.our_matches_submission !== false;
+  el.innerHTML = `<details class="more" open><summary>第 ${ann.round} 回合核對卡：${ann.source === "state" ? good ? "反推通過" : "反推有警告" : "只記錄 Δv，沒有狀態檔可反推"}</summary><div class="body">` +
+    `<p><b>我方實際 Δv：</b>${esc(vectorText(ann.our_dv_mps))}</p><p><b>對手實際 Δv：</b>${esc(vectorText(ann.opponent_dv_mps))}</p>` +
+    `<div class="note ${ann.our_matches_submission === false ? "bad" : "info"}">${ann.our_matches_submission === true ? "我方跟提交行相符（各軸差不超過 0.05 m/s）。" : ann.our_matches_submission === false ? `我方跟提交行不同，各軸差：${vectorText(ann.our_difference_mps)}。請拿紙本去問工作人員。` : "沒有足夠資料核對我方提交行。"}</div>` +
+    ((ann.warnings || []).length ? `<div class="note warn">${ann.warnings.map(esc).join("<br>")}</div>` : "") +
+    `<div class="stats">${stat("本回合最近距離", `${fmt(result.min_dist_km, 3)} km`)}${stat("最近時刻（回合開始後）", `${fmt(result.t_min_sec, 1)} 秒`)}${stat("逃方半長軸 a", `${fmt(result.evader_sma_km, 3)} km`)}${stat("安全空域", result.in_zone === true ? "在範圍內" : result.in_zone === false ? "不在範圍內" : "沒有資料")}</div></div></details>`;
+}
+function deltaInputs(prefix) {
+  return `<div class="vector-grid">${["X", "Y", "Z"].map(axis => `<label class="field"><span>${axis}（m/s）</span><input id="${prefix}-${axis}" inputmode="decimal" aria-label="對手 ${axis} 軸實際推力"></label>`).join("")}</div>`;
+}
+function waitingHTML() {
+  const n = M.session.round, waiting = M.phase === "D", stamp = M.submitted?.local_time;
+  return `<h2>${waiting ? `第 ${n} 回合已交出${stamp ? `（${new Date(stamp).toLocaleTimeString("zh-TW", {hour12: false})}）` : ""}` : "等主辦的狀態檔"}</h2>` +
+    `<p>主辦發下第 ${n} 回合結束的狀態檔後放進來。${n < (M.session.rounds_total || 6) ? `放檔時自動開始第 ${n + 1} 回合倒數。` : "工具會核對最後結果。"}</p>` +
+    `<details class="more" style="margin-top:16px"><summary>主辦有唸／秀出對手 Δv 時填（選填，只拿來比對）</summary><div class="body">${deltaInputs("round-opp")}<p class="hint">三格全留空也可以；若要填，三格都填。沒推就填 0。</p></div></details>` +
+    `<label class="drop round-drop" id="round-drop"><input type="file" id="round-file">放入第 ${n} 回合結束的狀態檔<br><b>拖進來，或點這裡選檔</b></label>` +
+    `<details class="more" style="margin-top:20px"><summary>沒有狀態檔，只有 Δv</summary><div class="body"><p>只用公告推力推算下一回合，無法反推核對。請填對手三軸實際 Δv。</p>${deltaInputs("fallback-opp")}<button class="btn" id="round-dv-only">記錄 Δv，繼續下一步</button></div></details>`;
+}
+const normalizePaper = text => String(text).replace(/\s/g, "").replace(/，/g, ",").replace(/[−–]/g, "-");
+function comparePaper(expected, typed) {
+  const left = normalizePaper(expected), right = normalizePaper(typed);
+  if (!right) return {same: false, empty: true, markup: "", messages: []};
+  const m = left.length, n = right.length;
+  // 編輯距離讓漏寫負號之後的相同字元仍維持正常顏色。
+  const dp = Array.from({length: m + 1}, () => Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (left[i - 1] === right[j - 1] ? 0 : 1));
+  let i = m, j = n; const chars = [];
+  while (i || j) {
+    if (i && j && dp[i][j] === dp[i - 1][j - 1] + (left[i - 1] === right[j - 1] ? 0 : 1)) { chars.push(left[i - 1] === right[j - 1] ? esc(right[j - 1]) : `<span class="char-bad">${esc(right[j - 1])}</span>`); i--; j--; }
+    else if (i && dp[i][j] === dp[i - 1][j] + 1) { chars.push(`<span class="char-bad">〔漏 ${esc(left[i - 1])}〕</span>`); i--; }
+    else { chars.push(`<span class="char-bad">${esc(right[j - 1])}</span>`); j--; }
+  }
+  const a = left.split(","), b = right.split(","), labels = ["角色", "回合", "X 軸", "Y 軸", "Z 軸"];
+  const messages = a.map((val, k) => val !== b[k] ? `${labels[k] || `第 ${k + 1} 格`}你寫 ${b[k] || "（漏寫）"}，應為 ${val}` : "").filter(Boolean);
+  if (b.length > a.length) messages.push("多寫了逗號或數字，請照提交行重新核對。");
+  return {same: left === right, empty: false, markup: chars.reverse().join(""), messages};
+}
+function updatePaper() {
+  const input = $("#round-paper"); if (!input) return;
+  const expected = (M.advice?.submit || "").replace(/^提交：/, ""); const result = comparePaper(expected, input.value.slice(0, 300));
+  store(sessionKey(`round.${M.session.round}.paper`), input.value);
+  $("#round-paper-result").innerHTML = result.empty ? "" : result.same ? `<div class="note ok">跟提交行一樣</div>` : `<div class="note bad"><div class="paper-diff">${result.markup}</div>${result.messages.map(esc).join("<br>")}<p>回頭核對紙本，改好後再打一次。</p></div>`;
+}
+function adviceHTML() {
+  const advice = M.advice || {}, session = M.session, line = (advice.submit || "").replace(/^提交：/, "");
+  const pieces = line.split(","), axes = pieces.slice(-3), recheck = (advice.recheck || "").includes("通過") && !/(未通過|不通過|沒過)/.test(advice.recheck || "");
+  const last = session.round === session.rounds_total, bounds = session.safe_sma_km, a = advice.a_after;
+  let safety, safetyText;
+  if (session.role !== "evader") { safety = true; safetyText = "我方是追方，躲方安全證書不適用。"; }
+  else if (last) { safety = Number.isFinite(a) && bounds && a >= bounds[0] && a <= bounds[1]; safetyText = `最後一回合 a = ${fmt(a, 3)} km；安全空域 [${fmt(bounds?.[0], 3)}, ${fmt(bounds?.[1], 3)}] km。`; }
+  else { safety = (advice.cert || "").includes("成立") && !(advice.cert || "").includes("未成立"); safetyText = advice.cert || "沒有安全證書資料，請看工具輸出。"; }
+  const ann = M.latest_announcement;
+  const recovered = session.round === 1 || (ann?.source === "state" && ann.round === session.round - 1 && !(ann.warnings || []).length && ann.our_matches_submission !== false);
+  const check = (passed, title, detail) => checkRow(passed ? "ok" : "bad", title, detail);
+  return `<h2>照這一行手寫，含正負號</h2><div class="submit-line" id="round-submit-line">${String(line).split(/,\s*/).map(t => `<span class="tok">${esc(t)}</span>`).join(", ")}</div>` +
+    `<div class="axis-cards">${axes.map((val, i) => `<div class="axis ${/^[-−–]/.test(val.trim()) ? "negative" : ""}">${["X", "Y", "Z"][i]} 軸（m/s）<b>${esc(/^[+\-−–]/.test(val.trim()) ? val.trim() : "+" + val.trim())}</b></div>`).join("")}</div>` +
+    (advice.used_alternative ? `<div class="note warn">重驗沒過，已換成替代值，抄這行。</div>` : !recheck ? `<div class="note bad">重驗未通過，請先看輸出與警告；需要時重新讀取官方狀態或改跑快速版。</div>` : "") +
+    `<div class="checks">${check(recheck, "重驗", advice.recheck || "沒有重驗資料，請看輸出。")}${check(safety, session.role === "evader" && last ? "最後一回合半長軸" : "躲方安全證書", safetyText)}${check(recovered, "狀態檔反推", session.round === 1 ? "第 1 回合不用反推。" : recovered ? "上一回合已由狀態檔反推並核對。" : "反推有警告，或這回合只用了口頭 Δv；請展開核對卡看原因。")}</div>` +
+    `<label class="field" style="margin-top:24px"><span>照紙上打一次（選填；照你已寫在紙上的內容輸入）</span><input class="paper-input" id="round-paper" maxlength="300" autocomplete="off" spellcheck="false" placeholder="角色, 回合, ΔvX, ΔvY, ΔvZ"></label><div id="round-paper-result" aria-live="polite"></div>` +
+    `<div class="actions"><button class="btn btn-primary medal-big" id="round-submitted">已交出</button></div>`;
+}
+function roundErrorHTML(job, attempt) {
+  const reason = job.lines.join("\n") || job.live || "工具沒有給出原因，請重試或換一份狀態檔。";
+  const nameError = /船名|對調|names|spacecraft|無法.*辨認/i.test(reason);
+  const canForce = attempt?.file && /--force|回推.*回不到|殘差|反推.*超過/.test(reason) && !/已經用過|本回合起點的狀態/.test(reason);
+  return `<h2>這份狀態檔還沒採用</h2><div class="medal-error"><pre>${esc(reason)}</pre><p>先核對檔案時間、船名與公告規則，再選下一步。</p></div>` +
+    `<div class="actions"><button class="btn btn-primary medal-big" id="round-change-file">換一份檔</button>${canForce ? `<button class="btn" id="round-force">確定用這份（--force）</button>` : ""}</div>` +
+    (nameError ? `<div class="fields wide" style="margin-top:20px"><label class="field"><span>追方船名</span><input id="retry-pursuer"></label><label class="field"><span>逃方船名</span><input id="retry-evader"></label></div><div class="actions"><button class="btn" id="round-retry-names">用這個船名重試</button></div>` : "");
+}
+function renderRound() {
+  const session = M.session, action = $("#m5-action");
+  const timerLocked = !session || !roundStartTime() || M.phase === "E" || (M.submissions || []).some(row => row.round === roundClockNumber());
+  ["#m5-minus1", "#m5-minus2", "#m5-treset"].forEach(id => $(id).disabled = timerLocked);
+  if (!session) { action.innerHTML = `<h2>先選角色</h2><p>還沒有整場紀錄，先填公告並選我們的角色。</p><button class="btn btn-primary medal-big" onclick="goMedal('ma')">前往抄公告與選角色</button>`; return; }
+  const clock = roundClockNumber(), total = session.rounds_total || 6;
+  $("#m5-title").textContent = `第 ${clock} 回合／${total}`;
+  $("#m5-status").innerHTML = `<b>我方${roleText(session.role)}</b><span>雙方距離 ${fmt(M.distance_km, 3)} km</span><span>逃方 a ${fmt(M.evader_sma_km, 3)} km</span><b style="color:${M.in_zone ? "var(--ok)" : "var(--warn)"}">${M.in_zone === true ? "在安全空域內" : M.in_zone === false ? "不在安全空域內" : "安全空域尚無資料"}</b>`;
+  const annJob = runningRoundJob("announce") || latestRoundJob("announce"), adviseJob = latestRoundJob("advise"), attempt = roundAttempt();
+  const error = annJob && !annJob.running && annJob.rc !== 0 && attempt?.job_id === annJob.id && !attempt.dismissed;
+  const signature = JSON.stringify([M.session_id, session.round, M.phase, M.advice, M.finished, annJob?.id, annJob?.running, error, adviseJob?.id, adviseJob?.running, adviseJob?.rc, roundStartTime(), store(sessionKey(`round.${session.round}.fastPending`))]);
+  if (signature === roundSignature) { tickRoundTimer(); return; }
+  roundSignature = signature;
+  if (M.phase === "E") {
+    const finished = M.finished || {}, outcome = {capture: "攔截成立", escape: "躲方撐完回合並留在安全空域", sma_out: "逃方最後半長軸不在安全空域", pursuer_crash: "追方撞地", evader_crash: "逃方撞地", crash_pursuer: "追方撞地", crash_evader: "逃方撞地", timeout: "規定回合已用盡"};
+    const result = outcome[finished.outcome] || (finished.outcome ? `結果代碼：${finished.outcome}` : "規定回合已完成");
+    action.innerHTML = `<h2 class="result-title">比賽結束</h2><p class="medal-result">${esc(result)}；${finished.winner ? `${roleText(finished.winner)}勝` : "請向主辦確認勝方"}，第 ${finished.round || total} 回合。</p><div class="note warn">以主辦公告為準</div><p>下方會顯示整場摘要。</p>`;
+  } else if (annJob?.running) {
+    action.innerHTML = `<h2>正在核對回合結束狀態</h2><p>工具正在反推雙方實際 Δv，核對時間與檔案。通過後會自動取得下一回合建議。</p>`;
+  } else if (error) {
+    action.innerHTML = roundErrorHTML(annJob, attempt);
+    $("#round-change-file").onclick = () => { roundAttempt({...attempt, dismissed: true}); roundSignature = ""; renderRound(); };
+    if ($("#round-force")) $("#round-force").onclick = () => announceRound({...attempt, force: true}).catch(e => toast(e.message));
+    if ($("#round-retry-names")) {
+      const curP = String(M.names?.pursuer || $(`[data-form="pursuer.name"]`).value), curE = String(M.names?.evader || $(`[data-form="evader.name"]`).value);
+      const swapped = /對調/.test((annJob?.lines || []).join("\n") + (annJob?.live || ""));  // 工具判斷對調時直接預填對調後的名字，一鍵重試
+      $("#retry-pursuer").value = swapped ? curE : curP;
+      $("#retry-evader").value = swapped ? curP : curE;
+      if (swapped) $("#round-retry-names").textContent = "船名對調後重試";
+      $("#round-retry-names").onclick = () => {
+        const p = $("#retry-pursuer").value.trim(), e = $("#retry-evader").value.trim();
+        if (!p || !e) return toast("兩個船名都要填，請照 USB 檔拼寫。");
+        announceRound({...attempt, names: `pursuer=${p},evader=${e}`}).catch(err => toast(err.message));
+      };
+    }
+  } else if (M.phase === "A" || M.phase === "D") {
+    action.innerHTML = waitingHTML();
+    wireDrop("#round-drop", "#round-file", (file, opp) => {
+      return announceRound({file, opp}).catch(e => toast(e.message));
+    }, () => {
+      const opp = ["X", "Y", "Z"].map(axis => $(`#round-opp-${axis}`)?.value.trim() || "");
+      if (opp.some(v => v) && opp.some(v => !v || !Number.isFinite(Number(v)))) throw new Error("選填的對手 Δv 要三格都填數字，或三格都留空。請補齊後再放檔。");
+      prepareNextRound(); return opp;
+    });
+    $("#round-dv-only").onclick = () => {
+      const opp = ["X", "Y", "Z"].map(axis => $(`#fallback-opp-${axis}`).value.trim());
+      if (opp.some(v => !v || !Number.isFinite(Number(v)))) return toast("請填對手 X、Y、Z 三個數，沒推就填 0。");
+      prepareNextRound(); announceRound({opp}).catch(e => toast(e.message));
+    };
+  } else if (M.phase === "C" && M.advice?.submit) {
+    action.innerHTML = adviceHTML(); $("#round-paper").value = store(sessionKey(`round.${session.round}.paper`)) || "";
+    $("#round-paper").oninput = updatePaper; updatePaper();
+    $("#round-submitted").onclick = async () => {
+      const button = $("#round-submitted"); button.disabled = true;
+      try { await api("/api/medal/submitted", {round: session.round, line: M.advice.submit.replace(/^提交：/, ""), remaining_sec: countdownRemaining(session.round)}); await refreshMedal(); }
+      catch (e) { button.disabled = false; }
+    };
+  } else if (session.round === 1 && !roundStartTime(1) && !adviseJob?.running) {
+    action.innerHTML = `<h2>等工作人員宣布第 1 回合開始</h2><p>宣布開始後按下面的按鈕，倒數和建議會一起開始。</p><div class="actions"><button class="btn btn-primary medal-big" id="round-start">第 1 回合開始</button></div>`;
+    $("#round-start").onclick = () => { startRoundTimer(1); roundSignature = ""; refreshMedal(); };
+  } else {
+    const fastPending = !!store(sessionKey(`round.${session.round}.fastPending`));
+    const failed = adviseJob && !adviseJob.running && adviseJob.rc !== 0 && !fastPending;
+    action.innerHTML = `<h2>取得建議</h2>` + (fastPending || adviseJob?.command.includes("--fast") ? `<div class="note warn">${store(sessionKey(`round.${session.round}.autoFast`)) ? "建議太慢，已改用快速版。" : "正在使用快速版。"}</div>` : "") +
+      (failed ? `<div class="medal-error"><pre>${esc(adviseJob.lines.join("\n") || "建議沒有完成，請重試。")}</pre><p>核對原因後按重試，時間不夠就按快速版。</p></div><div class="actions"><button class="btn btn-primary medal-big" id="round-retry">重試</button><button class="btn medal-big" id="round-fast">快速版</button></div>` : `<p>正在計算，完成後會自動顯示提交行。你可以先準備紙筆，並查看下面的進度輸出。</p>`);
+    if (failed) { $("#round-retry").onclick = () => launchAdvice(false).catch(e => toast(e.message)); $("#round-fast").onclick = () => launchAdvice(true).catch(e => toast(e.message)); }
+  }
+  tickRoundTimer();
+}
+function prepareNextRound() {
+  if (!M.session) return;
+  const next = Math.min(M.session.round + 1, M.session.rounds_total || 6);
+  medalSaved(sessionKey("pendingRound"), next); startRoundTimer(next);
+}
+async function announceRound(attempt) {
+  if (roundLaunching) return;
+  if (attempt.opp?.some(v => String(v).trim()) && (attempt.opp.length !== 3 || attempt.opp.some(v => !String(v).trim() || !Number.isFinite(Number(v))))) return toast("選填的對手 Δv 要三格都填數字，或三格都留空。請補齊後再放檔。");
+  roundLaunching = true;
+  try {
+    roundAttempt({...attempt, dismissed: false});
+    const job = await runCmd("/api/medal/round", {action: "announce", round: M.session.round, file: attempt.file, opp: attempt.opp, names: attempt.names, force: !!attempt.force}, async j => {
+      if (j.rc === 0) { roundAttempt(null); medalSaved(sessionKey("pendingRound"), null); }
+      await refreshMedal();
+    });
+    roundAttempt({...attempt, job_id: job.id, dismissed: false});
+  } finally { roundLaunching = false; }
+  await refreshMedal();
+}
+async function launchAdvice(fast) {
+  if (roundLaunching) return;
+  roundLaunching = true;
+  try {
+    await runCmd("/api/medal/round", {action: "advise", round: M.session.round, fast}, () => refreshMedal());
+    if (fast) store(sessionKey(`round.${M.session.round}.fastPending`), "");
+  } finally { roundLaunching = false; }
+  await refreshMedal();
+}
+async function ensureRound() {
+  if (!roundVisible() || !M.session || roundLaunching) return;
+  const job = latestRoundJob("advise"), pending = !!store(sessionKey(`round.${M.session.round}.fastPending`));
+  if (runningRoundJob("announce") || runningRoundJob("advise")) return;
+  if (M.phase === "E") {
+    const shown = (M.jobs || []).some(j => j.key === "medal.round.show" && (!j.medal_session_id || j.medal_session_id === M.session_id));
+    if (!shown) { roundLaunching = true; try { await runCmd("/api/medal/round", {action: "show"}, () => refreshMedal()); } finally { roundLaunching = false; } }
+    return;
+  }
+  if (M.phase === "C") { if (pending) store(sessionKey(`round.${M.session.round}.fastPending`), ""); return; }
+  if (M.phase !== "B" || (M.session.round === 1 && !roundStartTime(1))) return;
+  if (!roundStartTime()) startRoundTimer();
+  if (pending) { store(sessionKey(`round.${M.session.round}.autoFast`), "1"); await launchAdvice(true); }
+  else if (!job) await launchAdvice(false);
+}
+async function refreshMedal() {
+  if (medalRefreshing) return;
+  medalRefreshing = true;
+  try {
+    if (medalDay && !daySync) daySync = api("/api/medal/day", {name: medalDay}).catch(() => {});
+    if (daySync) await daySync;
+    M = await api("/api/medal/overview");
+    renderMedalDay();
+    $("#m0-env").innerHTML = M.drl_ok ? "" : `<div class="note bad">找不到金牌賽的 Python 環境。請在 medal 資料夾執行 uv sync，或重新執行 setup.sh，再回來重試。</div>`;
+    setDot("ma", M.session ? "ok" : M.rules ? "warn" : ""); setDot("m5", M.phase === "E" ? "ok" : "");
+    for (const j of M.jobs || []) {
+      if (!jobs[j.id]) { jobs[j.id] = {...j}; latestByKey[j.key] = j.id; if (j.running) poll(j.id); }
+      if (!latestByKey[j.key] || jobs[latestByKey[j.key]].started < j.started) latestByKey[j.key] = j.id;
+      renderJob(j.id);
+    }
+    const readbackSignature = JSON.stringify([M.initial_version, M.readback]);
+    if (readbackSignature !== lastReadback) { lastReadback = readbackSignature; renderReadback(M.readback); }
+    roleRecommendation();
+    $("#ma-created").innerHTML = M.session ? `<div class="note ok"><b>告訴工作人員我們選了${roleText(M.session.role)}。</b><div class="actions"><button class="btn btn-primary medal-big" id="ma-next-round">${M.session.round === 1 ? "前往第 1 回合" : "回到目前回合"}</button></div></div>` : "";
+    if ($("#ma-next-round")) $("#ma-next-round").onclick = () => goMedal("m5");
+    // 原有四張備援表單維持原來的用法。
+    if (M.rules) {
+      const x = M.rules;
+      $("#m1-cur").innerHTML = `<div class="note ok">已存規則：雙方上限 ${fmt(x.max_dv_pursuer_mps, 3)}／${fmt(x.max_dv_evader_mps, 3)} m/s；攔截 ${fmt(x.capture_radius_km, 3)} km；每回合 ${fmt(x.window_sec, 1)} 秒；安全空域 [${fmt(x.safe_sma_km?.[0], 3)}, ${fmt(x.safe_sma_km?.[1], 3)}] km。</div>`;
+      if (!refreshMedal.loaded) { refreshMedal.loaded = true; $("#m1-dvp").value = x.max_dv_pursuer_mps; $("#m1-dve").value = x.max_dv_evader_mps; $("#m1-rcap").value = x.capture_radius_km; $("#m1-tr").value = x.window_sec; $("#m1-lo").value = x.safe_sma_km?.[0] ?? ""; $("#m1-hi").value = x.safe_sma_km?.[1] ?? ""; }
+    } else $("#m1-cur").innerHTML = `<div class="note warn">還沒有規則檔，先填公告或用下面表單存檔。</div>`;
+    $("#m2-files").innerHTML = M.files.length ? M.files.slice().reverse().map(f => `<div class="f"><span>${esc(f.name)}</span><span class="sz">${(f.size / 1024).toFixed(1)} KB</span><button class="btn btn-sm" data-view="${esc(f.name)}">看內容</button></div>`).join("") : `<p class="empty">當天資料夾還沒有檔案。</p>`;
+    const opts = M.files.filter(f => !/^(announced|session|role_select|submissions|announce_input|gui_readback|gui_session)(?:\.bak-[\d-]+)?\.json$/.test(f.name) && !/^session\.bak/.test(f.name)).map(f => [f.name, f.name]).reverse();
+    $$("select.dayfile").forEach(el => setOptions("#" + el.id, opts, el.dataset.none));
+    $$("select.dayfile").forEach(el => { if (el.dataset.preferred) { el.value = el.dataset.preferred; delete el.dataset.preferred; } });
+    if (opts.some(([v]) => v === "initial_state.json")) for (const id of ["#m3-sel", "#m4-sel"]) if (!$(id).dataset.touched) $(id).value = "initial_state.json";
+    $("#m5-rounds").innerHTML = `<div class="scroll-table"><table class="t"><tr><th>回合</th><th>提交行</th><th>已交出</th><th>狀態檔公告</th></tr>${(M.rounds || []).map(row => `<tr><td>${row.round}</td><td>${esc(row.line || "尚未取得")}</td><td>${M.submissions.some(x => x.round === row.round) ? stIcon("ok") : "尚未記錄"}</td><td>${row.announced ? "已記錄" : "等主辦"}</td></tr>`).join("")}</table></div>`;
+    renderAnnouncement(); renderRound();
+  } finally { medalRefreshing = false; }
+  await ensureSetupPipeline().catch(e => { $("#ma-pipeline").innerHTML = `<div class="note bad">${esc(e.message)} 請看輸出或按重跑角色選擇器。</div>`; });
+  await ensureRound().catch(e => toast(e.message));
+}
+setInterval(() => { const pipeline = medalSaved(pipelineKey); if (medalVisible() || (pipeline && pipeline.stage !== "done")) refreshMedal().catch(() => {}); }, 1500);
 
+// 上傳仍沿用原有 API；檔案進來時先開始下一回合倒數。
 async function upload(files) {
   let last = null;
   for (const f of files) {
     const res = await (await fetch(`/api/medal/upload?name=${encodeURIComponent(f.name)}`, {method: "POST", headers: {"X-ODC-Upload": "1"}, body: f})).json();
     if (!res.ok) { toast(res.error); return null; }
-    last = res.name; toast(`已放進 day/${res.name}`, true);
+    last = res.name; toast(`已放進當天資料夾：${res.name}`, true);
   }
-  await refreshMedal();
   return last;
 }
-function wireDrop(dropSel, inputSel, after) {
+function wireDrop(dropSel, inputSel, after, before) {
   const d = $(dropSel);
+  const accept = async files => {
+    if (!files.length) return;
+    if (!$(inputSel).multiple && files.length > 1) return toast("一次放一份狀態檔就好，請選主辦剛發的那份。");
+    try {
+      const context = before ? before() : undefined;
+      const n = await upload(files); if (n && after) await after(n, context); await refreshMedal();
+    }
+    catch (e) { toast(e.message); }
+  };
   d.addEventListener("dragover", e => { e.preventDefault(); d.classList.add("over"); });
   d.addEventListener("dragleave", () => d.classList.remove("over"));
-  d.addEventListener("drop", async e => { e.preventDefault(); d.classList.remove("over"); const n = await upload(e.dataTransfer.files); if (n && after) after(n); });
-  $(inputSel).addEventListener("change", async e => { const n = await upload(e.target.files); e.target.value = ""; if (n && after) after(n); });
+  d.addEventListener("drop", e => { e.preventDefault(); d.classList.remove("over"); accept(e.dataTransfer.files); });
+  $(inputSel).addEventListener("change", e => { const files = [...e.target.files]; e.target.value = ""; accept(files); });
 }
-wireDrop("#m2-drop", "#m2-file", n => { $("#m2-sel").value = n; });
-wireDrop("#m5-drop", "#m5-file", n => { $("#m5-sel").value = n; });
-
+wireDrop("#ma-drop", "#ma-file", compareUSB);
+wireDrop("#m2-drop", "#m2-file", n => { $("#m2-sel").dataset.preferred = n; });
+document.addEventListener("click", async e => {
+  const v = e.target.closest("[data-view]"); if (!v) return; e.preventDefault();
+  const r = await api(`/api/medal/file?name=${encodeURIComponent(v.dataset.view)}`);
+  const w = window.open("", "_blank"); if (w) { w.document.title = r.name; w.document.body.innerHTML = `<pre style="white-space:pre-wrap;font:13px Menlo,monospace">${esc(r.text)}</pre>`; }
+});
+$("#m2-manual").innerHTML = SIDES.map(([side, label]) => `<div class="sub">${label}</div><div class="fields">${XYZ.map(key => `<label class="field"><span>${key}（${key.startsWith("V") ? "km/s" : "km"}）</span><input id="mm-${side}-${key}" inputmode="decimal"></label>`).join("")}</div>`).join("");
 $("#m1-save").onclick = async () => {
-  const r = await api("/api/medal/rules", {dv_p: $("#m1-dvp").value, dv_e: $("#m1-dve").value || $("#m1-dvp").value, rcap: $("#m1-rcap").value,
-    tround: $("#m1-tr").value, lo: $("#m1-lo").value, hi: $("#m1-hi").value, safe_unit: $("#m1-unit").value});
+  const r = await api("/api/medal/rules", {dv_p: $("#m1-dvp").value, dv_e: $("#m1-dve").value || $("#m1-dvp").value, rcap: $("#m1-rcap").value, tround: $("#m1-tr").value, lo: $("#m1-lo").value, hi: $("#m1-hi").value, safe_unit: $("#m1-unit").value});
   $("#m1-msg").innerHTML = r.warnings.length ? `<div class="note warn">${r.warnings.map(esc).join("<br>")}</div>` : "";
-  toast("規則檔已存", true);
-  refreshMedal.loaded = false; $("#m1-unit").value = "sma"; refreshMedal();
+  refreshMedal.loaded = false; $("#m1-unit").value = "sma"; refreshMedal(); toast("規則檔已存。", true);
 };
 const nameBody = p => ({names: $(`#${p}-names`).value, order: $(`#${p}-order`).value});
-$("#m2-parse").onclick = () => runCmd("/api/medal/cmd", {action: "parse", file: $("#m2-sel").value, ...nameBody("m2")}, j => {
-  refreshMedal();
-  if (j.rc === 0) toast("解析成功，已存 initial_state.json", true);
-});
+$("#m2-parse").onclick = () => runCmd("/api/medal/cmd", {action: "parse", file: $("#m2-sel").value, ...nameBody("m2")}, j => { refreshMedal(); if (j.rc === 0) toast("解析成功，已存 initial_state.json。", true); });
 ["#m3-sel", "#m4-sel"].forEach(id => $(id).addEventListener("change", e => e.target.dataset.touched = "1"));
 $("#m2-msave").onclick = async () => {
   const body = {out: $("#m2-mname").value, pursuer: {}, evader: {}};
-  for (const s of ["pursuer", "evader"]) for (const k of XYZ) body[s][k] = $(`#mm-${s}-${k}`).value;
-  const r = await api("/api/medal/manual", body); toast(`已存 day/${r.name}`, true); await refreshMedal(); $("#m2-sel").value = r.name;
+  for (const [side] of SIDES) for (const key of XYZ) body[side][key] = $(`#mm-${side}-${key}`).value;
+  const r = await api("/api/medal/manual", body); await refreshMedal(); $("#m2-sel").value = r.name; toast(`已存 ${r.name}。`, true);
 };
 $("#m2-conv").onclick = () => runCmd("/api/medal/cmd", {action: "convert", file: $("#m2-csel").value, out: $("#m2-cout").value}, () => refreshMedal());
 $("#m3-go").onclick = () => runCmd("/api/medal/cmd", {action: "role_select", file: $("#m3-sel").value, fast: $("#m3-fast").checked}, () => refreshMedal());
 $("#m4-go").onclick = () => {
-  if (!$("#m4-role").value) return toast("先選我方角色");
-  runCmd("/api/medal/cmd", {action: "new", role: $("#m4-role").value, file: $("#m4-sel").value, overwrite: $("#m4-over").checked, ...nameBody("m4")},
-    j => { refreshMedal(); if (j.rc === 0) toast("session 建好了，到步驟 5", true); });
+  if (!$("#m4-role").value) return toast("先選我方角色。");
+  runCmd("/api/medal/cmd", {action: "new", role: $("#m4-role").value, file: $("#m4-sel").value, overwrite: $("#m4-over").checked, ...nameBody("m4")}, j => { refreshMedal(); if (j.rc === 0) toast("整場紀錄已建立，前往「每回合」。", true); });
 };
-$("#m5-go").onclick = () => {
-  $("#m5-advice").innerHTML = "";
-  runCmd("/api/medal/cmd", {action: "advise", file: $("#m5-sel").value, fast: $("#m5-fast").checked}, async j => {
-    const r = await api(`/api/medal/advise?id=${j.id}`); const a = r.advise;
-    await refreshMedal();
-    if (j.rc !== 0 || !a.submit) { $("#m5-advice").innerHTML = `<div class="note bad">取得建議失敗，看下面的輸出。時間不夠就勾快速版再跑。</div>`; return; }
-    const s = M.session || {};
-    const lastRound = s.round === s.rounds_total || (a.head || "").includes(`第 ${s.rounds_total}/`);
-    const yes = (text, word) => text ? (text.includes(word) && !text.includes("未" + word) ? "ok" : "bad") : "bad";
-    let rows = checkRow(yes(a.recheck, "通過"), "重驗：通過", a.recheck);
-    if (s.role === "evader") {
-      rows += checkRow(yes(a.cert, "成立"), "安全證書：成立", a.cert);
-      if (lastRound && a.a_after !== undefined && s.safe_sma_km) {
-        const [lo, hi] = s.safe_sma_km;
-        rows += checkRow(a.a_after >= lo && a.a_after <= hi ? "ok" : "bad", `最後一回合：推完 a 在安全空域 [${fmt(lo, 3)}, ${fmt(hi, 3)}]`, a.after);
-      }
-    } else rows += checkRow("na", "追方：照交", a.after);
-    rows += checkRow(a.consistency ? (a.consistency.includes("通過") ? "ok" : "bad") : "na", "一致性檢查：通過",
-      a.consistency || ((a.head || "").startsWith("第 1/") ? "第 1 回合沒有這項" : "這回合沒給狀態檔，沒有核對；主辦有給就選它再取得一次建議"));
-    let h = `<div class="sub" style="margin-bottom:0">手寫這一行交出去（照抄，含正負號）</div><div class="submit-line">${esc(a.submit.replace(/^提交：/, ""))}</div>`;
-    if (a.handcheck) h += `<p class="hint" style="margin-top:8px">${esc(a.handcheck)}</p>`;
-    h += `<div class="checks">${rows}</div>`;
-    if (a.recheck && a.recheck.includes("未通過")) h += `<div class="note bad">重驗沒通過：交工具給的這一行（上面那行就是）。</div>`;
-    if (a.consistency && a.consistency.includes("疑似錯誤")) h += `<div class="note bad">一致性檢查疑似錯誤：核對單位、角色有沒有對調、座標系、時間；仍以官方狀態為準。</div>`;
-    $("#m5-advice").innerHTML = h;
-    const m = a.submit.match(/,\s*\d+\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)/);
-    if (m) { ["X", "Y", "Z"].forEach((k, i) => $("#our-" + k).value = m[i + 1]); }
-  });
-};
-$("#m5-ann").onclick = () => {
-  const opp = ["X", "Y", "Z"].map(k => $("#opp-" + k).value.trim()), our = ["X", "Y", "Z"].map(k => $("#our-" + k).value.trim());
-  if (opp.some(v => v === "")) return toast("對手 Δv 三個數都要填（沒推就填 0）");
-  runCmd("/api/medal/cmd", {action: "announce", opp, our, file: $("#m5-nsel").value}, j => {
-    refreshMedal();
-    if (j.rc === 0) { ["X", "Y", "Z"].forEach(k => $("#opp-" + k).value = ""); $("#m5-advice").innerHTML = ""; resetRoundTimer(); toast("已記錄，進下一回合", true); }
-  });
-};
-$("#m5-show").onclick = () => runCmd("/api/medal/cmd", {action: "show"});
-
-// 每回合 10 分鐘計時
-let roundStart = Number(store("odc.roundStart")) || 0;
-function tickRoundTimer() {
-  const el = $("#m5-timer"); if (!el) return;
-  if (!roundStart) { el.textContent = "10:00"; el.style.color = ""; $$("#m5-phases div").forEach(d => d.classList.remove("on")); return; }
-  const t = (Date.now() - roundStart) / 1000, left = 600 - t;
-  const a = Math.abs(Math.round(left)); el.textContent = (left < 0 ? "-" : "") + `${Math.floor(a / 60)}:${String(a % 60).padStart(2, "0")}`;
-  el.style.color = left < 60 ? "var(--bad)" : left < 240 ? "var(--warn)" : "";
-  const ph = t < 120 ? 0 : t < 360 ? 1 : t < 480 ? 2 : t < 540 ? 3 : 4;
-  $$("#m5-phases div").forEach((d, i) => d.classList.toggle("on", i === ph));
-}
-function resetRoundTimer() { roundStart = 0; store("odc.roundStart", "0"); tickRoundTimer(); }
-$("#m5-tstart").onclick = () => { roundStart = Date.now(); store("odc.roundStart", String(roundStart)); tickRoundTimer(); };
-$("#m5-treset").onclick = resetRoundTimer;
+$("#m5-show").onclick = () => runCmd("/api/medal/cmd", {action: "show"}, () => refreshMedal());
 
 // ---------------------------------------------------------------- 顯示步驟時要做的事
 function onShow(id) {

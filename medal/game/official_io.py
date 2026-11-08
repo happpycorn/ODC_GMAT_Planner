@@ -207,8 +207,10 @@ def _read_json(content, notes, names, order):
         raise StateImportError(f"JSON 第 {exc.lineno} 列第 {exc.colno} 欄格式錯誤：{exc.msg}；請檢查逗號與引號") from exc
     if not isinstance(data, dict):
         raise StateImportError("JSON 最外層須是物件，含 pursuer 與 evader；請檢查大括號")
-    keys = [key for key in data if key not in ("epoch", "t_sec", "t_elapsed_sec")]
-    mapping, extra = _resolve_names(keys, names, order)
+    keys = [key for key in data
+            if not key.startswith("_") and key not in ("epoch", "t_sec", "t_elapsed_sec", "format")]
+    # 固定角色鍵已直接表明身分，--names 留給後續官方檔中的實際船名。
+    mapping, extra = _resolve_names(keys, None if set(keys) == set(_SIDES) else names, order)
     states, epochs = {}, {}
     for side, index in mapping.items():
         states[side], epochs[side] = _json_state(data[keys[index]], side, index + 1)
@@ -411,10 +413,15 @@ def read_official_state(path, fmt="auto", names=None, order=None) -> dict:
         raise StateImportError(f"找不到狀態檔 {str(path)!r}；請確認 USB 檔已複製、檔名與目前工作目錄") from exc
     except (OSError, UnicodeError) as exc:
         raise StateImportError(f"無法讀取狀態檔 {str(path)!r}：{exc}；請確認檔案是 UTF-8 文字") from exc
+    return parse_official_state(content, fmt=fmt, names=names, order=order)
+
+
+def parse_official_state(content, fmt="auto", names=None, order=None) -> dict:
+    """解析已讀入的官方文字，讓檔案指紋與狀態來自同一次讀取。"""
     lines = [(line, raw.strip()) for line, raw in enumerate(content.splitlines(), 1)
              if raw.strip() and not raw.lstrip().startswith("#")]
     if not lines:
-        raise StateImportError(f"狀態檔 {str(path)!r} 是空的；請複製含雙方狀態的檔案")
+        raise StateImportError("狀態檔是空的；請複製含雙方狀態的檔案")
     fmt = str(fmt).casefold()
     notes = []
     if fmt == "auto":
