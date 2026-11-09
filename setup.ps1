@@ -1,4 +1,4 @@
-# 新電腦一鍵安裝（Windows PowerShell）：排位賽工具（根目錄）＋金／銅牌賽工具（medal/）＋GUI。
+﻿# 新電腦一鍵安裝（Windows PowerShell）：排位賽工具（根目錄）＋金／銅牌賽工具（medal/）＋GUI。
 # 做的事跟 setup.sh 一樣。2026-11-06 寫好時沒有 Windows 機器、Mac 上也沒有 PowerShell，這份沒有實際跑過。
 #
 #   powershell -ExecutionPolicy Bypass -File setup.ps1
@@ -10,6 +10,8 @@ $ErrorActionPreference = "Continue"
 Set-Location -Path $PSScriptRoot
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $env:PYTHONIOENCODING = "utf-8"
+# 繁中 Windows 預設 cp950：子程式輸出、讀檔都改用 UTF-8（PowerShell 5.1 讀這份檔要 BOM，存檔別拿掉）
+$env:PYTHONUTF8 = "1"
 $env:PATH = "$env:USERPROFILE\.local\bin;$env:PATH"
 # 跟合併前的基準同一個 Python；寫完整版本號，uv 才不會拿系統裡別的 3.12.x
 $PyVer = "3.12.12"

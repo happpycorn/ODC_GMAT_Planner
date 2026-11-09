@@ -40,7 +40,8 @@ def _atomic_dump(folder, name, value):
 
 
 def _oracle_worker(config, cores, deadline, folder, routes, grid_only):
-    os.setsid()
+    if hasattr(os, "setsid"):  # Windows 沒有 process group；停止時改由 _stop 直接 kill
+        os.setsid()
     try:
         # Never change the parent's env or runtime thread/BLAS state.
         for key in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
@@ -119,6 +120,10 @@ class OracleJob:
         self.watcher.start()
 
     def _stop(self):
+        if not hasattr(os, "killpg"):  # Windows
+            if self.process.is_alive():
+                self.process.kill()
+            return
         try:
             os.killpg(self.process.pid, signal.SIGKILL)
         except ProcessLookupError:
