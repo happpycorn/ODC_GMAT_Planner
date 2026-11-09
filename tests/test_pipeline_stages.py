@@ -23,7 +23,7 @@ from odc.scoring.scorer import calculate_score
 
 class PipelineStagesTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix="odc-stages-")
+        self.tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True, prefix="odc-stages-")
         self.root = Path(self.tmp.name)
         self.config = copy.deepcopy(ref_defaults.DEFAULT_CONFIG)
         self.config["strategy"]["GRAVITY_DEGREE"] = 0

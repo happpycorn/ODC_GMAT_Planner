@@ -153,7 +153,7 @@ class OracleTests(unittest.TestCase):
     def test_disabled_does_not_start_oracle_or_add_artifact(self):
         cfg = config()
         c = candidate(cfg)
-        with tempfile.TemporaryDirectory() as folder, \
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder, \
              patch('odc.search.oracle_worker.OracleJob', side_effect=AssertionError('oracle started')), \
              patch.object(ref_solve, '_search_stage', return_value=c), \
              patch.object(ref_solve, 'save_winner_checkpoint'), patch.object(ref_solve, 'save_mission'), \
@@ -165,7 +165,7 @@ class OracleTests(unittest.TestCase):
     def test_pipeline_winner_tie_unsafe_timeout_and_crash(self):
         cfg = config(ORACLE_TWOBURN=True, SPLIT_LEADING=True)
         for mode in ('better', 'tie', 'unsafe', 'timeout', 'crash', 'startup_crash'):
-            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as folder:
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
                 de = candidate(cfg)
                 e = entry(cfg, 80. if mode == 'tie' else 90.)
                 if mode == 'unsafe':
@@ -196,7 +196,7 @@ class OracleTests(unittest.TestCase):
             job.wall_sec = .2
         jobs[0].collect.return_value = (routes, [])
         jobs[1].collect.return_value = (routes, [e])
-        with tempfile.TemporaryDirectory() as folder, \
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder, \
              patch('odc.search.oracle_worker.OracleJob', side_effect=jobs) as start, \
              patch.object(ref_solve, '_solve_de_pipeline', return_value=candidate(cfg)) as search, \
              patch.object(ref_solve, 'save_winner_checkpoint'), patch.object(ref_solve, 'save_mission'):

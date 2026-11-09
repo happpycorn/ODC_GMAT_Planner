@@ -156,7 +156,7 @@ missing = MissionOptimizer(missing_cfg).mission_metrics(x, 2)
 check("沒寫與 false：除新欄位外每欄逐位元相同", all(
     pickle.dumps(v) == pickle.dumps(moff[k]) for k, v in missing.items() if k != "split_leading_count"))
 check("關閉新增計數為零", missing["split_leading_count"] == moff["split_leading_count"] == 0)
-with tempfile.TemporaryDirectory() as folder:
+with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
     for opt in (on, off):
         opt.no_legal_route = {"x": x, "burns": 2, "fitness": 1.}
         path = os.path.join(folder, "no_legal_route.json")
@@ -217,7 +217,7 @@ for mode in ("full", "fast"):
         again = ref_legalize._legalize_stage(new[3].config, *new)
         check(f"{mode} 贏家二次合法化命中快取", legal.call_count == calls and again[2] is new[3].post)
         check(f"{mode} 原候選也有快取", len(old[3]._legalize_cache) == 1)
-        with tempfile.TemporaryDirectory() as folder:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
             path = os.path.join(folder, "winner.json")
             ref_checkpoints.save_winner_checkpoint(path, new[3], *new[:3])
             with open(path, encoding="utf-8") as source:

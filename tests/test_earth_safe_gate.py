@@ -46,7 +46,7 @@ class EarthGateTests(unittest.TestCase):
               "miss_km": .1, "total_dv_mps": 100., "T_team": 1100., "penalty_count": 0,
               "dc_converged": True, "earth_safe": True, "aim_point": [9000., 0., 0.],
               "final_burn_dv_mps": 100., "min_arc_radius_km": 7500.}
-        with tempfile.TemporaryDirectory(prefix="odc-earth-output-") as tmp:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True, prefix="odc-earth-output-") as tmp:
             folder = Path(tmp)
 
             def fake(command, **kwargs):
@@ -74,7 +74,7 @@ class EarthGateTests(unittest.TestCase):
     def test_real_gmat_verify_script(self):
         source = ROOT/"outputs/runs/macbench-rt/output_submit.txt"
         before = source.read_bytes()
-        with tempfile.TemporaryDirectory(prefix="odc-earth-gmat-") as tmp:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True, prefix="odc-earth-gmat-") as tmp:
             folder = Path(tmp)/"run"
             proc = subprocess.run([sys.executable, str(ROOT/"odc.py"), "verify", str(source),
                 "--gmat-console", ref_defaults.GMAT_CONSOLE_DEFAULT, "--run-dir", str(folder)],
@@ -168,7 +168,7 @@ class EarthGateTests(unittest.TestCase):
             self.assertGreater(a["arc_minr"][0], MIN_PERIAPSIS)  # only waiting arc unsafe
 
     def test_verification_gate_preserves_source_and_checks_exact_cutoff(self):
-        with tempfile.TemporaryDirectory(prefix="odc-earth-") as tmp:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True, prefix="odc-earth-") as tmp:
             root = Path(tmp)
             cfg = ref_defaults.DEFAULT_CONFIG
             a, b = cfg["orbit_A"], cfg["orbit_B"]

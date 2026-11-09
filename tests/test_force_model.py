@@ -49,7 +49,7 @@ def ranking_config(**strategy):
 
 class GeneratorTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix="odc-fm-")
+        self.tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True, prefix="odc-fm-")
         self.d = self.tmp.name
 
     def tearDown(self):
@@ -143,7 +143,7 @@ class GeneratorTest(unittest.TestCase):
         self.assertEqual((env["sc_B"]["CD"], env["sc_A"]["CD"], env["force_model"]), (2.0, 2.4, "ranking_full"))
         self.assertEqual(env["sc_B"]["DRY_MASS_KG"], DEFAULT_SPACECRAFT["DRY_MASS_KG"])
         # load_or_create_config 也會擋（不要等到產腳本才炸）
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
             p = Path(d) / "c.json"
             p.write_text(json.dumps(ranking_config(FORCE_MODEL="nope")))
             with self.assertRaises(SystemExit):
@@ -217,7 +217,7 @@ class AnalysisTest(unittest.TestCase):
         self.assertGreater(res["min_radius_before_intercept_km"], 7000.0)
 
     def test_read_dense_rows_skips_garbage(self):
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
             p = Path(d) / "r.report"
             good = " ".join(["1.0"] * 13)
             p.write_text(f"header line\n{good}\n{' '.join(['nan'] * 13)}\n1 2 3\n{good}\n")
@@ -379,7 +379,7 @@ class DecisionTest(unittest.TestCase):
 # ---------------------------------------------------------------- main.py 階段
 class StageTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix="odc-retarget-")
+        self.tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True, prefix="odc-retarget-")
         self.root = Path(self.tmp.name)
         self.config = ranking_config()
         opt = ref_optimizer.MissionOptimizer(self.config)

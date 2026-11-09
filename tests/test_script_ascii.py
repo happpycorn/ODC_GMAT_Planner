@@ -37,7 +37,7 @@ def main():
     check("純 ASCII 內容原樣放行", _require_ascii("Create Spacecraft SC_Alien;\nx = 1.0;") is not None)
 
     # ── 官方範例真的走一遍 script_generator，必須無錯且寫出的檔是 ASCII ──
-    with tempfile.TemporaryDirectory() as output_dir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as output_dir:
         path = script_generator(
             6978.0, 0.0, 45.0, 0.0, 0.0, 0.0,
             6878.0, 0.0, 135.0, 30.0, 0.0, 60.0,

@@ -58,7 +58,7 @@ check("SEED 在最外層：前 10 個全是 seed 0", all(j["seed"] == 0 for j in
 check("key 唯一", len({sp.job_key(j) for j in jobs}) == 20)
 
 # ── 覆寫順序 ──
-with tempfile.TemporaryDirectory() as d:
+with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
     base_cfg = {"rules": {"k_t": 0.1}, "optimization": {"POPSIZE": 1, "MAXITER": 1, "SEED": None},
                 "strategy": {}}
     for name in ("a.json", "b.json"):
@@ -138,7 +138,7 @@ for problem in c4_broken:
     print("  ❌ " + problem)
 
 # ── GMAT 路徑與封存鎖 ──
-with tempfile.TemporaryDirectory() as d:
+with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
     name = "retry_case"
     run_dir = Path(d) / "runs" / name
     config_dir = Path(d) / "configs"
@@ -158,7 +158,7 @@ with tempfile.TemporaryDirectory() as d:
     check("只有 console、尚未建立 run 目錄時也保存錯誤訊息",
           stale_only != stale and (stale_only / "console.log").read_text() == "failure before run dir")
 
-with tempfile.TemporaryDirectory() as d:
+with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
     job = {"scenario": "official_sample", "variant": "base", "seed": 0,
            "config": "configs/shared/official_sample.json", "overrides": {}}
     with patch.object(sp.subprocess, "Popen") as popen:

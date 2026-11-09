@@ -33,7 +33,7 @@ cfg["optimization"].update({"MAXITER": 3, "POPSIZE": 2, "MAX_BURNS": [1, 2], "SE
 cfg["strategy"].update({"REVS_ENSEMBLE": False})
 
 print("── main.py 子行程：總 Δv 上限 300 m/s < 能量下限 ──")
-with tempfile.TemporaryDirectory() as td:
+with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
     cfg_path = Path(td) / "cfg.json"
     cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
     run_dir = Path(td) / "run"

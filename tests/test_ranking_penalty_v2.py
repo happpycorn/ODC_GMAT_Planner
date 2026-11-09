@@ -239,7 +239,7 @@ pre_nl = make(BASE)
 pre_nl.burn_case_results = {N: {"fitness": 0.0, "best_x": X.copy(), "epochs_run": 1, "note": ""}}
 check("初賽模式 / 搜尋失敗（fitness 0）不記", pre_nl._pick_best_case() is None and pre_nl.no_legal_route is None)
 
-with tempfile.TemporaryDirectory() as td:
+with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
     p = ref_checkpoints.save_no_legal_route(Path(td) / "no_legal_route.json", nl)
     d = json.loads(p.read_text(encoding="utf-8"))
     v = d["violations"]

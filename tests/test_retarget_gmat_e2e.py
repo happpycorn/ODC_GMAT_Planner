@@ -89,7 +89,7 @@ def main():
         print("SKIP：找不到 GmatConsole（設 GMAT_CONSOLE 或 configs/local/config.json 的 local.gmat_console_path）")
         return 0
     print(f"=== 全攝動 B 平面重瞄準端到端（{console}）===")
-    with tempfile.TemporaryDirectory(prefix="odc-retarget-e2e-") as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True, prefix="odc-retarget-e2e-") as d:
         root = Path(d)
         folder, rec = run(console, root, "ring", 250.0)
         res = rec["result"]

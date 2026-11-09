@@ -26,6 +26,8 @@
         任務曆元（決定日月位置與太空天氣）。預設是舊腳本的 2000-01-01 12:00 TAI。
 """
 
+import os
+
 FORCE_MODELS = ("contest_prelim", "ranking_full")
 DEFAULT_FORCE_MODEL = "contest_prelim"
 
@@ -74,7 +76,7 @@ def _check_spacecraft(name, sc, errors):
         if k in sc and not (_is_number(sc[k]) and sc[k] >= 0):
             errors.append(f"strategy.{name}.{k} 必須是 >=0 的數字，但收到 {sc[k]!r}")
     for k in _SPAD_KEYS:
-        if k in sc and sc[k] is not None and not (_script_safe(sc[k]) and sc[k].startswith("/")):
+        if k in sc and sc[k] is not None and not (_script_safe(sc[k]) and os.path.isabs(sc[k])):
             # GmatConsole 會把工作目錄切到 bin/，相對路徑會找不到檔案
             errors.append(f"strategy.{name}.{k} 必須是 ASCII 絕對路徑（不含引號），但收到 {sc[k]!r}")
 

@@ -109,7 +109,7 @@ assert 'numba' not in sys.modules
 
     def test_new_config_copy_override_existing_and_validation_cleanup(self):
         from odc.tools import new_config
-        with tempfile.TemporaryDirectory() as folder:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
             root = Path(folder)
             shared = root / 'configs' / 'shared'
             shared.mkdir(parents=True)
