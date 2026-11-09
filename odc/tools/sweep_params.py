@@ -43,7 +43,10 @@ run.log（各棒數案例跑了幾代），整理成一行寫進 results.jsonl�
 import argparse
 import copy
 import datetime
-import fcntl
+try:
+    import fcntl
+except ImportError:  # Windows：批次實驗工具只支援 Mac／Linux，但讓測試能 import 規劃函式
+    fcntl = None
 import glob
 import itertools
 import json
@@ -353,6 +356,8 @@ def run_sweep(spec, out_dir, slots, timeout, gmat, retry_failed, do_warmup,
               gmat_console=None):
     # archive-logs takes an exclusive lock before removing console logs. Keep a
     # shared lock for the entire sweep, including warmup, while jobs may write.
+    if fcntl is None or not hasattr(os, "wait4"):
+        raise SystemExit("odc.py sweep 只支援 Mac／Linux（用到 fcntl、os.wait4、process group）；Windows 請用 WSL。")
     lock_path = os.path.join(ROOT, "outputs", "sweeps", ".archive.lock")
     os.makedirs(os.path.dirname(lock_path), exist_ok=True)
     with open(lock_path, "a+", encoding="utf-8") as lock:

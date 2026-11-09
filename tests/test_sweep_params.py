@@ -9,10 +9,14 @@
 """
 
 import json
-import fcntl
 import os
 from pathlib import Path
 import sys
+
+if os.name == "nt":  # sweep 只支援 Mac／Linux（fcntl、os.wait4），比賽流程用不到
+    print("SKIP：sweep_params 不支援 Windows")
+    sys.exit(0)
+import fcntl  # noqa: E402
 import tempfile
 from unittest.mock import patch
 
