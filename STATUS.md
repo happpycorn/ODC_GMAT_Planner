@@ -11,7 +11,7 @@
 11-09 01:30 在未 commit 的工作樹上測：`uv run --offline python odc.py test --quick -q` 24/24（170 s）；金牌賽 `test_final_copilot.py`＋`test_dv_recover.py` 48 passed（261 s）。
 
 - 新文件：[TONIGHT_20261109](docs/final/TONIGHT_20261109.md)（今晚清單）、[CLEANUP_20261109](docs/final/CLEANUP_20261109.md)（賽前清場：git、檔案、USB、關 AI 程式、飛航模式）。
-- 改過：DAY_OVERVIEW（報到、完整議程、電腦規定）、[CONTEST_DAY](docs/ranking/CONTEST_DAY.md)（新增步驟 0、隊友 B 改跑主辦桌電）、FINAL_STRATEGY 官方資訊、PRE_CONTEST。
+- 改過：DAY_OVERVIEW（報到、完整議程、電腦規定）、[CONTEST_DAY](docs/ranking/CONTEST_DAY.md)（新增步驟 0、隊友改用職責稱呼：核對員、桌電員）、FINAL_STRATEGY 官方資訊、PRE_CONTEST。
 - 還沒做：11-07 金牌賽 GUI 改動與 `docs/final/mock_drill_close_20261107/` 仍未 commit；`outputs/runs/`、`configs/local/` 還有 11-06～11-08 的彩排檔，照 CLEANUP 清；
   [QUESTIONS_FOR_ORGANIZER](docs/ranking/QUESTIONS_FOR_ORGANIZER.md) 從沒寄出，第 1–3 題現場問。
 

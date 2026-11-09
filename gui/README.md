@@ -26,7 +26,7 @@ uv run python gui/app.py
 
 | 步驟 | GUI 做的事 |
 |---|---|
-| 1 | 建 `configs/local/ranking.json`、填根數。「核對欄」讓隊友 A 不看答案再打一次，不一樣的格子會變紅 |
+| 1 | 建 `configs/local/ranking.json`、填根數。「核對欄」讓核對員不看答案再打一次，不一樣的格子會變紅 |
 | 2 | 直接寫入 T_MAX_SEC，或用任務邊界先試算、確認後再寫入 |
 | 3 | 計分參數先試算、確認後再寫入 |
 | 4 | `check`、`feasibility` |

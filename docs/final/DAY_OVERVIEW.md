@@ -52,7 +52,7 @@
 - 前一晚照 [TONIGHT_20261109](TONIGHT_20261109.md) 做完，最後一項是 [CLEANUP_20261109](CLEANUP_20261109.md) 清場。
 - 確認三個地方是空的：`outputs/runs/`、`configs/local/` 裡只剩 `config.json`、`medal/day/` 不存在。
   彩排留下的 `rank-1` 會讓當天步驟 5 直接報錯（`--run-dir` 不能已存在）。CLEANUP 第四節的檢查指令一次看完。
-- 10:15 就位後：Mac 插電、開飛航模式（Wi‑Fi、藍牙都關）、給工作人員看；隊友 B 拿 USB 去桌電拷題目檔。
+- 10:15 就位後：Mac 插電、開飛航模式（Wi‑Fi、藍牙都關）、給工作人員看；桌電員拿 USB 去桌電拷題目檔。
 
 ## USB
 

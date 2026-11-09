@@ -302,8 +302,8 @@ pre.out { margin: 0; background: var(--code-bg); color: var(--code-ink); font: 1
         </ol>
         <table class="t kv" style="margin-top:16px">
           <tr><th>主控（Mac）</th><td>操作這個畫面、決定交哪份</td></tr>
-          <tr><th>隊友 A（核對）</th><td>獨立抄一份根數，在步驟 1 的核對欄再打一次；步驟 7 唸清單</td></tr>
-          <tr><th>隊友 B（主辦機）</th><td>弄清楚主辦機怎麼開 Script、跑、上傳；先看懂題目 Script 要改哪裡</td></tr>
+          <tr><th>核對員</th><td>獨立抄一份根數，在步驟 1 的核對欄再打一次；步驟 7 唸清單</td></tr>
+          <tr><th>桌電員（主辦桌電）</th><td>弄清楚主辦桌電怎麼開 Script、跑、上傳；先看懂題目 Script 要改哪裡</td></tr>
         </table>
       </div></details>
     </section>
@@ -319,8 +319,8 @@ pre.out { margin: 0; background: var(--code-bg); color: var(--code-ink); font: 1
         <div class="card-title">軌道根數</div>
         <p class="card-desc">SMA 單位 km，角度單位度。雙曲線的 SMA 是負的、ECC &gt; 1。TA 的正負號別抄錯。</p>
         <div class="orbit" id="r1-grid" style="margin-top:16px"></div>
-        <div class="sub">隊友 A 核對</div>
-        <label class="check"><input type="checkbox" id="r1-verify-on"> 打開核對欄：隊友 A 不看上面，自己再打一次，不一樣的格子會變紅</label>
+        <div class="sub">核對員</div>
+        <label class="check"><input type="checkbox" id="r1-verify-on"> 打開核對欄：核對員不看上面，自己再打一次，不一樣的格子會變紅</label>
         <div class="orbit" id="r1-grid2" style="display:none; margin-top:12px"></div>
         <div id="r1-match"></div>
         <div class="sub">曆元與太空船參數 <span class="hint">（題目有給才填，沒給留空）</span></div>
@@ -471,7 +471,7 @@ pre.out { margin: 0; background: var(--code-bg); color: var(--code-ink); font: 1
     <section data-step="r7">
       <div class="page-head"><div>
         <div class="eyebrow">排位賽 · 步驟 7</div><h1>失格清單＋存 USB</h1>
-        <p class="lead">交出去之前的最後一關。能自動判斷的都已經判好了，隊友 A 唸、主控對，全部通過才能存 USB。</p>
+        <p class="lead">交出去之前的最後一關。能自動判斷的都已經判好了，核對員唸、主控對，全部通過才能存 USB。</p>
       </div><span class="est">3 分鐘</span></div>
       <div class="card">
         <div class="inline">
@@ -481,7 +481,7 @@ pre.out { margin: 0; background: var(--code-bg); color: var(--code-ink); font: 1
         <div id="r7-list"></div>
         <label class="check-row" style="cursor:pointer; border-bottom:0">
           <input type="checkbox" id="r7-human" style="margin-top:2px">
-          <div><div class="t">已逐字元核對官方數字</div><div class="d">主控與隊友 A 對過：設定檔裡的根數、T_MAX_SEC、k_t/C_t/k_v/C_v/C_r、曆元與太空船參數就是今天官方給的</div></div>
+          <div><div class="t">已逐字元核對官方數字</div><div class="d">主控與核對員對過：設定檔裡的根數、T_MAX_SEC、k_t/C_t/k_v/C_v/C_r、曆元與太空船參數就是今天官方給的</div></div>
         </label>
       </div>
       <div class="card">
@@ -504,7 +504,7 @@ pre.out { margin: 0; background: var(--code-bg); color: var(--code-ink); font: 1
       <div class="card">
         <div class="card-title">能交整份自製 Script</div>
         <ol>
-          <li>主辦機的 GMAT 開 USB 上的 <code>…_output_submit.txt</code>，跑一次。</li>
+          <li>主辦桌電的 GMAT 開 USB 上的 <code>…_output_submit.txt</code>，跑一次。</li>
           <li>Report 的命中距離要跟步驟 7 的 GMAT Δr 一致；不一致就問工作人員的力學設定。</li>
           <li>Script＋Report 照官方檔名上傳，確認成功。</li>
         </ol>
@@ -544,9 +544,9 @@ pre.out { margin: 0; background: var(--code-bg); color: var(--code-ink); font: 1
           <tr><td><b>結束碼 3</b></td><td>找不到合法路線。看 no_legal_route.json 與能量下限。下限 &gt; 3,000 m/s 就問工作人員；否則 MAXITER 改 2000 重跑（時間加倍）</td></tr>
           <tr><td><b>失格</b></td><td>看失格原因；Δv 超標同結束碼 3</td></tr>
           <tr><td><b>重瞄準不通過</b></td><td>步驟 6 填棒號換一棒餘裕大的。還是不過就交步驟 5 的 output_submit.txt</td></tr>
-          <tr><td><b>GMAT 打不開</b></td><td>確認路徑（必須 ASCII），重跑重驗；不行就到主辦機上跑</td></tr>
+          <tr><td><b>GMAT 打不開</b></td><td>確認路徑（必須 ASCII），重跑重驗；不行就到主辦桌電上跑</td></tr>
           <tr><td><b>Mac 當掉或沒電</b></td><td>有備機就從步驟 5 重跑；沒有就交 USB 上最新那份</td></tr>
-          <tr><td><b>主辦機結果不同</b></td><td>問他們的力學模型與太空船參數，改步驟 1 的曆元與太空船參數，從步驟 6 重跑</td></tr>
+          <tr><td><b>主辦桌電結果不同</b></td><td>問他們的力學模型與太空船參數，改步驟 1 的曆元與太空船參數，從步驟 6 重跑</td></tr>
           <tr><td><b>GUI 壞掉</b></td><td>每個輸出框上方都有完整指令，複製到終端機跑；或照紙本手冊 docs/ranking/CONTEST_DAY.md</td></tr>
         </table>
       </div>
@@ -1070,7 +1070,7 @@ $("#r1-save").onclick = async () => {
   if ($("#r1-verify-on").checked && $("#r1-match .bad")) return toast("核對欄還有不一樣的格子，先解決");
   const r = await api("/api/ranking/config", body);
   $("#r1-msg").innerHTML = `<div class="note ok">已存進 <code>${esc(r.config.path)}</code></div>` + (r.config.warnings.length ? `<div class="note warn">${r.config.warnings.map(esc).join("<br>")}</div>` : "") +
-    (!$("#r1-verify-on").checked ? `<div class="note warn">還沒做兩人核對：勾「打開核對欄」，讓隊友 A 再打一次。</div>` : "");
+    (!$("#r1-verify-on").checked ? `<div class="note warn">還沒做兩人核對：勾「打開核對欄」，讓核對員再打一次。</div>` : "");
   refreshRank();
 };
 $("#r2-write-sec").onclick = async () => { await api("/api/ranking/config", {name: cfgName(), t_max_sec: $("#r2-sec").value}); toast("T_MAX_SEC 已寫入", true); refreshRank(); };

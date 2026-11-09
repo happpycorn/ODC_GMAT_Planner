@@ -8,8 +8,8 @@
 
 1. Mac 插電、開飛航模式（控制中心關 Wi‑Fi、藍牙），給工作人員確認。
 2. 開兩個終端機視窗，先 `cd ~/Documents/Program/ODC_Program`，各打一次 `export UV_OFFLINE=1`（沒網路時 `uv run` 不會去連線）。
-3. 隊友 B 拿 USB 到桌電，把**題目檔整個資料夾**拷到 USB `ODC_Final/problem/`，再拷到 Mac 的 `~/ODC_problem/`（英文路徑，GMAT 讀不了中文路徑）。題目檔是開賽時才放出來就等開賽再拷。
-4. 隊友 B 同時看清楚桌電上 GMAT 怎麼開 Script、怎麼跑、繳交要放哪裡（步驟 8 要用）。
+3. 桌電員拿 USB 到桌電，把**題目檔整個資料夾**拷到 USB `ODC_Final/problem/`，再拷到 Mac 的 `~/ODC_problem/`（英文路徑，GMAT 讀不了中文路徑）。題目檔是開賽時才放出來就等開賽再拷。
+4. 桌電員同時看清楚桌電上 GMAT 怎麼開 Script、怎麼跑、繳交要放哪裡（步驟 8 要用）。
 
 **三條原則**
 
@@ -21,7 +21,7 @@
 
 ## 一、時間盒
 
-| 時刻 | 主控（Mac） | 隊友 A（核對） | 隊友 B（主辦桌電） |
+| 時刻 | 主控（Mac） | 核對員 | 桌電員（主辦桌電） |
 |---|---|---|---|
 | 10:45 | 步驟 1 建設定檔 | 獨立抄一份根數與參數 | 題目檔還沒拷就先拷（步驟 0），再弄清楚桌電怎麼開 Script、跑、上傳 |
 | 10:52 | 步驟 2–3 | 逐字元核對設定檔 | 同上 |
@@ -38,6 +38,14 @@
 
 **分工**：只有主控操作工具、決定交哪份。三個人都要會步驟 8；主控卡住時，隊友直接交 USB 上最新那份。
 
+| 職責 | 誰（賽前填） | 做什麼 |
+|---|---|---|
+| 主控 | ______ | 操作 Mac、跑指令、決定交哪份 |
+| 核對員 | ______ | 獨立抄一份題目數字跟主控逐字元對、步驟 7 唸清單 |
+| 桌電員 | ______ | 在主辦桌電拷題目檔、問工作人員、跑 GMAT、繳交 |
+
+**名詞**：手冊裡的「A」「B」只指兩艘船，不指人。**A＝外星人船 `SC_Alien`**（目標，不機動，設定檔 `orbit_A`）；**B＝我們的船 `SC_Human`**（要機動去攔截，設定檔 `orbit_B`，燒的是 `BurnB0`、`BurnB1`…）。
+
 ---
 
 ## 二、逐步流程
@@ -50,12 +58,12 @@
 uv run python odc.py new-config ranking --gmat-console "/Users/corn/Documents/GMAT R2026a/bin/GmatConsole"
 ```
 
-在 `configs/local/ranking.json` 填 `orbit_A`、`orbit_B` 六根數（SMA、ECC、INC、RAAN、AOP、TA；km、度）。其他欄位不要動。
+在 `configs/local/ranking.json` 填 `orbit_A`（外星人船 `SC_Alien`）、`orbit_B`（我們的船 `SC_Human`）六根數。題目 Script 裡看船名對，**別把兩艘對調**（SMA、ECC、INC、RAAN、AOP、TA；km、度）。其他欄位不要動。
 
 - 雙曲線 **SMA 是負的**、ECC > 1。
 - **TA 正負號**別抄錯（決定 A 飛向還是飛離近地點）。
 - 題目給狀態向量時，用 GMAT 開題目 Script 讀出根數。
-- 主控與隊友 A **各抄一次，逐字元對**。
+- 主控與核對員**各抄一次，逐字元對**。
 
 題目有給**曆元與太空船參數**就一定要抄，在 `strategy` 加（只填官方有給的欄位；A 不同時另填 `GMAT_SPACECRAFT_A`）：
 
@@ -147,7 +155,7 @@ print('全攝動 d_min %.3f km | GMAT 固定版 Δr %.3f km 命中 %s'%(x['retar
 import re;s=open(os.environ['R']+'/output_submit.txt').read();print('繳交腳本 SC_Human：'+'、'.join(k+' '+m.group(1) for k in ('DateFormat','Epoch','DryMass','Cd','Cr','DragArea','SRPArea') for m in [re.search(r'SC_Human\.'+k+r\" = '?([^';]*)\",s)] if m))"
 ```
 
-隊友 A 唸、主控對，**全部打勾才存 USB**：
+核對員唸、主控對，**全部打勾才存 USB**：
 
 - [ ] `狀態 accepted`、`失格 False`、`間隔違規 0`
 - [ ] 最大單棒 ≤ 249 m/s
